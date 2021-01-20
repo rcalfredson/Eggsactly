@@ -190,33 +190,34 @@ class CircleFinder:
           bboxes[-1][0]: center[0] + int(8.5*pxToMM)])
         addWidthAndHeightToBBox()
       else:
-        def getSlice(forHt=True):
-          innerIdx = 1 if forHt else 0
-          sliceToReturn = slice(int(bboxes[-1][innerIdx]), int(bboxes[-1][
-            innerIdx] + 10.5*pxToMM))
-          return sliceToReturn
         outerEdgeDistance = int((1 + 8.6 + 8 + 1)*pxToMM)
-        innerEdgeDistance = int(8*pxToMM)
+        acrossCircleD = int(10.5*pxToMM)
         halfRealCircleD = int((0.5*10)*pxToMM)
+        centerAdjacentDistance = int(1*pxToMM)
 
         bboxes.append([max(center[0] - halfRealCircleD, 0),
           max(center[1] - outerEdgeDistance, 0)])
-        subImgs.append(img[getSlice(), getSlice(forHt=False)])
+        subImgs.append(img[slice(bboxes[-1][1], center[1] -\
+            centerAdjacentDistance),
+          slice(bboxes[-1][0], bboxes[-1][0] + acrossCircleD)])
         addWidthAndHeightToBBox()
 
-        bboxes.append([center[0] + innerEdgeDistance,
+        bboxes.append([center[0] + centerAdjacentDistance,
           max(center[1] - halfRealCircleD, 0)])
-        subImgs.append(img[getSlice(), getSlice(forHt=False)])
+        subImgs.append(img[slice(bboxes[-1][1], bboxes[-1][1] + acrossCircleD),
+          slice(bboxes[-1][0], center[0] + outerEdgeDistance)])
         addWidthAndHeightToBBox()
 
         bboxes.append([max(center[0] - halfRealCircleD, 0),
-          center[1] + innerEdgeDistance])
-        subImgs.append(img[getSlice(), getSlice(forHt=False)])
+          center[1] + centerAdjacentDistance])
+        subImgs.append(img[slice(bboxes[-1][1], center[1] + outerEdgeDistance),
+          slice(bboxes[-1][0], bboxes[-1][0] + acrossCircleD)])
         addWidthAndHeightToBBox()
 
         bboxes.append([max(center[0] - outerEdgeDistance, 0),
           max(center[1] - halfRealCircleD, 0)])
-        subImgs.append(img[getSlice(), getSlice(forHt=False)])
+        subImgs.append(img[slice(bboxes[-1][1], bboxes[-1][1] + acrossCircleD),
+          slice(bboxes[-1][0], center[0] - centerAdjacentDistance)])
         addWidthAndHeightToBBox()
     sortedSubImgs = []
     sortedBBoxes = []

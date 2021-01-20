@@ -857,8 +857,12 @@ class EggCountLabeler:
         while len(self.subImgs[self.imgIdx]) == 0:
           time.sleep(1)
     self.centerImg = self.subImgs[self.imgIdx][self.subImgIdx]
-    resizedDims = [2*dim for dim in self.centerImg.shape]
-    self.scalingFactor, bufferVert = 2, 100
+    if self.centerImg.shape[1] / self.centerImg.shape[0] >= 1.5:
+      self.scalingFactor = 1.5
+    else:
+      self.scalingFactor = 2
+    resizedDims = [self.scalingFactor*dim for dim in self.centerImg.shape]
+    bufferVert = 100
     bufferHoriz, combinedHeightUpperLowerBorders = 100, 80
     self.upperBorderHt, self.sidebarWidth = 30, 230
     vidIdWidth = self.getTextSize(self.vidID())[1] + 15
