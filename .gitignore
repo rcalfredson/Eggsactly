@@ -134,6 +134,7 @@ emptyTest/
 generated/
 imgs/
 investigation/
+models/
 results/
 egg_count_labels*
 error_stats*
