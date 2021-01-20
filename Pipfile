@@ -1,0 +1,30 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+pylint = "*"
+
+[packages]
+opencv-python = "*"
+2to3 = "*"
+matplotlib = "*"
+scipy = "*"
+pillow = "*"
+rdp = "*"
+shapely = "*"
+inflect = "*"
+blist = "*"
+gast = "==0.2.2"
+scikit-learn = "*"
+scikit-image = "*"
+torch = {file = "https://download.pytorch.org/whl/cu100/torch-1.1.0-cp36-cp36m-win_amd64.whl"}
+numpy = "*"
+torchvision = {file = "https://download.pytorch.org/whl/cu100/torchvision-0.3.0-cp36-cp36m-win_amd64.whl"}
+pyinstaller = {file = "https://github.com/pyinstaller/pyinstaller/archive/develop.zip"}
+cython = "*"
+pycocotools = {git = "https://github.com/rcalfredson/cocoapi.git",subdirectory = "PythonAPI"}
+
+[requires]
+python_version = "3.6"

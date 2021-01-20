@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# counting-specific folders and files:
+detectors/
+emptyTest/
+generated/
+imgs/
+investigation/
+results/
+egg_count_labels*
+error_stats*
