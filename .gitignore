@@ -136,5 +136,8 @@ imgs/
 investigation/
 models/
 results/
+temp/*
+uploads/*
 egg_count_labels*
 error_stats*
+results_*
