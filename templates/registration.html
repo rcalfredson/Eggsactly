@@ -5,20 +5,30 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.7/paper-full.js"></script>
 <script type="text/javascript">
     const socket = io();
-    let annotations, imgName;
+    let annotations = {};
+    let orderedImgNames = [];
+    let rectangles = [];
+    let texts = [];
+    let imgName;
     let zoom = 1.0;
     let canvas;
+    let canvasWidth = 1300, canvasHeight = 800;
     let pointerDown = false;
     let dragStart = false;
     let timeDownUp;
     let origCenter;
+    let currentImgIndex = 0;
+    let backgroundRaster, pic;
 </script>
 <title>Egg Counting</title>
 <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/main.css') }}">
-<label for="img-upload">Upload an egg-counting image</label>
-
+<label for="img-upload">Upload one or more egg-counting images<br>
+    <span style="font-size: small; padding-left: 15px;">
+        Note: hold down Ctrl key to select multiple files.
+    </span>
+</label>
 <form id=img-form method=post enctype="multipart/form-data">
-    <input type=file id="img-upload" name="img-upload">
+    <input type=file multiple="multiple" id="img-upload" name="img-upload">
     <button id='img-upload-btn' type=button>Upload</button>
 </form>
 <div id=updates></div>
@@ -51,33 +61,89 @@
             setupCanvas(msg.data)
         });
         socket.on('counting-annotations', (msg) => {
-            annotations = JSON.parse(msg.data)
+            annotations[msg.filename] = JSON.parse(msg.data);
+            orderedImgNames.push(msg.filename);
         });
         socket.on('clear-all', () => {
+            if (!!document.getElementById('updates')) {
+                $('#updates').empty();
+            }
+            annotations = {};
+            orderedImgNames = [];
+        });
+        socket.on('clear-display', () => {
             $('#updates').empty();
         });
     });
 
-    var setupCanvas = function () {
-        let scalingFactor;
-        $('#updates').append('<button id=reset-view>Reset view</button><br>')
-        $('#reset-view').click(reposition)
-        $('#updates').append('<canvas keepalive=true id=detectionResults></canvas>');
-        canvas = document.getElementById('detectionResults');
-        let canvasWidth = 1300, canvasHeight = 800;
-        paper.install(window);
-        paper.setup(canvas);
-        $('#updates').append(`<img id=pic src="/uploads/${imgName}">`);
-        let backgroundRaster = new paper.Raster('pic');
-        paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
-        let pic = document.getElementById('pic');
+    var setCurrentImgName = function() {
+        document.getElementById('current-img').innerText =
+            `Viewing image ${orderedImgNames[currentImgIndex]}`;
+    }
+
+    var setButtonHandlers = function () {
+        if (orderedImgNames.length === 1) {
+            document.getElementById('prev-img').setAttribute('disabled', true);
+            document.getElementById('next-img').setAttribute('disabled', true);
+            return
+        }
+        document.getElementById('prev-img').onclick = (evt) => {
+            let newImgIdx = currentImgIndex - 1;
+            if (newImgIdx >= 0) {
+                currentImgIndex = newImgIdx;
+                redrawCanvas();
+                if (newImgIdx == 0) {
+                    evt.target.setAttribute('disabled', true);
+                    document.getElementById('next-img').removeAttribute('disabled');
+                } else {
+                    evt.target.removeAttribute('disabled');
+                }
+            }
+        }
+        document.getElementById('next-img').onclick = (evt) => {
+            let newImgIdx = currentImgIndex + 1;
+            if (newImgIdx <= orderedImgNames.length) {
+                currentImgIndex = newImgIdx;
+                redrawCanvas();
+                if (evt.target.disabled) {
+                    evt.target.removeAttribute('disabled');
+                }
+                if (newImgIdx > 0) {
+                    document.getElementById('prev-img').removeAttribute('disabled');
+                }
+            }
+            console.log(`newImgIdx: ${newImgIdx}`);
+            console.log(`length of ordered image names: ${orderedImgNames.length}`);
+            if (newImgIdx >= orderedImgNames.length - 1) {
+                evt.target.setAttribute('disabled', true);
+                document.getElementById('prev-img').removeAttribute('disabled');
+            }
+        }
+    }
+
+    var redrawCanvas = function () {
+        setCurrentImgName()
+        if (backgroundRaster) {
+            backgroundRaster.remove()
+        }
+        rectangles.forEach(rect => {
+            rect.remove();
+        })
+        rectangles = [];
+        texts.forEach(text => {
+            text.remove();
+        })
+        texts = [];
+        $('#updates').append(`<img id=pic src="/uploads/${orderedImgNames[currentImgIndex]}">`);
+        backgroundRaster = new paper.Raster('pic');
+        pic = document.getElementById('pic');
         backgroundRaster.onLoad = () => {
             backgroundRaster.fitBounds(paper.view.viewSize);
             let scalingFactor = Math.min(canvasHeight / pic.height, canvasWidth / pic.width);
             document.getElementById('pic').remove();
             let upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
             let leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
-            annotations.forEach(annotation => {
+            annotations[orderedImgNames[currentImgIndex]].forEach(annotation => {
                 let x = annotation.x * scalingFactor + leftPadding;
                 let y = annotation.y * scalingFactor + upperPadding;
                 let bbox = annotation.bbox;
@@ -87,17 +153,36 @@
                 pointText.fillColor = 'black';
                 pointText.content = annotation.count;
                 pointText.fontSize = 17;
+                texts.push(pointText);
                 let rectangle = new paper.Rectangle(
                     new paper.Point(bbox[0]+leftPadding, bbox[1]+upperPadding),
                     new paper.Point(bbox[0] + bbox[2] + leftPadding, bbox[1] + bbox[3] + upperPadding)
                 )
-                let rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2,2));
+                rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2,2));
                 rectPath.strokeColor = '#313036';
+                rectangles.push(rectPath);
             });
-            setPointerHandlers();
-            setDragHandler();
             origCenter = paper.view.center;
         }
+    }
+
+    var setupCanvas = function () {
+        let scalingFactor;
+        $('#updates').append('<button id=reset-view>Reset view</button>')
+        $('#updates').append('<button disabled id=prev-img>Previous image</button>');
+        $('#updates').append('<button id=next-img>Next image</button><br>');
+        $('#updates').append('<p id=current-img></p>');
+        setCurrentImgName()
+        setButtonHandlers()
+        $('#reset-view').click(reposition)
+        $('#updates').append('<canvas keepalive=true id=detectionResults></canvas>');
+        canvas = document.getElementById('detectionResults');
+        paper.install(window);
+        paper.setup(canvas);
+        paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
+        redrawCanvas();
+        setPointerHandlers();
+        setDragHandler();
     }
 
     var zoomInAndOut = e => {

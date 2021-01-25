@@ -178,18 +178,7 @@ class CircleFinder:
     self.getPixelToMMRatio()
     pxToMM = self.pxToMM
     for center in centers:
-      if self.ct is not CT.fourCircle.name:
-        bboxes.append([max(center[0] - int(8.5*pxToMM), 0),
-          max(center[1] - int(0.5*avgDists[1]), 0)])
-        subImgs.append(img[bboxes[-1][1]:center[1] + int(0.5*avgDists[1]),
-          bboxes[-1][0]: center[0] - int(4*pxToMM)])
-        addWidthAndHeightToBBox()
-        bboxes.append([max(center[0] + int(4*pxToMM), 0), max(center[1] - int(
-          0.5*avgDists[1]), 0)])
-        subImgs.append(img[bboxes[-1][1]:center[1] + int(0.5*avgDists[1]),
-          bboxes[-1][0]: center[0] + int(8.5*pxToMM)])
-        addWidthAndHeightToBBox()
-      else:
+      if self.ct is CT.fourCircle.name:
         outerEdgeDistance = int((1 + 8.6 + 8 + 1)*pxToMM)
         acrossCircleD = int(10.5*pxToMM)
         halfRealCircleD = int((0.5*10)*pxToMM)
@@ -219,6 +208,30 @@ class CircleFinder:
         subImgs.append(img[slice(bboxes[-1][1], bboxes[-1][1] + acrossCircleD),
           slice(bboxes[-1][0], center[0] - centerAdjacentDistance)])
         addWidthAndHeightToBBox()
+      elif self.ct is CT.new.name:
+        bboxes.append([max(center[0] - int(0.5*avgDists[0]), 0),
+          max(center[1] - int(8.5*pxToMM), 0)])
+        subImgs.append(img[bboxes[-1][1]:center[1] - int(4*pxToMM),
+          bboxes[-1][0]: center[0] + int(0.5*avgDists[0])])
+        addWidthAndHeightToBBox()
+        bboxes.append([max(center[0] - int(0.5*avgDists[0]), 0),
+          max(center[1] + int(4*pxToMM), 0)])
+        subImgs.append(img[bboxes[-1][1]:center[1] + int(8.5*pxToMM),
+          bboxes[-1][0]:center[0] + int(0.5*avgDists[0])])
+        addWidthAndHeightToBBox()
+      else:
+        bboxes.append([max(center[0] - int(8.5*pxToMM), 0),
+          max(center[1] - int(0.5*avgDists[1]), 0)])
+        subImgs.append(img[bboxes[-1][1]:center[1] + int(0.5*avgDists[1]),
+          bboxes[-1][0]: center[0] - int(4*pxToMM)])
+        addWidthAndHeightToBBox()
+        bboxes.append([max(center[0] + int(4*pxToMM), 0), max(center[1] - int(
+          0.5*avgDists[1]), 0)])
+        subImgs.append(img[bboxes[-1][1]:center[1] + int(0.5*avgDists[1]),
+          bboxes[-1][0]: center[0] + int(8.5*pxToMM)])
+        addWidthAndHeightToBBox()
+    if self.ct is CT.new.name:
+      return CT.new.value().getSortedSubImgs(subImgs, bboxes)
     sortedSubImgs = []
     sortedBBoxes = []
     for j in range(numRowsCols[0]):

@@ -23,8 +23,10 @@ class Chamber():
       - i: index of the image for which to write counts
       - writer: csv.writer instance for the open file.
     """
-    for j in range(self.numRows):
-      colCt = self.numCols*2
+    for j in range(self.numRows*(self.numRepeatedRowsPerCol if hasattr(
+      self, 'numRepeatedRowsPerCol') else 1)):
+      colCt = self.numCols*(self.numRepeatedColsPerRow if hasattr(
+        self, 'numRepeatedColsPerRow') else 2)
       row = eggCounts[i][slice(j*colCt, j*colCt + colCt)]
       writer.writerow(row)
 
@@ -57,8 +59,19 @@ class NewChamber(Chamber):
   and 4 columns."""
   def __init__(self):
     """Create a new "New"-type chamber."""
-    self.numRows, self.numCols = 5, 4
+    self.numRows, self.numCols = 4, 5
     self.rowDist, self.colDist = 18, 22
+    self.numRepeatedRowsPerCol = 2
+    self.numRepeatedColsPerRow = 1
+
+  def getSortedSubImgs(self, subImgs, bboxes):
+    sortedSubImgs, sortedBBoxes = [], []
+    proposedIndices = concat([[i + 2*self.numRows*j for j in range(
+      self.numCols)] for i in range(2*self.numRows)])
+    for i in proposedIndices:
+      sortedSubImgs.append(subImgs[i])
+      sortedBBoxes.append(bboxes[i])
+    return sortedSubImgs, sortedBBoxes
 
 class OldChamber(Chamber):
   """Represent the chamber type with 6 rows and 4 columns."""
