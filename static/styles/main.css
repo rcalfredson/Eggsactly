@@ -7,3 +7,10 @@ input,
 label {
     margin: .4rem 0;
 }
+
+#viewer-nav {
+    display: block;
+    position: sticky;
+    position: -webkit-sticky;
+    top: 20px;
+}

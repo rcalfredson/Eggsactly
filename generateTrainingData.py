@@ -36,7 +36,7 @@ def numPatches():
         return 1
 
 
-heldOutProb = 0.1
+heldOutProb = 1.0
 fullSizeProb = 0.2
 validationProb = 0.25
 blankPatchRetentionProb = 0.0
@@ -222,6 +222,7 @@ for i, imgPath in enumerate(sourceImgs):
             parentPath][lbn]['bboxes'])
     else:
         circleFinder = CircleFinder(img, imgPath)
+        print('processing image', imgPath, 'via GPU')
         circles, avgDists, numRowsCols, rotatedImg, rotAngle = circleFinder.findCircles()
         subImgs[imgPath], bboxes = circleFinder.getSubImages(rotatedImg, circles, avgDists,
                                                     numRowsCols)

@@ -11,8 +11,10 @@
     let texts = [];
     let imgName;
     let zoom = 1.0;
+    let lastScrollTime;
     let canvas;
-    let canvasWidth = 1300, canvasHeight = 800;
+    let canvasWidth = Math.min(1300, window.innerWidth),
+        canvasHeight = Math.min(800, window.innerHeight);
     let pointerDown = false;
     let dragStart = false;
     let timeDownUp;
@@ -78,7 +80,7 @@
 
     var setCurrentImgName = function() {
         document.getElementById('current-img').innerText =
-            `Viewing image ${orderedImgNames[currentImgIndex]}`;
+            `Viewing image ${orderedImgNames[currentImgIndex]} (Shift + scroll to zoom)`;
     }
 
     var setButtonHandlers = function () {
@@ -168,10 +170,11 @@
 
     var setupCanvas = function () {
         let scalingFactor;
-        $('#updates').append('<button id=reset-view>Reset view</button>')
-        $('#updates').append('<button disabled id=prev-img>Previous image</button>');
-        $('#updates').append('<button id=next-img>Next image</button><br>');
-        $('#updates').append('<p id=current-img></p>');
+        $('#updates').append('<div id=viewer-nav></div>')
+        $('#viewer-nav').append('<button class=nav-button id=reset-view>Reset view</button>')
+        $('#viewer-nav').append('<button class=nav-button disabled id=prev-img>Previous image</button>');
+        $('#viewer-nav').append('<button class=nav-button id=next-img>Next image</button><br>');
+        $('#viewer-nav').append('<p id=current-img></p>');
         setCurrentImgName()
         setButtonHandlers()
         $('#reset-view').click(reposition)
@@ -186,7 +189,14 @@
     }
 
     var zoomInAndOut = e => {
+        if (!e.shiftKey) {
+            return;
+        }
         e.preventDefault();
+        if (lastScrollTime && Date.now() - lastScrollTime < 250) {
+            return;
+        }
+        lastScrollTime = Date.now();
         let view = paper.view;
         let viewPosition = view.viewToProject(
             new paper.Point(e.offsetX, e.offsetY)
