@@ -14,3 +14,57 @@ label {
     position: -webkit-sticky;
     top: 20px;
 }
+
+.modal-parent {
+    width: 100%;
+}
+
+.modal {
+    display: none;
+  }
+  
+  .modal.is-open {
+    /* display: table; */
+    top: 40px;
+    border: 3px solid black;
+    background-color: white;
+    width: 50%;
+    box-shadow: 10px 5px 5px grey;
+    display: block;
+    position: absolute;
+  }
+
+  #modal-1-title {
+      display: inline-block;
+  }
+
+  #egg-flagger-div {
+      padding: 12px;
+  }
+
+  #close-button {
+    width: 25px;
+    height: 25px;
+    border-radius: 2px;
+    background-color: red;
+    border: 1px solid black;
+    display: inline;
+    float: right;
+  }
+  
+  .close-button-stroke1 {
+    height: 25px;
+    width: 2px;
+    margin-left: 12px;
+    background-color: black;
+    transform: rotate(45deg);
+    Z-index: 1;
+  }
+  
+  .close-button-stroke2 {
+    height: 25px;
+    width: 2px;
+    background-color: black;
+    transform: rotate(90deg);
+    Z-index: 2;
+  }

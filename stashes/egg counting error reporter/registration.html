@@ -50,7 +50,6 @@
     <script type="text/javascript">
         $(function () {
             $('#img-upload-btn').click(function () {
-                $(this).prop('disabled', true)
                 var form_data = new FormData($('#img-form')[0]);
                 form_data.append('sid', sid);
                 $.ajax({
@@ -75,8 +74,7 @@
             socket.on('counting-csv', (msg) => {
                 $('#updates').append(`<form action=/csvResults/${msg.data}><input value='Download results' type=submit>` +
                     '</input></form>');
-                setupCanvas(msg.data);
-                document.getElementById('img-upload-btn').removeAttribute('disabled');
+                setupCanvas(msg.data)
             });
             socket.on('counting-annotations', (msg) => {
                 annotations[msg.filename] = JSON.parse(msg.data);
@@ -243,8 +241,9 @@
                     rectPath.strokeColor = colors.grey;
                     let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
                     innerRect.fillColor = 'black';
+                    addHoverHandler(innerRect)
                     innerRect.opacity = 0;
-                    // addHoverHandler(innerRect);
+                    addHoverHandler(innerRect);
                     eggLayingRegions[innerRect.id] = {
                         outline: rectPath,
                         fill: innerRect,

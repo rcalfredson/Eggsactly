@@ -11,9 +11,10 @@ from util import *
 # print('what is argmax?', np.max(unitedArr, axis=0))
 # print('max diffs:', maxDiffs)
 
-print(meanConfInt([ 0.025,
-                    0.042,
-                    0.023,
-                    0.025,
-                    0.028,
+print(meanConfInt([
+0.193,
+0.260,
+0.162,
+0.232,
+0.222,
 ], asDelta=True))

@@ -24,7 +24,7 @@ class SessionManager():
     """Represent and process information while using the egg-counting web app.
     """
 
-    def __init__(self, socketIO):
+    def __init__(self, socketIO, room):
         """Create a new SessionData instance.
 
         Arguments:
@@ -33,25 +33,29 @@ class SessionManager():
         self.chamberTypes = {}
         self.predictions = {}
         self.socketIO = socketIO
+        self.room = room
 
     def register_image(self, imgPath):
         imgBasename = os.path.basename(imgPath)
         self.imgPath = imgPath
         self.predictions[imgPath] = []
         self.socketIO.emit('counting-progress',
-                           {'data': 'Segmenting image %s' % imgBasename})
+                           {'data': 'Segmenting image %s' % imgBasename},
+                           room=self.room)
         img = np.array(Image.open(imgPath), dtype=np.float32)
         self.cf = CircleFinder(img, os.path.basename(imgPath), allowSkew=True)
         if self.cf.skewed:
             self.socketIO.emit('counting-progress',
                                {'data': 'Skew detected in image %s;' +
-                                ' stopping analysis.' % imgBasename})
+                                ' stopping analysis.' % imgBasename},
+                                room=self.room)
         circles, avgDists, numRowsCols, rotatedImg, _ = self.cf.findCircles()
         self.chamberTypes[imgPath] = self.cf.ct
         subImgs, bboxes = self.cf.getSubImages(
             rotatedImg, circles, avgDists, numRowsCols)
         self.socketIO.emit('counting-progress',
-                           {'data': 'Counting eggs in image %s' % imgBasename})
+                           {'data': 'Counting eggs in image %s' % imgBasename},
+                           room=self.room)
         for subImg in subImgs:
             subImg = torch.from_numpy((1/255)*np.expand_dims(
                 np.moveaxis(subImg, 2, 0), 0))
@@ -59,7 +63,8 @@ class SessionManager():
             self.predictions[imgPath].append(
                 int(torch.sum(result).item() / 100))
         self.socketIO.emit('counting-progress',
-                           {'data': 'Finished counting eggs'})
+                           {'data': 'Finished counting eggs'},
+                           room=self.room)
         self.bboxes = [[int(el) for el in bbox] for bbox in bboxes]
         self.imgBasename = imgBasename
         self.sendAnnotationsToClient()
@@ -90,11 +95,12 @@ class SessionManager():
         self.socketIO.emit('counting-annotations',
                            {'data': json.dumps(resultsData,
                                                separators=(',', ':')),
-                            'filename': self.imgBasename})
+                            'filename': self.imgBasename},
+                            room=self.room)
 
     def saveCSV(self):
         resultsPath = 'temp/results_ALPHA_%s.csv' % datetime.today().strftime(
-            '%Y-%m-%d_%H-%M')
+            '%Y-%m-%d_%H-%M-%S')
         with open(resultsPath, 'wt', newline='') as resultsFile:
             writer = csv.writer(resultsFile)
             writer.writerow(['Egg Counter, ALPHA version'])
@@ -104,4 +110,5 @@ class SessionManager():
                     [self.predictions[imgPath]], 0, writer)
                 writer.writerow([])
         self.socketIO.emit('counting-csv',
-                           {'data': os.path.basename(resultsPath)})
+                           {'data': os.path.basename(resultsPath)},
+                           room=self.room)

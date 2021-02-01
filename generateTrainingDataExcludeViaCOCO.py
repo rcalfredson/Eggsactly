@@ -6,6 +6,7 @@ import pickle
 
 import cv2
 import numpy as np
+from pycocotools.coco import COCO
 
 from circleFinder import CircleFinder, rotate_image, subImagesFromBBoxes
 from clickLabelManager import ClickLabelManager
@@ -35,6 +36,10 @@ def numPatches():
     else:
         return 1
 
+coco_annots = COCO(r"C:\Users\Tracking\Downloads\eggs-15.json")
+img_names = [coco_annots.imgs[img]['file_name'] for img in coco_annots.imgs]
+print('image names?', img_names)
+exit(0)
 
 heldOutProb = 0.0
 fullSizeProb = 1.0
@@ -244,6 +249,16 @@ for imgPath in subImgs:
     for i, subImg in enumerate(subImgs[imgPath]):
         if imgPath in loadedData['frontierData']['fileName'] and i >= loadedData['frontierData']['subImgIdx']:
             continue
+        if chamberTypes[imgPath] == CT.fourCircle.name:
+            numCirclesPerRow = rowColCounts[imgPath][0]*4
+            rowNum = np.floor(i / numCirclesPerRow).astype(int)
+            colNum = np.floor((i % numCirclesPerRow) / 4).astype(int)
+            position = POSITIONS[i % 4]
+        else:
+            rowNum = int(np.floor(i / (2*rowColCounts[imgPath][1])))
+            colNum = i % int(2*rowColCounts[imgPath][1])
+            position = None
+        coco_name = 
         class_rand_var = np.random.random()
         if class_rand_var < heldOutProb:
             MODE = 'full'
@@ -256,15 +271,6 @@ for imgPath in subImgs:
         else:
             MODE = 'patch'
             assignToTrainingOrValidation()
-        if chamberTypes[imgPath] == CT.fourCircle.name:
-            numCirclesPerRow = rowColCounts[imgPath][0]*4
-            rowNum = np.floor(i / numCirclesPerRow).astype(int)
-            colNum = np.floor((i % numCirclesPerRow) / 4).astype(int)
-            position = POSITIONS[i % 4]
-        else:
-            rowNum = int(np.floor(i / (2*rowColCounts[imgPath][1])))
-            colNum = i % int(2*rowColCounts[imgPath][1])
-            position = None
         print('Viewing %s, sub-image' % imgPath, i)
         print('rowNum:', rowNum)
         print('colNum:', colNum)

@@ -122,13 +122,10 @@ def handle_upload():
         return redirect(request.url)
     for i, file in enumerate(files):
         if file and allowed_file(file.filename):
-            socketIO.emit('clear-display', room=sid)
-            socketIO.emit('counting-progress',
-                {'data': 'Uploading image %i of %i'%(i+1, len(files))},
-                room=sid)
             filename = secure_filename(file.filename)
             filePath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filePath)
+            socketIO.emit('clear-display', room=sid)
             socketIO.emit('counting-progress',
                 {'data': 'Processing image %i of %i'%(i+1, len(files))},
                 room=sid)
