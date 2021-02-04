@@ -1,70 +1,158 @@
-label {
-    display: block;
-    font: 1rem 'Fira Sans', sans-serif;
+html {
+  font: 1rem 'Fira Sans', sans-serif;
 }
 
-input,
-label {
-    margin: .4rem 0;
+form img {
+  height: 64px;
+  order: 1;
+}
+
+.live-count-editor {
+  background-color: #acacac;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px ridge black;
+  font-size: 0.8rem;
+  color: black;
+  height: auto;
+}
+
+form label:hover, form button:hover:enabled, #updates button:hover, form input:hover {
+  background-color: #2D5BA3;
+  color: white;
+}
+
+form label:active, form button:active:enabled, #updates button:active, form input:active {
+  background-color: #0D3F8F;
+  color: white;
+}
+
+form li, .preview>p {
+  background: #eee;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  margin-top: 10px;
+  list-style-type: none;
+  border: 1px solid black;
+}
+
+form p {
+  line-height: 32px;
+  padding-left: 10px;
 }
 
 #viewer-nav {
-    display: block;
-    position: sticky;
-    position: -webkit-sticky;
-    top: 20px;
+  display: block;
+  position: sticky;
+  position: -webkit-sticky;
+  top: 20px;
+}
+
+#download-imgs {
+  width: 184px;
+}
+
+.divider {
+  width: 4.45px;
+  height: auto;
+  display: inline-block;
+}
+
+#embedded-img, #egg-count-editor {
+  margin-top: 15px;
+}
+
+#egg-count-editor input, #egg-count-editor label {
+  background-color: white;
+  color: black;
+}
+
+#img-form {
+  width: 600px;
+  padding: 20px;
+  background-color: rgb(201, 201, 201);
+  margin-top: 15px;
+  border: 1px solid black;
+}
+
+.img-upload {
+  opacity: 0;
+}
+
+form label, form button, #updates button, form input {
+  background-color: #7F9CCB;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px ridge black;
+  font-size: 0.8rem;
+  height: auto;
+}
+
+#updates #submit-error-report {
+  background-color: rgb(204, 87, 97);
+  color: white;
+  width: 240px;
+}
+
+#updates #submit-error-report:hover {
+  background-color: rgb(206, 52, 65);
+}
+
+#updates #submit-error-report:active {
+  background-color: rgb(155, 18, 29);
 }
 
 .modal-parent {
-    width: 100%;
+  width: 100%;
 }
 
 .modal {
-    display: none;
-  }
-  
-  .modal.is-open {
-    /* display: table; */
-    top: 40px;
-    border: 3px solid black;
-    background-color: white;
-    width: 50%;
-    box-shadow: 10px 5px 5px grey;
-    display: block;
-    position: absolute;
-  }
+  display: none;
+}
 
-  #modal-1-title {
-      display: inline-block;
-  }
+.modal.is-open {
+  /* display: table; */
+  top: 40px;
+  border: 3px solid black;
+  background-color: white;
+  width: 50%;
+  box-shadow: 10px 5px 5px grey;
+  display: block;
+  position: fixed;
+}
 
-  #egg-flagger-div {
-      padding: 12px;
-  }
+#modal-1-title {
+  display: inline-block;
+}
 
-  #close-button {
-    width: 25px;
-    height: 25px;
-    border-radius: 2px;
-    background-color: red;
-    border: 1px solid black;
-    display: inline;
-    float: right;
-  }
-  
-  .close-button-stroke1 {
-    height: 25px;
-    width: 2px;
-    margin-left: 12px;
-    background-color: black;
-    transform: rotate(45deg);
-    Z-index: 1;
-  }
-  
-  .close-button-stroke2 {
-    height: 25px;
-    width: 2px;
-    background-color: black;
-    transform: rotate(90deg);
-    Z-index: 2;
-  }
+#egg-flagger-div {
+  padding: 12px;
+}
+
+#close-button {
+  width: 25px;
+  height: 25px;
+  border-radius: 2px;
+  background-color: red;
+  border: 1px solid black;
+  display: inline;
+  float: right;
+}
+
+.close-button-stroke1 {
+  height: 25px;
+  width: 2px;
+  margin-left: 12px;
+  background-color: black;
+  transform: rotate(45deg);
+  Z-index: 1;
+}
+
+.close-button-stroke2 {
+  height: 25px;
+  width: 2px;
+  background-color: black;
+  transform: rotate(90deg);
+  Z-index: 2;
+}

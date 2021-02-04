@@ -12,9 +12,9 @@ from util import *
 # print('max diffs:', maxDiffs)
 
 print(meanConfInt([
-0.193,
-0.260,
-0.162,
-0.232,
+0.146,
+0.289,
+0.363,
+0.274,
 0.222,
 ], asDelta=True))

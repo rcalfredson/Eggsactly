@@ -73,9 +73,27 @@ def send_csv(filename):
         abort(404)
     return send_file(fileToDownload, as_attachment=True)
 
+@socketIO.on('prepare-csv')
+def prepare_csv(data):
+    sessions[data['sid']].saveCSV(data['editedCounts'])
+
+@socketIO.on('submit-error-report')
+def submit_error_report(data):
+    sessions[data['sid']].createErrorReport(data['editedCounts'])
+
 @socketIO.on('prepare-annot-imgs-zip')
 def setup_imgs_download(data):
-    downloadManager.addNewSession(data['numImages'], data['time'])
+    ts = str(data['time'])
+    downloadManager.addNewSession(sessions[data['sid']],
+        ts, data['editedCounts'])
+    downloadManager.createImagesForDownload(str(data['time']))
+    zipfName = '%s.zip'%(downloadManager.sessions[ts]['folder'])
+    zipf = zipfile.ZipFile(zipfName, 'w', zipfile.ZIP_DEFLATED)
+    zipdir(downloadManager.sessions[ts]['folder'], zipf)
+    zipf.close()
+    downloadManager.sessions[ts]['zipfile'] = zipfName
+    socketIO.emit('zip-annots-ready', {'time': ts},
+        room=data['sid'])
 
 @app.route('/annot-img/<ts>', methods=['GET'])
 def return_zipfile(ts):
@@ -113,10 +131,19 @@ def handle_upload():
         remove_old_files(dirName)
     socketIO.emit('clear-all',
         room=sid)
-    if 'img-upload' not in request.files:
+    if 'img-upload-1' not in request.files:
         flash('No file part')
         return redirect(request.url)
-    files = request.files.getlist('img-upload')
+    files = []
+    numFiles = None
+    counter = 1
+    while numFiles != 0:
+        newFiles = request.files.getlist('img-upload-%i'%counter)
+        numFiles = len(newFiles)
+        for file in newFiles:
+            if file.content_type != 'application/octet-stream':
+                files.append(file)
+        counter += 1
     if len(files) == 0:
         flash('No selected file')
         return redirect(request.url)
@@ -133,12 +160,16 @@ def handle_upload():
                 {'data': 'Processing image %i of %i'%(i+1, len(files))},
                 room=sid)
             sessionManager.register_image(filePath)
-    sessionManager.saveCSV()
+    socketIO.emit('counting-done', room=sid)
     return 'OK'
 
 @app.route('/', methods=['GET', 'POST'])
 def show_mainpage():
     return render_template('registration.html')
+
+@app.route('/isolatedRedrawTest', methods=["GET"])
+def show_testpage():
+    return render_template('canvasLoadTest.html')
 
 if __name__ == '__main__':
     socketIO.run(app)

@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import os
 
+import cv2
 import numpy as np
 from PIL import Image
 import torch
@@ -32,11 +33,13 @@ class SessionManager():
         """
         self.chamberTypes = {}
         self.predictions = {}
+        self.annotations = {}
         self.socketIO = socketIO
         self.room = room
 
     def register_image(self, imgPath):
         imgBasename = os.path.basename(imgPath)
+        imgPath = os.path.normpath(imgPath)
         self.imgPath = imgPath
         self.predictions[imgPath] = []
         self.socketIO.emit('counting-progress',
@@ -97,8 +100,22 @@ class SessionManager():
                                                separators=(',', ':')),
                             'filename': self.imgBasename},
                             room=self.room)
+        self.annotations[os.path.normpath(self.imgPath)] = resultsData
 
-    def saveCSV(self):
+    def createErrorReport(self, edited_counts):
+        for imgPath in edited_counts:
+            rel_path = os.path.normpath(
+                    os.path.join('.\\uploads', imgPath))
+            img = cv2.imread(rel_path)
+            for i in edited_counts[imgPath]:
+                annot = self.annotations[rel_path][int(i)]
+                imgSection = img[annot['bbox'][1]:annot['bbox'][1] + annot['bbox'][3],
+                    annot['bbox'][0]:annot['bbox'][0] + annot['bbox'][2]]
+                cv2.imwrite(os.path.join('error_cases', '.'.join(os.path.basename(imgPath).split('.')[:-1]) +
+                    '_%s_actualCt_%s.png'%(i, edited_counts[imgPath][i])), imgSection)
+        self.socketIO.emit('report-ready')
+
+    def saveCSV(self, edited_counts):
         resultsPath = 'temp/results_ALPHA_%s.csv' % datetime.today().strftime(
             '%Y-%m-%d_%H-%M-%S')
         with open(resultsPath, 'wt', newline='') as resultsFile:
@@ -106,6 +123,9 @@ class SessionManager():
             writer.writerow(['Egg Counter, ALPHA version'])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
+                if os.path.basename(imgPath) in edited_counts:
+                    writer.writerow(
+                        ["Note: this image's counts have been amended by hand"])
                 CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
                     [self.predictions[imgPath]], 0, writer)
                 writer.writerow([])

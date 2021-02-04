@@ -16,13 +16,19 @@
             grey: '#313036',
             red: '#fc2c03'
         };
+        const defaultFontSize = 17;
         let sid;
+        let input, inputs, inputDiv, inputLbl, inputReset, preview;
+        let inputAmender;
+        let inputAmenderNormalBckgnd;
+        let lastKeyPressed;
+        let pathAmendId;
         let annotations = {};
         let orderedImgNames = [];
-        let eggLayingRegions = {};
-        let texts = [];
-        let imgName;
+        let eggLayingRegions = [];
+        let loadingInterval;
         let zoom = 1.0;
+        let idsWithEdits = new Set();
         let lastScrollTime;
         let canvas;
         let canvasLoaded = false;
@@ -33,24 +39,56 @@
         let timeDownUp;
         let origCenter;
         let currentImgIndex = 0;
+        let previousImgIndex;
         let backgroundRaster, pic;
+
+        function isNormalInteger(str) {
+            var n = Math.floor(Number(str));
+            return n !== Infinity && String(n) === str && n >= 0;
+        }
     </script>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/main.css') }}">
-    <label for="img-upload">Upload one or more egg-counting images<br>
+    <label for="img-upload-1">Upload one or more egg-counting images<br>
         <span style="font-size: small; padding-left: 15px;">
             Note: hold down Ctrl key to select multiple files.
         </span>
     </label>
     <form id=img-form method=post enctype="multipart/form-data">
-        <input type=file multiple="multiple" id="img-upload" name="img-upload">
-        <button id='img-upload-btn' type=button>Upload</button>
+        <div id=img-inputs>
+            <label id="img-upload-lbl" for="img-upload-1">Choose images to upload</label>
+            <button hidden id=img-upload-reset type="button">Reset</button>
+            <input class=img-upload type=file multiple="multiple" id="img-upload-1" name="img-upload-1">
+        </div>
+        <div class="preview">
+            <p>No files currently selected for upload.</p>
+        </div>
+        <div>
+            <button id='img-upload-btn' type=button>Upload</button>
+        </div>
     </form>
     <div id=updates></div>
     <button id="modalToggle" hidden data-micromodal-trigger="modal-1"></button>
     <script type="text/javascript">
+        const fileTypes = [
+            "image/apng",
+            "image/bmp",
+            "image/gif",
+            "image/jpeg",
+            "image/pjpeg",
+            "image/png",
+            "image/svg+xml",
+            "image/tiff",
+            "image/webp",
+            "image/x-icon"
+        ];
+
+        function validFileType(file) {
+            return fileTypes.includes(file.type);
+        }
+
         $(function () {
             $('#img-upload-btn').click(function () {
-                $(this).prop('disabled', true)
+                $(this).prop('disabled', true);
                 var form_data = new FormData($('#img-form')[0]);
                 form_data.append('sid', sid);
                 $.ajax({
@@ -64,7 +102,6 @@
                         console.log('Success!');
                     },
                 });
-                imgName = document.getElementById('img-upload').files.item(0).name
             });
         });
 
@@ -72,11 +109,19 @@
             socket.on('counting-progress', (msg) => {
                 $('#updates').append('<p>' + msg.data + '</p>')
             });
-            socket.on('counting-csv', (msg) => {
-                $('#updates').append(`<form action=/csvResults/${msg.data}><input value='Download results' type=submit>` +
-                    '</input></form>');
-                setupCanvas(msg.data);
+            socket.on('counting-done', () => {
+                $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
+                $('#updates').append('<div class=divider style="height: 2px;"></div>');
+                setupCanvas();
                 document.getElementById('img-upload-btn').removeAttribute('disabled');
+            });
+            socket.on('counting-csv', (msg) => {
+                $('#updates').append(`<form id=csv-retrieve hidden action=/csvResults/${msg.data}><input hidden value='Download results' type=submit>` +
+                    '</input></form>');
+                document.getElementById('csv-retrieve').submit();
+                document.getElementById('csv-retrieve').remove();
+                document.getElementById('download-csv').removeAttribute('disabled');
+                clearInterval(document.getElementById('download-csv').loadingInterval);
             });
             socket.on('counting-annotations', (msg) => {
                 annotations[msg.filename] = JSON.parse(msg.data);
@@ -92,16 +137,125 @@
             socket.on('clear-display', () => {
                 $('#updates').empty();
             });
+            socket.on('report-ready', () => {
+                let el = document.getElementById('submit-error-report')
+                el.removeAttribute('disabled');
+                el.innerText = 'Submitted!';
+                setTimeout(() => {
+                    el.innerText = 'Submit error report for all images';
+                }, 2500)
+                clearInterval(el.loadingInterval);
+            });
             socket.on('zip-annots-ready', (msg) => {
                 $('#updates').append(`<form hidden id=annot-retrieve action=/annot-img/${msg.time}><input id=annot-retrieve-input hidden id= value='Download results' type=submit>` +
                     '</input></form>')
                 document.getElementById('annot-retrieve').submit();
                 document.getElementById('annot-retrieve').remove();
+                document.getElementById('download-imgs').innerText = 'Download annotated images';
+                document.getElementById('download-imgs').removeAttribute('disabled');
+                clearInterval(document.getElementById('download-imgs').loadingInterval)
             });
             socket.on('sid-from-server', (msg) => {
                 sid = msg.sid;
-            })
+            });
+            setUpFileUploadDialog();
         });
+
+        var setUpFileUploadDialog = function () {
+            input = document.getElementById('img-upload-1');
+            inputs = [input]
+            inputLbl = document.getElementById('img-upload-lbl');
+            inputDiv = document.getElementById('img-inputs');
+            inputReset = document.getElementById('img-upload-reset')
+            preview = document.querySelector('.preview');
+            input.addEventListener('change', updateImageDisplay);
+            inputReset.onclick = handleResetClick;
+        }
+
+        var handleResetClick = function () {
+            inputs[0].value = "";
+            inputs.forEach((input, i) => {
+                if (i > 0) {
+                    input.remove();
+                }
+            });
+            inputs = inputs.slice(0, 1);
+            input = inputs[0];
+            input.addEventListener('change', updateImageDisplay);
+            updateImageDisplay(false);
+            inputReset.setAttribute('hidden', true);
+            inputLbl.setAttribute('for', input.id);
+            inputLbl.innerText = 'Choose images to upload';
+        };
+
+        var addNewImageInput = () => {
+            let newInput = document.createElement('input');
+            newInput.type = 'file';
+            newInput.multiple = 'multiple';
+            let newInputIdAndName = `img-upload-${document.getElementsByClassName('img-upload').length + 1}`;
+            newInput.id = newInputIdAndName;
+            newInput.name = newInputIdAndName;
+            newInput.setAttribute('class', 'img-upload');
+            newInput.setAttribute('hidden', 'true');
+            inputDiv.appendChild(newInput);
+            inputs.push(newInput);
+            input.removeEventListener('change', updateImageDisplay);
+            input = newInput;
+            input.addEventListener('change', updateImageDisplay);
+            inputLbl.setAttribute('for', newInputIdAndName);
+
+        }
+
+        function updateImageDisplay(addNewInput = true) {
+            if (addNewInput) {
+                addNewImageInput();
+            }
+            while (preview.firstChild) {
+                preview.removeChild(preview.firstChild);
+            }
+            inputLbl.innerText = "Select more images";
+            inputReset.removeAttribute('hidden');
+            let curFiles = [];
+            inputs.forEach(i => {
+                curFiles = Array.from(curFiles).concat(Array.from(i.files));
+            })
+            if (curFiles.length === 0) {
+                const para = document.createElement('p');
+                para.textContent = 'No files currently selected for upload';
+                preview.appendChild(para);
+            } else {
+                const list = document.createElement('ol');
+                preview.appendChild(list);
+
+                for (const file of curFiles) {
+                    const listItem = document.createElement('li');
+                    const para = document.createElement('p');
+                    if (validFileType(file)) {
+                        para.textContent = `File name ${file.name}, file size ${returnFileSize(file.size)}.`;
+                        const image = document.createElement('img');
+                        image.src = URL.createObjectURL(file);
+
+                        listItem.appendChild(image);
+                        listItem.appendChild(para);
+                    } else {
+                        para.textContent = `File name ${file.name}: Not a valid file type. Update your selection.`;
+                        listItem.appendChild(para);
+                    }
+
+                    list.appendChild(listItem);
+                }
+            }
+        }
+
+        function returnFileSize(number) {
+            if (number < 1024) {
+                return number + 'bytes';
+            } else if (number >= 1024 && number < 1048576) {
+                return (number / 1024).toFixed(1) + 'KB';
+            } else if (number >= 1048576) {
+                return (number / 1048576).toFixed(1) + 'MB';
+            }
+        }
 
         var setCurrentImgName = function () {
             document.getElementById('current-img').innerText =
@@ -112,38 +266,63 @@
             return filename.replace(/(\.[\w\d_-]+)$/i, `${addition}$1`)
         }
 
+        var displayLoadingMessage = function (dom) {
+            let texts = ['Loading.', 'Loading..', 'Loading...'];
+            let textIndex = 0;
+            dom.loadingInterval = setInterval(() => {
+                dom.innerText = texts[textIndex];
+                textIndex += 1;
+                if (textIndex === texts.length) {
+                    textIndex = 0;
+                }
+            }, 400);
+        }
+
+        var collectEditedCounts = function () {
+            let editedCounts = {}
+            orderedImgNames.forEach((name, i) => {
+                if (!eggLayingRegions[i]) {
+                    return;
+                }
+                editedCounts[name] = {};
+                Object.keys(eggLayingRegions[i]).forEach(region => {
+                    if (eggLayingRegions[i][region].beenEdited()) {
+                        editedCounts[name][eggLayingRegions[i][region].bboxIndex] =
+                            eggLayingRegions[i][region].text.content;
+                    }
+                });
+            });
+            return editedCounts;
+        }
+
         var setButtonHandlers = function () {
-            document.getElementById('download-imgs').onclick = async (evt) => {
+            document.getElementById('download-csv').onclick = (evt) => {
+                evt.target.setAttribute('disabled', 'true');
+                displayLoadingMessage(evt.target);
+                socket.emit('prepare-csv', {
+                    time: Date.now(),
+                    sid: sid,
+                    editedCounts: collectEditedCounts()
+                })
+            }
+            document.getElementById('download-imgs').onclick = (evt) => {
+                evt.target.setAttribute('disabled', 'true');
+                displayLoadingMessage(evt.target)
                 let requestTs = Date.now();
                 socket.emit('prepare-annot-imgs-zip', {
-                    numImages: orderedImgNames.length,
-                    time: requestTs
+                    time: requestTs,
+                    sid: sid,
+                    editedCounts: collectEditedCounts()
                 });
-                let originalImgIndex = currentImgIndex;
-                for (let index = 0; index < orderedImgNames.length; index++) {
-                    currentImgIndex = index;
-                    await redrawCanvas();
-                    let dataUrl = document.getElementById('detectionResults').toDataURL().replace(/^data:image\/(png|jpg);base64,/, "");
-                    let blob = base64ToBlob(dataUrl, 'image/png');
-                    let formData = new FormData();
-                    formData.append('img', blob);
-                    formData.append('time', requestTs);
-                    formData.append('imgName', appendToFilename(orderedImgNames[index], '_ALPHA'));
-                    formData.append('sid', sid);
-                    $.ajax({
-                        url: '/annot-img',
-                        type: "POST",
-                        cache: false,
-                        contentType: false,
-                        processData: false,
-                        data: formData,
-                        success: function (data) {
-                            console.log('Success!');
-                        },
-                    });
-                }
-                currentImgIndex = originalImgIndex;
-                redrawCanvas();
+
+            }
+            document.getElementById('submit-error-report').onclick = (evt) => {
+                evt.target.setAttribute('disabled', 'true');
+                displayLoadingMessage(evt.target);
+                socket.emit('submit-error-report', {
+                    editedCounts: collectEditedCounts(),
+                    sid: sid
+                });
             }
             if (orderedImgNames.length === 1) {
                 document.getElementById('prev-img').setAttribute('disabled', true);
@@ -153,7 +332,9 @@
             document.getElementById('prev-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex - 1;
                 if (newImgIdx >= 0) {
+                    previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
+
                     redrawCanvas();
                     if (newImgIdx == 0) {
                         evt.target.setAttribute('disabled', true);
@@ -166,6 +347,7 @@
             document.getElementById('next-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex + 1;
                 if (newImgIdx <= orderedImgNames.length) {
+                    previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
                     redrawCanvas();
                     if (evt.target.disabled) {
@@ -204,18 +386,20 @@
             return new Blob(byteArrays, { type: mime });
         }
 
-        var redrawCanvas = async function () {
+        var redrawCanvas = function () {
             canvasLoaded = false;
             setCurrentImgName()
             if (backgroundRaster) {
-                backgroundRaster.remove()
+                backgroundRaster.remove();
             }
-            Object.keys(eggLayingRegions).forEach(regionId => {
-                eggLayingRegions[regionId].outline.remove();
-                eggLayingRegions[regionId].fill.remove();
-                eggLayingRegions[regionId].text.remove();
-            })
-            eggLayingRegions = {};
+            paper.project.clear();
+            if (previousImgIndex) {
+                Object.keys(eggLayingRegions[previousImgIndex]).forEach(region => {
+                    eggLayingRegions[previousImgIndex][region].outline.remove();
+                    eggLayingRegions[previousImgIndex][region].fill.remove();
+                    eggLayingRegions[previousImgIndex][region].text.remove();
+                })
+            }
             $('#updates').append(`<img id=pic src="/uploads/${orderedImgNames[currentImgIndex]}">`);
             backgroundRaster = new paper.Raster('pic');
             pic = document.getElementById('pic');
@@ -225,82 +409,239 @@
                 document.getElementById('pic').remove();
                 let upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
                 let leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
-                annotations[orderedImgNames[currentImgIndex]].forEach((annotation, i) => {
-                    let x = annotation.x * scalingFactor + leftPadding;
-                    let y = annotation.y * scalingFactor + upperPadding;
-                    let bbox = annotation.bbox;
-                    bbox = bbox.map(n => n * scalingFactor);
-                    let pointText = new paper.PointText(new paper.Point(x, y))
-                    pointText.justification = 'center';
-                    pointText.fillColor = 'black';
-                    pointText.content = annotation.count;
-                    pointText.fontSize = 17;
-                    let rectangle = new paper.Rectangle(
-                        new paper.Point(bbox[0] + leftPadding, bbox[1] + upperPadding),
-                        new paper.Point(bbox[0] + bbox[2] + leftPadding, bbox[1] + bbox[3] + upperPadding)
-                    )
-                    rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                    rectPath.strokeColor = colors.grey;
-                    let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                    innerRect.fillColor = 'black';
-                    innerRect.opacity = 0;
-                    // addHoverHandler(innerRect);
-                    eggLayingRegions[innerRect.id] = {
-                        outline: rectPath,
-                        fill: innerRect,
-                        text: pointText,
-                        bboxIndex: i
-                    };
-                });
+                if (!eggLayingRegions[currentImgIndex]) {
+                    eggLayingRegions[currentImgIndex] = {};
+                    annotations[orderedImgNames[currentImgIndex]].forEach((annotation, i) => {
+                        let x = annotation.x * scalingFactor + leftPadding;
+                        let y = annotation.y * scalingFactor + upperPadding;
+                        let bbox = annotation.bbox;
+                        bbox = bbox.map(n => n * scalingFactor);
+                        let textOrigin = new paper.Point(x, y)
+                        let pointText = new paper.PointText(new paper.Point(x, y));
+                        pointText.justification = 'center';
+                        pointText.fillColor = 'black';
+                        pointText.content = annotation.count;
+                        pointText.fontSize = defaultFontSize;
+                        let rectangle = new paper.Rectangle(
+                            new paper.Point(bbox[0] + leftPadding, bbox[1] + upperPadding),
+                            new paper.Point(bbox[0] + bbox[2] + leftPadding, bbox[1] + bbox[3] + upperPadding));
+                        rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                        rectPath.strokeColor = colors.grey;
+                        let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                        innerRect.fillColor = 'black';
+                        innerRect.opacity = 0;
+                        addHoverHandler(innerRect, currentImgIndex);
+                        eggLayingRegions[currentImgIndex][innerRect.id] = {
+                            outline: rectPath,
+                            fill: innerRect,
+                            text: pointText,
+                            bboxIndex: i,
+                            originalCount: annotation.count.toString(),
+                            beenEdited() {
+                                return this.originalCount !== this.text.content;
+                            }
+                        };
+                    });
+                } else {
+                    Object.keys(eggLayingRegions[currentImgIndex]).forEach(region => {
+                        // recreate the text
+                        let reg = eggLayingRegions[currentImgIndex][region];
+                        if (reg.beenEdited()) {
+                            drawTextForEditedCount(reg, reg.text.content);
+                        } else {
+                            let origText = reg.text;
+                            reg.text = new paper.PointText(new paper.Point(origText.point.x,
+                                origText.point.y));
+                            reg.text.content = origText.content;
+                            reg.text.justification = 'center';
+                            reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
+                            reg.text.fontSize = origText.fontSize;
+                        }
+                        // recreate the outline
+                        let origOutline = reg.outline;
+                        let rectangle = new paper.Rectangle(
+                            new paper.Point(origOutline.bounds.x, origOutline.bounds.y),
+                            new paper.Point(origOutline.bounds.x + origOutline.bounds.width,
+                                origOutline.bounds.y + origOutline.bounds.height)
+                        );
+                        reg.outline = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                        reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
+                        // recreate the inner fill
+                        let origFill = reg.fill;
+                        reg.fill = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                        reg.fill.fillColor = 'black';
+                        reg.fill.opacity = 0;
+                        eggLayingRegions[currentImgIndex][reg.fill.id] = {
+                            outline: reg.outline,
+                            fill: reg.fill,
+                            text: reg.text,
+                            bboxIndex: reg.bboxIndex,
+                            originalCount: reg.originalCount,
+                            beenEdited() {
+                                return this.originalCount !== this.text.content;
+                            }
+                        }
+                        delete eggLayingRegions[currentImgIndex][origFill.id];
+                        addHoverHandler(reg.fill, currentImgIndex);
+                    });
+                }
                 origCenter = paper.view.center;
                 canvasLoaded = true;
             }
         }
 
-        var addHoverHandler = function (path) {
+        var drawTextForUneditedCount = (reg) => {
+            if (reg.textPredicted) {
+                reg.textPredicted.remove();
+            }
+            let x, y;
+            if (reg.centeredTextPosition) {
+                x = reg.centeredTextPosition.x;
+                y = reg.centeredTextPosition.y
+            } else {
+                x = reg.text.point.x;
+                y = reg.text.point.y;
+            }
+            reg.text.remove();
+            reg.text = new paper.PointText(new paper.Point(x, y));
+            reg.text.content = reg.originalCount;
+            reg.text.justification = 'center';
+            reg.text.fillColor = 'black';
+            reg.text.fontSize = defaultFontSize;
+        }
+
+        var drawTextForEditedCount = (reg, value) => {
+            if (!reg.centeredTextPosition) {
+                reg.centeredTextPosition = reg.text.point;
+            }
+            let origText = reg.text;
+            reg.text.remove();
+            reg.text = new paper.PointText(new paper.Point(reg.centeredTextPosition.x, reg.centeredTextPosition.y - 10));
+            reg.text.content = value;
+            reg.text.justification = 'center';
+            reg.text.fillColor = colors.red;
+            reg.text.fontSize = origText.fontSize;
+            if (reg.textPredicted) {
+                reg.textPredicted.remove();
+            }
+            reg.textPredicted = new paper.PointText(new paper.Point(reg.centeredTextPosition.x, reg.centeredTextPosition.y + 10));
+            reg.textPredicted.content = reg.originalCount;
+            reg.textPredicted.justification = 'center';
+            reg.textPredicted.fillColor = 'black';
+            reg.textPredicted.fontSize = origText.fontSize;
+        };
+
+        var addHoverHandler = function (path, index) {
             path.onMouseEnter = () => {
-                eggLayingRegions[path.id].text.fillColor = colors.red;
-                eggLayingRegions[path.id].outline.strokeColor = colors.red;
+                if (inputAmender) {
+                    return;
+                }
+                if (eggLayingRegions[index][path.id].beenEdited()) {
+                    eggLayingRegions[index][path.id].outline.strokeWidth = 2;
+                    return;
+                }
+                eggLayingRegions[index][path.id].text.fillColor = colors.red;
+                eggLayingRegions[index][path.id].outline.strokeColor = colors.red;
             }
             path.onMouseLeave = () => {
-                eggLayingRegions[path.id].text.fillColor = 'black';
-                eggLayingRegions[path.id].outline.strokeColor = colors.grey;
-            }
-            path.onClick = () => {
-                console.log('clicked?')
-                document.getElementById('modalToggle').click();
-                let eggFlaggerDialog = document.getElementById('egg-flagger-dialog');
-                let embeddedImg = document.createElement('div');
-                let bboxIndex = eggLayingRegions[path.id].bboxIndex;
-                console.log(`bbox index: ${bboxIndex}`);
-                console.log('ordered img names:');
-                console.log(orderedImgNames);
-                let imgName = orderedImgNames[currentImgIndex]
-                console.log(`imgName: ${imgName}`);
-                let annotation = annotations[imgName][bboxIndex];
-                console.log('annotation?');
-                console.log(annotation);
-                embeddedImg.setAttribute('id', 'embeddedImg');
-                embeddedImg.setAttribute('hidden', "true")
-                embeddedImg.setAttribute('style',
-                    `background-image: url(/uploads/${imgName});`+
-                    ` height: ${annotation.bbox[3]}px; `+
-                    ` width: ${annotation.bbox[2]}px;`);
-                let embeddedImgToggleBtn = document.createElement('button');
-                embeddedImgToggleBtn.innerText = 'Show flagged image'
-                embeddedImgToggleBtn.onclick = () => {
-                    if (embeddedImg.hasAttribute('hidden')) {
-                        embeddedImg.removeAttribute('hidden');
-                    } else {
-                        embeddedImg.setAttribute('hidden', 'true');
-                    }
+                if (inputAmender) {
+                    return;
                 }
-                eggFlaggerDialog.appendChild(embeddedImgToggleBtn);
-                eggFlaggerDialog.appendChild(embeddedImg);
-                // how will
-                // $('modal-1-content').append('<div></div>');
-                //style="background:' +
-                //`/uploads/${orderedImgNames[eggLayingRegions[path.id].bboxIndex]}"></div>`);
+                eggLayingRegions[index][path.id].outline.strokeWidth = 1;
+                if (eggLayingRegions[index][path.id].beenEdited()) {
+                    return;
+                }
+                eggLayingRegions[index][path.id].text.fillColor = 'black';
+                eggLayingRegions[index][path.id].outline.strokeColor = colors.grey;
+            }
+            path.onClick = (event) => {
+                if (inputAmender) {
+                    return;
+                }
+                let viewer = document.getElementById('viewer')
+                inputAmender = document.createElement('input');
+                eggLayingRegions[index][path.id].text.opacity = 0;
+                pathAmendId = path.id;
+                inputAmender.type = 'text';
+                inputAmender.setAttribute('class', 'live-count-editor');
+                var viewportOffset = viewer.getBoundingClientRect();
+                let text = eggLayingRegions[index][path.id].text;
+                let fieldHeight = text.bounds.height * paper.view.zoom;
+                let fieldWidth = text.bounds.width * paper.view.zoom;
+                eggLayingRegions[index][path.id].outline.strokeWidth = 2;
+                inputAmender.style = 'position: absolute; left:' +
+                    ` ${viewer.offsetLeft + eggLayingRegions[index][path.id].outline.bounds.x}px; ` +
+                    `top: ${viewer.offsetTop + eggLayingRegions[index][path.id].outline.bounds.y}px; ` +
+                    `width: ${50 * paper.view.zoom}px;` +
+                    `height: ${26 * paper.view.zoom}px;` +
+                    `font-size: ${0.75 * text.fontSize * paper.view.zoom}px;`
+                inputAmender.placeholder = 'e.g., 42';
+                viewer.appendChild(inputAmender);
+                inputAmender.focus();
+                eggLayingRegions[index][path.id].text.fillColor = colors.red;
+                eggLayingRegions[index][path.id].outline.strokeColor = colors.red;
+                inputAmender.onkeydown = checkIfEnterKeyPressed
+                inputAmender.oninput = amendEggCount;
+            }
+        }
+
+        var checkIfEnterKeyPressed = function (event) {
+            lastKeyPressed = event.code;
+            if (!lastKeyPressed.startsWith('Digit') && !lastKeyPressed.startsWith('Key')) {
+                amendEggCount(event, inputAmender.value);
+            }
+        }
+
+        var amendEggCount = function (event, value = null) {
+            // how to represent whether any counts have been amended
+            // throughout all uploaded images?
+            // ideally, it won't be necessary to recalculate anything.
+            // there should be a v
+            if (lastKeyPressed === 'Escape') {
+                let reg = eggLayingRegions[currentImgIndex][pathAmendId];
+                reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
+                reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
+                reg.outline.strokeWidth = 1;
+                reg.text.opacity = 1.0;
+                inputAmender.remove();
+                inputAmender = null;
+                return;
+            }
+            let errorGrey = '#b99393';
+            let okGrey = ' #acacac';
+            if (!value) {
+                value = this.value.toString()
+            }
+            if (lastKeyPressed === 'Enter') {
+                if (isNormalInteger(value)) {
+                    // how best to draw both
+                    // vertically aligned in a way that it can be put back if reverted?
+                    // save the positions of the original pointText?
+                    // when to add to idsWithEdits
+                    if (value == eggLayingRegions[currentImgIndex][pathAmendId].originalCount) {
+                        idsWithEdits.delete(pathAmendId)
+                        drawTextForUneditedCount(eggLayingRegions[currentImgIndex][pathAmendId]);
+                    } else {
+                        idsWithEdits.add(pathAmendId)
+                        drawTextForEditedCount(eggLayingRegions[currentImgIndex][pathAmendId], value);
+                    }
+                    // eggLayingRegions[currentImgIndex][pathAmendId].text.content = value;
+                    // eggLayingRegions[currentImgIndex][pathAmendId].text.opacity = 1.0;
+                    // eggLayingRegions[currentImgIndex][pathAmendId].outline.strokeWidth = 1;
+                    inputAmender.remove();
+                    inputAmender = null;
+                    if (idsWithEdits.size > 0) {
+                        document.getElementById('submit-error-report').removeAttribute('hidden');
+                    } else {
+                        document.getElementById('submit-error-report').setAttribute('hidden', 'true');
+                    }
+                } else {
+                    inputAmender.style.backgroundColor = errorGrey;
+                }
+            } else if (isNormalInteger(value)) {
+                inputAmender.style.backgroundColor = okGrey;
+            } else {
+                inputAmender.style.backgroundColor = errorGrey;
             }
         }
 
@@ -308,14 +649,21 @@
             let scalingFactor;
             $('#updates').append('<div id=viewer-nav></div>')
             $('#viewer-nav').append('<button class=nav-button id=reset-view>Reset view</button>');
+            $('#viewer-nav').append('<div class=divider></div>');
             $('#viewer-nav').append('<button class=nav-button disabled id=prev-img>Previous image</button>');
+            $('#viewer-nav').append('<div class=divider></div>');
             $('#viewer-nav').append('<button class=nav-button id=next-img>Next image</button>');
-            $('#viewer-nav').append('<button id=download-imgs>Download annotated images</button><br>');
+            $('#viewer-nav').append('<div class=divider></div>');
+            $('#viewer-nav').append('<button id=download-imgs>Download annotated images</button>');
+            $('#viewer-nav').append('<div class=divider></div>');
+            $('#viewer-nav').append('<button hidden id=submit-error-report>Submit error report for all images</button><br>');
+            $('#viewer-nav').append('<div class=divider></div>');
             $('#viewer-nav').append('<p id=current-img></p>');
             setCurrentImgName()
             setButtonHandlers()
             $('#reset-view').click(reposition)
-            $('#updates').append('<canvas keepalive=true id=detectionResults></canvas>');
+            $('#updates').append('<div id=viewer></div>')
+            $('#viewer').append('<canvas keepalive=true id=detectionResults></canvas>');
             canvas = document.getElementById('detectionResults');
             paper.install(window);
             paper.setup(canvas);
@@ -326,7 +674,7 @@
         }
 
         var zoomInAndOut = e => {
-            if (!e.shiftKey) {
+            if (!e.shiftKey || inputAmender) {
                 return;
             }
             e.preventDefault();
@@ -380,6 +728,9 @@
         var setDragHandler = () => {
             var toolPan = new paper.Tool();
             toolPan.onMouseDrag = function (evt) {
+                if (inputAmender) {
+                    return;
+                }
                 var timeMove = new Date().getTime();
                 if (timeMove > timeDownUp) {
                     if (dragStart) {
@@ -410,14 +761,27 @@
                     </h2>
                     <div id="close-button">
                         <div class="close-button-stroke1">
-                          <div class="close-button-stroke2"></div>
+                            <div class="close-button-stroke2"></div>
                         </div>
-                      </div>
+                    </div>
                     <button id=close-modal hidden aria-label="Close modal" data-micromodal-close></button>
                 </header>
                 <div id="egg-flagger-dialog">
-                    File egg count error report for the following region?
-
+                    <form>
+                        <button id=add-numeric-input type="button">I want to submit both the image and my estimate of
+                            the egg count</button>
+                        <button id=skip-numeric-input type="button">I want to submit the image only, <strong>no</strong>
+                            estimate.</button>
+                        <button id=flagged-img-toggle type="button">Show flagged image</button>
+                    </form>
+                    <div hidden id=egg-count-editor>
+                        <form>
+                            <label for="flagged-img-egg-count">My egg count:</label>
+                            <input id=flagged-img-egg-count type="text" placeholder="e.g., 42">
+                            <button disabled type="button" id="submit-error-with-count">Submit</button>
+                        </form>
+                    </div>
+                    <div id=embedded-img></div>
                 </div>
             </div>
         </div>
@@ -427,6 +791,22 @@
         document.getElementById('close-button').onclick = () => {
             document.getElementById('close-modal').click();
         };
-        
+        document.getElementById('add-numeric-input').onclick = () => {
+            let editorDiv = document.getElementById('egg-count-editor');
+            if (editorDiv.hasAttribute('hidden')) {
+                editorDiv.removeAttribute('hidden')
+            } else {
+                editorDiv.setAttribute('hidden', 'true');
+            }
+        };
+        let eggCountTextField = document.getElementById('flagged-img-egg-count');
+        let eggCountSubmitButton = document.getElementById('submit-error-with-count');
+        eggCountTextField.onkeypress = () => {
+            if (isNormalInteger(eggCountTextField.value)) {
+                eggCountSubmitButton.removeAttribute('disabled');
+            } else {
+                eggCountSubmitButton.setAttribute('disabled', 'true');
+            }
+        }
     </script>
 </body>
