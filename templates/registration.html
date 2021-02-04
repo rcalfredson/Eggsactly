@@ -26,6 +26,8 @@
         let annotations = {};
         let orderedImgNames = [];
         let eggLayingRegions = [];
+        let imgUniqueNames = {};
+        let numFilesPerName = {};
         let loadingInterval;
         let zoom = 1.0;
         let idsWithEdits = new Set();
@@ -46,8 +48,17 @@
             var n = Math.floor(Number(str));
             return n !== Infinity && String(n) === str && n >= 0;
         }
+
+        function fileNameAndExt(str){
+            var file = str.split('/').pop();
+            return [file.substr(0,file.lastIndexOf('.')),file.substr(file.lastIndexOf('.')+1,file.length)]
+          }
     </script>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/main.css') }}">
+    <form id=notice><label style="background-color: rgb(252, 226, 113);">Please note: the page has changed recently. If
+            this box overlaps with the text below it, or if any of the buttons don't have rounded edges and black
+            borders, then some features might not have loaded; a complete refresh of page should resolve it (on Mac, use
+            Command-Option-R).</label></form>
     <label for="img-upload-1">Upload one or more egg-counting images<br>
         <span style="font-size: small; padding-left: 15px;">
             Note: hold down Ctrl key to select multiple files.
@@ -63,7 +74,7 @@
             <p>No files currently selected for upload.</p>
         </div>
         <div>
-            <button id='img-upload-btn' type=button>Upload</button>
+            <button disabled id='img-upload-btn' type=button>Upload</button>
         </div>
     </form>
     <div id=updates></div>
@@ -91,6 +102,7 @@
                 $(this).prop('disabled', true);
                 var form_data = new FormData($('#img-form')[0]);
                 form_data.append('sid', sid);
+                form_data.append('uniqueNames', JSON.stringify(imgUniqueNames));
                 $.ajax({
                     type: 'POST',
                     url: '/upload',
@@ -186,6 +198,7 @@
             inputReset.setAttribute('hidden', true);
             inputLbl.setAttribute('for', input.id);
             inputLbl.innerText = 'Choose images to upload';
+            document.getElementById('img-upload-btn').setAttribute('disabled', 'true');
         };
 
         var addNewImageInput = () => {
@@ -200,6 +213,7 @@
             inputDiv.appendChild(newInput);
             inputs.push(newInput);
             input.removeEventListener('change', updateImageDisplay);
+            input.files[0].internal_name = 'mytest';
             input = newInput;
             input.addEventListener('change', updateImageDisplay);
             inputLbl.setAttribute('for', newInputIdAndName);
@@ -213,6 +227,20 @@
             while (preview.firstChild) {
                 preview.removeChild(preview.firstChild);
             }
+            imgUniqueNames = [];
+            numFilesPerName = {};
+            let imgInputs = document.getElementsByClassName('img-upload');
+            for (var i = 0; i < imgInputs.length; i++) {
+                Array.prototype.forEach.call(imgInputs.item(i).files, file => {
+                    if (file.name in numFilesPerName) {
+                        numFilesPerName[file.name] += 1;
+                    } else {
+                        numFilesPerName[file.name] = 0;
+                    }
+                    let filenameParts = fileNameAndExt(file.name);
+                    imgUniqueNames.push(`${filenameParts[0]}${numFilesPerName[file.name] > 0 ? `_${numFilesPerName[file.name]}` : ''}.${filenameParts[1]}`)
+                });
+            }
             inputLbl.innerText = "Select more images";
             inputReset.removeAttribute('hidden');
             let curFiles = [];
@@ -224,27 +252,28 @@
                 para.textContent = 'No files currently selected for upload';
                 preview.appendChild(para);
             } else {
+                document.getElementById('img-upload-btn').removeAttribute('disabled');
                 const list = document.createElement('ol');
                 preview.appendChild(list);
 
-                for (const file of curFiles) {
+                curFiles.forEach((file, i) => {
                     const listItem = document.createElement('li');
                     const para = document.createElement('p');
                     if (validFileType(file)) {
-                        para.textContent = `File name ${file.name}, file size ${returnFileSize(file.size)}.`;
+                        para.textContent = `File name ${imgUniqueNames[i]}, file size ${returnFileSize(file.size)}.`;
                         const image = document.createElement('img');
                         image.src = URL.createObjectURL(file);
 
                         listItem.appendChild(image);
                         listItem.appendChild(para);
                     } else {
-                        para.textContent = `File name ${file.name}: Not a valid file type. Update your selection.`;
+                        para.textContent = `File name ${imgUniqueNames[i]}: Not a valid file type. Update your selection.`;
                         listItem.appendChild(para);
                     }
 
                     list.appendChild(listItem);
-                }
-            }
+                });
+            };
         }
 
         function returnFileSize(number) {
@@ -316,12 +345,28 @@
                 });
 
             }
+            document.getElementById('user-select').onchange = (evt) => {
+                window.localStorage.setItem('user', evt.target.value);
+            }
             document.getElementById('submit-error-report').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
+                if (document.getElementById('user-select').value === 'null') {
+                    document.getElementById('user-select').style.borderColor = 'red';
+                    document.getElementById('user-select').style.fontWeight = 'bold';
+                    evt.target.innerText = 'Please set user first and try again.';
+                    setTimeout(() => {
+                        evt.target.innerText = 'Submit error report for all images';
+                        evt.target.removeAttribute('disabled');
+                        document.getElementById('user-select').style.borderColor = 'black';
+                        document.getElementById('user-select').style.fontWeight = 'normal';
+                    }, 2500);
+                    return;
+                }
                 displayLoadingMessage(evt.target);
                 socket.emit('submit-error-report', {
                     editedCounts: collectEditedCounts(),
-                    sid: sid
+                    sid: sid,
+                    user: window.localStorage.getItem('user')
                 });
             }
             if (orderedImgNames.length === 1) {
@@ -656,7 +701,24 @@
             $('#viewer-nav').append('<div class=divider></div>');
             $('#viewer-nav').append('<button id=download-imgs>Download annotated images</button>');
             $('#viewer-nav').append('<div class=divider></div>');
-            $('#viewer-nav').append('<button hidden id=submit-error-report>Submit error report for all images</button><br>');
+            $('#viewer-nav').append('<button hidden id=submit-error-report>Submit error report for all images</button>');
+            $('#viewer-nav').append('<div class=divider></div>');
+            $('#viewer-nav').append('<select id=user-select></select><br>')
+            let selector = document.getElementById('user-select');
+            let opt;
+            opt = document.createElement('option');
+            opt.value = null;
+            opt.innerText = 'User: not set';
+            selector.append(opt);
+            {% for user in users %}
+            opt = document.createElement('option');
+            opt.value = '{{user}}'
+            opt.innerText = 'User: {{user}}'
+            selector.appendChild(opt);
+            {% endfor %}
+            if (window.localStorage.getItem('user')) {
+                selector.value = window.localStorage.getItem('user');
+            }
             $('#viewer-nav').append('<div class=divider></div>');
             $('#viewer-nav').append('<p id=current-img></p>');
             setCurrentImgName()

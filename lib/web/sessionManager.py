@@ -102,18 +102,20 @@ class SessionManager():
                             room=self.room)
         self.annotations[os.path.normpath(self.imgPath)] = resultsData
 
-    def createErrorReport(self, edited_counts):
+    def createErrorReport(self, edited_counts, user):
         for imgPath in edited_counts:
             rel_path = os.path.normpath(
-                    os.path.join('.\\uploads', imgPath))
+                    os.path.join('./uploads', imgPath))
             img = cv2.imread(rel_path)
             for i in edited_counts[imgPath]:
                 annot = self.annotations[rel_path][int(i)]
                 imgSection = img[annot['bbox'][1]:annot['bbox'][1] + annot['bbox'][3],
                     annot['bbox'][0]:annot['bbox'][0] + annot['bbox'][2]]
-                cv2.imwrite(os.path.join('error_cases', '.'.join(os.path.basename(imgPath).split('.')[:-1]) +
-                    '_%s_actualCt_%s.png'%(i, edited_counts[imgPath][i])), imgSection)
-        self.socketIO.emit('report-ready')
+                cv2.imwrite(os.path.join('error_cases', '.'.join(
+                    os.path.basename(imgPath).split('.')[:-1]) +
+                    '_%s_actualCt_%s_user_%s.png'%(i, edited_counts[
+                    imgPath][i], user)), imgSection)
+        self.socketIO.emit('report-ready', room=self.room)
 
     def saveCSV(self, edited_counts):
         resultsPath = 'temp/results_ALPHA_%s.csv' % datetime.today().strftime(
@@ -123,7 +125,9 @@ class SessionManager():
             writer.writerow(['Egg Counter, ALPHA version'])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
-                if os.path.basename(imgPath) in edited_counts:
+                base_path = os.path.basename(imgPath)
+                print('edited counts?', edited_counts)
+                if base_path in edited_counts and len(edited_counts[base_path]) > 0:
                     writer.writerow(
                         ["Note: this image's counts have been amended by hand"])
                 CT[self.chamberTypes[imgPath]].value().writeLineFormatted(

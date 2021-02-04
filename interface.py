@@ -23,6 +23,7 @@ from werkzeug.utils import secure_filename
 
 from lib.web.downloadManager import DownloadManager
 from lib.web.sessionManager import SessionManager
+from users import users
 
 sessions = {}
 
@@ -79,7 +80,7 @@ def prepare_csv(data):
 
 @socketIO.on('submit-error-report')
 def submit_error_report(data):
-    sessions[data['sid']].createErrorReport(data['editedCounts'])
+    sessions[data['sid']].createErrorReport(data['editedCounts'], data['user'])
 
 @socketIO.on('prepare-annot-imgs-zip')
 def setup_imgs_download(data):
@@ -126,6 +127,7 @@ def handle_annot_img_upload():
 @app.route('/upload', methods=['POST'])
 def handle_upload():
     sid = request.form['sid']
+    uniq_names = json.loads(request.form['uniqueNames'])
     sessionManager = sessions[sid]
     for dirName in ('uploads', 'temp'):
         remove_old_files(dirName)
@@ -148,12 +150,15 @@ def handle_upload():
         flash('No selected file')
         return redirect(request.url)
     for i, file in enumerate(files):
-        if file and allowed_file(file.filename):
+        print('is allowed file?', uniq_names[i])
+        print(allowed_file(uniq_names[i]))
+        if file and allowed_file(uniq_names[i]):
             socketIO.emit('clear-display', room=sid)
             socketIO.emit('counting-progress',
                 {'data': 'Uploading image %i of %i'%(i+1, len(files))},
                 room=sid)
-            filename = secure_filename(file.filename)
+            filename = secure_filename(uniq_names[i])
+            print('filename?', filename)
             filePath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filePath)
             socketIO.emit('counting-progress',
@@ -165,7 +170,7 @@ def handle_upload():
 
 @app.route('/', methods=['GET', 'POST'])
 def show_mainpage():
-    return render_template('registration.html')
+    return render_template('registration.html', users=map(str.capitalize, sorted(users)))
 
 @app.route('/isolatedRedrawTest', methods=["GET"])
 def show_testpage():

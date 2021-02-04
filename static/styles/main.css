@@ -7,6 +7,20 @@ form img {
   order: 1;
 }
 
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding: 5px 10px;
+  border-radius: 5px;
+  background-color: #7F9CCB;
+  border: 1px ridge black;
+}
+
+#user-select {
+  width: 127px;
+}
+
 .live-count-editor {
   background-color: #acacac;
   padding: 5px 10px;
@@ -51,6 +65,19 @@ form p {
 
 #download-imgs {
   width: 184px;
+}
+
+#notice {
+  padding-bottom: 15px;
+}
+
+#notice label {
+  width: 600px;
+  display: inline-block;
+}
+
+#notice label:hover {
+  color: black;
 }
 
 .divider {
