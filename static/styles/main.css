@@ -68,9 +68,12 @@ form p {
 
 #viewer-nav {
   display: inline-block;
+  height: 30px;
   position: sticky;
   position: -webkit-sticky;
   top: 20px;
+  left: 0;
+  margin-top: 10px;
 }
 
 #current-img-parent {

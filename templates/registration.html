@@ -124,7 +124,6 @@
             });
             socket.on('counting-done', () => {
                 $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
-                $('#updates').append('<div class=divider style="height: 2px;"></div>');
                 setupCanvas();
                 document.getElementById('img-upload-btn').removeAttribute('disabled');
             });
@@ -722,7 +721,7 @@
                 selector.value = window.localStorage.getItem('user');
             }
             $('#viewer-nav').append('<div class=divider></div>');
-            $('#updates').append('<br><div id=current-img-parent style="display: inline-block; point"><p id=current-img></p>');
+            $('#updates').append('<br><div id=current-img-parent><p id=current-img></p>');
             setCurrentImgName()
             setButtonHandlers()
             $('#reset-view').click(reposition)
