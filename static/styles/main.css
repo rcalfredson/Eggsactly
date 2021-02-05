@@ -17,6 +17,16 @@ select {
   border: 1px ridge black;
 }
 
+select:hover {
+  background-color: #2D5BA3;
+  color: white;
+}
+
+select:active {
+  background-color: #0D3F8F;
+  color: white;
+}
+
 #user-select {
   width: 127px;
 }
@@ -57,10 +67,18 @@ form p {
 }
 
 #viewer-nav {
-  display: block;
+  display: inline-block;
   position: sticky;
   position: -webkit-sticky;
   top: 20px;
+}
+
+#current-img-parent {
+  display: inline-block;
+  pointer-events: none;
+  position: sticky;
+  position: -webkit-sticky;
+  top: 50px;
 }
 
 #download-imgs {

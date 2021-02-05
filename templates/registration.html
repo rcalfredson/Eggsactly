@@ -49,15 +49,16 @@
             return n !== Infinity && String(n) === str && n >= 0;
         }
 
-        function fileNameAndExt(str){
+        function fileNameAndExt(str) {
             var file = str.split('/').pop();
-            return [file.substr(0,file.lastIndexOf('.')),file.substr(file.lastIndexOf('.')+1,file.length)]
-          }
+            return [file.substr(0, file.lastIndexOf('.')), file.substr(file.lastIndexOf('.') + 1, file.length)]
+        }
     </script>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/main.css') }}">
     <form id=notice><label style="background-color: rgb(252, 226, 113);">Please note: the page has changed recently. If
             this box overlaps with the text below it, or if any of the buttons don't have rounded edges and black
-            borders, then some features might not have loaded; a complete refresh of page should resolve it (on Mac, use
+            borders, then some features might not have loaded; a complete refresh of the page should resolve this (on
+            Mac, use
             Command-Option-R).</label></form>
     <label for="img-upload-1">Upload one or more egg-counting images<br>
         <span style="font-size: small; padding-left: 15px;">
@@ -692,18 +693,19 @@
 
         var setupCanvas = function () {
             let scalingFactor;
-            $('#updates').append('<div id=viewer-nav></div>')
-            $('#viewer-nav').append('<button class=nav-button id=reset-view>Reset view</button>');
-            $('#viewer-nav').append('<div class=divider></div>');
-            $('#viewer-nav').append('<button class=nav-button disabled id=prev-img>Previous image</button>');
-            $('#viewer-nav').append('<div class=divider></div>');
-            $('#viewer-nav').append('<button class=nav-button id=next-img>Next image</button>');
-            $('#viewer-nav').append('<div class=divider></div>');
-            $('#viewer-nav').append('<button id=download-imgs>Download annotated images</button>');
-            $('#viewer-nav').append('<div class=divider></div>');
-            $('#viewer-nav').append('<button hidden id=submit-error-report>Submit error report for all images</button>');
-            $('#viewer-nav').append('<div class=divider></div>');
-            $('#viewer-nav').append('<select id=user-select></select><br>')
+            $('#updates').append('<div id=viewer-nav></div>');
+            $('#viewer-nav').append('<div id=button-row></div>')
+            $('#button-row').append('<button class=nav-button id=reset-view>Reset view</button>');
+            $('#button-row').append('<div class=divider></div>');
+            $('#button-row').append('<button class=nav-button disabled id=prev-img>Previous image</button>');
+            $('#button-row').append('<div class=divider></div>');
+            $('#button-row').append('<button class=nav-button id=next-img>Next image</button>');
+            $('#button-row').append('<div class=divider></div>');
+            $('#button-row').append('<button id=download-imgs>Download annotated images</button>');
+            $('#button-row').append('<div class=divider></div>');
+            $('#button-row').append('<button hidden id=submit-error-report>Submit error report for all images</button>');
+            $('#button-row').append('<div class=divider></div>');
+            $('#button-row').append('<select id=user-select></select><br>');
             let selector = document.getElementById('user-select');
             let opt;
             opt = document.createElement('option');
@@ -720,7 +722,7 @@
                 selector.value = window.localStorage.getItem('user');
             }
             $('#viewer-nav').append('<div class=divider></div>');
-            $('#viewer-nav').append('<p id=current-img></p>');
+            $('#updates').append('<br><div id=current-img-parent style="display: inline-block; point"><p id=current-img></p>');
             setCurrentImgName()
             setButtonHandlers()
             $('#reset-view').click(reposition)
