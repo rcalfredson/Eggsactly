@@ -37,6 +37,11 @@ class SessionManager():
         self.socketIO = socketIO
         self.room = room
 
+    def clear_data(self):
+        self.chamberTypes = {}
+        self.predictions = {}
+        self.annotations = {}
+
     def register_image(self, imgPath):
         imgBasename = os.path.basename(imgPath)
         imgPath = os.path.normpath(imgPath)
@@ -126,7 +131,6 @@ class SessionManager():
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
                 base_path = os.path.basename(imgPath)
-                print('edited counts?', edited_counts)
                 if base_path in edited_counts and len(edited_counts[base_path]) > 0:
                     writer.writerow(
                         ["Note: this image's counts have been amended by hand"])

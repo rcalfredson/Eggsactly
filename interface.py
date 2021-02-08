@@ -129,6 +129,7 @@ def handle_upload():
     sid = request.form['sid']
     uniq_names = json.loads(request.form['uniqueNames'])
     sessionManager = sessions[sid]
+    sessionManager.clear_data()
     for dirName in ('uploads', 'temp'):
         remove_old_files(dirName)
     socketIO.emit('clear-all',
@@ -150,15 +151,12 @@ def handle_upload():
         flash('No selected file')
         return redirect(request.url)
     for i, file in enumerate(files):
-        print('is allowed file?', uniq_names[i])
-        print(allowed_file(uniq_names[i]))
         if file and allowed_file(uniq_names[i]):
             socketIO.emit('clear-display', room=sid)
             socketIO.emit('counting-progress',
                 {'data': 'Uploading image %i of %i'%(i+1, len(files))},
                 room=sid)
             filename = secure_filename(uniq_names[i])
-            print('filename?', filename)
             filePath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filePath)
             socketIO.emit('counting-progress',

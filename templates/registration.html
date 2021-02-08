@@ -28,7 +28,6 @@
         let eggLayingRegions = [];
         let imgUniqueNames = {};
         let numFilesPerName = {};
-        let loadingInterval;
         let zoom = 1.0;
         let idsWithEdits = new Set();
         let lastScrollTime;
@@ -98,9 +97,22 @@
             return fileTypes.includes(file.type);
         }
 
+        function resetAllVariables() {
+            pathAmendId = null;
+            inputAmender = null;
+            annotations = {};
+            orderedImgNames = [];
+            eggLayingRegions = [];
+            zoom = 1.0;
+            idsWithEdits = new Set();
+            currentImgIndex = 0;
+            previousImgIndex = null;
+        }
+
         $(function () {
             $('#img-upload-btn').click(function () {
                 $(this).prop('disabled', true);
+                resetAllVariables();
                 var form_data = new FormData($('#img-form')[0]);
                 form_data.append('sid', sid);
                 form_data.append('uniqueNames', JSON.stringify(imgUniqueNames));
@@ -383,10 +395,10 @@
                     redrawCanvas();
                     if (newImgIdx == 0) {
                         evt.target.setAttribute('disabled', true);
-                        document.getElementById('next-img').removeAttribute('disabled');
                     } else {
                         evt.target.removeAttribute('disabled');
                     }
+                    document.getElementById('next-img').removeAttribute('disabled');
                 }
             }
             document.getElementById('next-img').onclick = (evt) => {
