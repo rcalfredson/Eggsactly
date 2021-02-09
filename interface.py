@@ -23,6 +23,7 @@ from PIL import Image
 from werkzeug.utils import secure_filename
 
 from lib.web.downloadManager import DownloadManager
+from lib.web.scheduler import Scheduler
 from lib.web.sessionManager import SessionManager
 from users import users
 
@@ -35,6 +36,18 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.secret_key = os.urandom(24)
 socketIO = SocketIO(app)
 downloadManager = DownloadManager()
+scheduler = Scheduler(1)
+
+def prune_old_sessions():
+    print('pruning old sessions. Current list:', sessions)
+    current_time = time.time()
+    for sid in list(sessions.keys()):
+        if current_time - sessions[sid].lastPing > 60*10:
+            del sessions[sid]
+
+scheduler.schedule.every(5).minutes.do(prune_old_sessions)
+scheduler.run_continuously()
+print('at top?')
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -53,15 +66,20 @@ def zipdir(path, ziph):
         for file in files:
             ziph.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), os.path.join(path, '..')))
 
+@socketIO.on('ping')
+def field_ping(data):
+    if data['sid'] not in sessions: return
+    sessions[data['sid']].lastPing = time.time()
+    if request.sid != data['sid'] and request.sid in sessions:
+        sessions[data['sid']].room = request.sid
+        del sessions[request.sid]
+    sessions[data['sid']].emit_to_room('pong', {})
+
 @socketIO.on('connect')
 def connected():
     sessions[request.sid] = SessionManager(socketIO,
         request.sid)
     socketIO.emit('sid-from-server', {'sid': request.sid}, room=request.sid)
-
-@socketIO.on('disconnect')
-def disconnected():
-    del sessions[request.sid]
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):

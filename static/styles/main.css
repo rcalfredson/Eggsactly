@@ -81,25 +81,28 @@ form p {
 }
 
 #viewer-nav {
-  display: inline-block;
+  display: block;
   height: 30px;
   position: sticky;
   position: -webkit-sticky;
   top: 20px;
   left: 0;
   margin-top: 10px;
+  width: 700px;
 }
 
 #current-img-parent {
-  display: inline-block;
+  display: block;
   pointer-events: none;
   position: sticky;
   position: -webkit-sticky;
   top: 50px;
+  width: 100px;
+  white-space: nowrap;
 }
 
 #download-imgs {
-  width: 184px;
+  width: 220px;
 }
 
 #notice {

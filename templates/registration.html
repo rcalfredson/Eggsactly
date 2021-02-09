@@ -34,6 +34,8 @@
         let eggLayingRegions = [];
         let imgUniqueNames = {};
         let numFilesPerName = {};
+        let lastPongTime;
+        let numFailedPings = 0;
         let zoom = 1.0;
         let idsWithEdits = new Set();
         let lastScrollTime;
@@ -140,15 +142,10 @@
             // socket.set("heartbeat interval", 5);
             $("body").fadeIn(200);
             document.getElementById('page-mask').style.display = 'none';
-            console.log(document.getElementById('modal-1').getAttribute('style'));
             document.getElementById('modal-1').removeAttribute('style');
             socket.on('counting-progress', (msg) => {
                 $('#updates').append('<p>' + msg.data + '</p>')
             });
-            socket.on('disconnect', () => {
-                document.getElementById('page-mask').style.display = "block";
-                document.getElementById('modalToggle').click();
-            })
             socket.on('counting-done', () => {
                 $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
                 setupCanvas();
@@ -195,10 +192,36 @@
                 clearInterval(document.getElementById('download-imgs').loadingInterval)
             });
             socket.on('sid-from-server', (msg) => {
-                sid = msg.sid;
+                if (!sid) {
+                    sid = msg.sid;
+                    setupPings();
+                }
             });
+
+            socket.on('pong', () => {
+                lastPongTime = Date.now();
+            })
             setUpFileUploadDialog();
         });
+
+        var setupPings = function () {
+            setInterval(() => {
+                socket.emit('ping', {
+                    sid: sid
+                });
+                setTimeout(() => {
+                    if (!lastPongTime || Date.now() - lastPongTime >= 5000) {
+                        numFailedPings += 1;
+                    } else if (lastPongTime && Date.now() - lastPongTime < 5000) {
+                        numFailedPings = 0;
+                    }
+                    if (numFailedPings >= 2) {
+                        document.getElementById('page-mask').style.display = "block";
+                        document.getElementById('modalToggle').click();
+                    }
+                }, 3000)
+            }, 5000)
+        }
 
         var setUpFileUploadDialog = function () {
             input = document.getElementById('img-upload-1');

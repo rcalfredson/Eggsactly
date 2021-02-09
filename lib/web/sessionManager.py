@@ -2,6 +2,7 @@ import csv
 from datetime import datetime
 import json
 import os
+import time
 
 import cv2
 import numpy as np
@@ -36,43 +37,44 @@ class SessionManager():
         self.annotations = {}
         self.socketIO = socketIO
         self.room = room
+        self.lastPing = time.time()
 
     def clear_data(self):
         self.chamberTypes = {}
         self.predictions = {}
         self.annotations = {}
 
+    def emit_to_room(self, evt_name, data):
+        self.socketIO.emit(evt_name,
+            data, room=self.room)
+
     def register_image(self, imgPath):
         imgBasename = os.path.basename(imgPath)
         imgPath = os.path.normpath(imgPath)
         self.imgPath = imgPath
         self.predictions[imgPath] = []
-        self.socketIO.emit('counting-progress',
-                           {'data': 'Segmenting image %s' % imgBasename},
-                           room=self.room)
+        self.emit_to_room('counting-progress',
+                           {'data': 'Segmenting image %s' % imgBasename})
         img = np.array(Image.open(imgPath), dtype=np.float32)
         self.cf = CircleFinder(img, os.path.basename(imgPath), allowSkew=True)
         if self.cf.skewed:
-            self.socketIO.emit('counting-progress',
+            self.emit_to_room('counting-progress',
                                {'data': 'Skew detected in image %s;' +
-                                ' stopping analysis.' % imgBasename},
-                               room=self.room)
+                                ' stopping analysis.' % imgBasename})
         circles, avgDists, numRowsCols, rotatedImg, _ = self.cf.findCircles()
         self.chamberTypes[imgPath] = self.cf.ct
         subImgs, bboxes = self.cf.getSubImages(
             rotatedImg, circles, avgDists, numRowsCols)
-        self.socketIO.emit('counting-progress',
-                           {'data': 'Counting eggs in image %s' % imgBasename},
-                           room=self.room)
+        self.emit_to_room('counting-progress',
+                           {'data': 'Counting eggs in image %s' % imgBasename})
         for subImg in subImgs:
             subImg = torch.from_numpy((1/255)*np.expand_dims(
                 np.moveaxis(subImg, 2, 0), 0))
             result = network(subImg)
             self.predictions[imgPath].append(
                 int(torch.sum(result).item() / 100))
-        self.socketIO.emit('counting-progress',
-                           {'data': 'Finished counting eggs'},
-                           room=self.room)
+        self.emit_to_room('counting-progress',
+                           {'data': 'Finished counting eggs'})
         self.bboxes = [[int(el) for el in bbox] for bbox in bboxes]
         self.imgBasename = imgBasename
         self.sendAnnotationsToClient()
@@ -100,11 +102,10 @@ class SessionManager():
                 y = bboxes[i][1] + 0.55*bboxes[i][3]
             resultsData.append({'count': prediction, 'x': x, 'y': y,
                                 'bbox': bboxes[i]})
-        self.socketIO.emit('counting-annotations',
+        self.emit_to_room('counting-annotations',
                            {'data': json.dumps(resultsData,
                                                separators=(',', ':')),
-                            'filename': self.imgBasename},
-                           room=self.room)
+                            'filename': self.imgBasename})
         self.annotations[os.path.normpath(self.imgPath)] = resultsData
 
     def createErrorReport(self, edited_counts, user):
@@ -120,7 +121,7 @@ class SessionManager():
                     os.path.basename(imgPath).split('.')[:-1]) +
                     '_%s_actualCt_%s_user_%s.png' % (i, edited_counts[
                         imgPath][i], user)), imgSection)
-        self.socketIO.emit('report-ready', room=self.room)
+        self.emit_to_room('report-ready', {})
 
     def saveCSV(self, edited_counts):
         resultsPath = 'temp/results_ALPHA_%s.csv' % datetime.today().strftime(
@@ -137,6 +138,5 @@ class SessionManager():
                 CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
                     [self.predictions[imgPath]], 0, writer)
                 writer.writerow([])
-        self.socketIO.emit('counting-csv',
-                           {'data': os.path.basename(resultsPath)},
-                           room=self.room)
+        self.emit_to_room('counting-csv',
+                           {'data': os.path.basename(resultsPath)})
