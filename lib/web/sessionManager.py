@@ -56,7 +56,7 @@ class SessionManager():
             self.socketIO.emit('counting-progress',
                                {'data': 'Skew detected in image %s;' +
                                 ' stopping analysis.' % imgBasename},
-                                room=self.room)
+                               room=self.room)
         circles, avgDists, numRowsCols, rotatedImg, _ = self.cf.findCircles()
         self.chamberTypes[imgPath] = self.cf.ct
         subImgs, bboxes = self.cf.getSubImages(
@@ -94,7 +94,7 @@ class SessionManager():
                         bboxes[i][2], bboxes[i][1] + 0.45*bboxes[i][3]
             elif self.cf.ct == CT.new.name:
                 x = bboxes[i][0] + 0.5*bboxes[i][2]
-                y = bboxes[i][1] + (1.4 if i%10 < 5 else -0.1)*bboxes[i][3]
+                y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1)*bboxes[i][3]
             else:
                 x = bboxes[i][0] + (1.40 if i % 2 == 0 else -0.32)*bboxes[i][2]
                 y = bboxes[i][1] + 0.55*bboxes[i][3]
@@ -104,22 +104,22 @@ class SessionManager():
                            {'data': json.dumps(resultsData,
                                                separators=(',', ':')),
                             'filename': self.imgBasename},
-                            room=self.room)
+                           room=self.room)
         self.annotations[os.path.normpath(self.imgPath)] = resultsData
 
     def createErrorReport(self, edited_counts, user):
         for imgPath in edited_counts:
             rel_path = os.path.normpath(
-                    os.path.join('./uploads', imgPath))
+                os.path.join('./uploads', imgPath))
             img = cv2.imread(rel_path)
             for i in edited_counts[imgPath]:
                 annot = self.annotations[rel_path][int(i)]
                 imgSection = img[annot['bbox'][1]:annot['bbox'][1] + annot['bbox'][3],
-                    annot['bbox'][0]:annot['bbox'][0] + annot['bbox'][2]]
+                                 annot['bbox'][0]:annot['bbox'][0] + annot['bbox'][2]]
                 cv2.imwrite(os.path.join('error_cases', '.'.join(
                     os.path.basename(imgPath).split('.')[:-1]) +
-                    '_%s_actualCt_%s_user_%s.png'%(i, edited_counts[
-                    imgPath][i], user)), imgSection)
+                    '_%s_actualCt_%s_user_%s.png' % (i, edited_counts[
+                        imgPath][i], user)), imgSection)
         self.socketIO.emit('report-ready', room=self.room)
 
     def saveCSV(self, edited_counts):

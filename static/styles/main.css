@@ -2,6 +2,20 @@ html {
   font: 1rem 'Fira Sans', sans-serif;
 }
 
+.modal {
+  display: none;
+}
+
+#page-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 998;
+}
+
 form img {
   height: 64px;
   order: 1;
@@ -155,10 +169,6 @@ form label, form button, #updates button, form input {
   width: 100%;
 }
 
-.modal {
-  display: none;
-}
-
 .modal.is-open {
   /* display: table; */
   top: 40px;
@@ -168,6 +178,7 @@ form label, form button, #updates button, form input {
   box-shadow: 10px 5px 5px grey;
   display: block;
   position: fixed;
+  z-index: 999;
 }
 
 #modal-1-title {

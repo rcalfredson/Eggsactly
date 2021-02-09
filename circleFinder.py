@@ -360,13 +360,6 @@ class CircleFinder:
     self.centroids = [centroidnp(np.asarray(list(zip(*np.where(
       prediction == 1))))) for prediction in predictions]
     self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
-    # print('what are centroids?', self.centroids)
-    # imgCopy = np.array(self.imageResized)
-    # for centroid in self.centroids:
-    #   cv2.drawMarker(imgCopy, tuple([int(el) for el in centroid]),
-    #     COL_G, cv2.MARKER_TRIANGLE_UP)
-    # cv2.imshow('debug', imgCopy)
-    # cv2.waitKey(0)
     self.processDetections()
     rotationAngle = 0
     rotatedImg = self.img

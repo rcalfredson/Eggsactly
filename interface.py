@@ -19,6 +19,7 @@ from flask import (
     url_for
 )
 from flask_socketio import SocketIO, emit
+from PIL import Image
 from werkzeug.utils import secure_filename
 
 from lib.web.downloadManager import DownloadManager
@@ -159,6 +160,9 @@ def handle_upload():
             filename = secure_filename(uniq_names[i])
             filePath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filePath)
+            img = Image.open(filePath)
+            img = img.rotate(360)
+            img.save(filePath)
             socketIO.emit('counting-progress',
                 {'data': 'Processing image %i of %i'%(i+1, len(files))},
                 room=sid)
