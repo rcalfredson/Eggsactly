@@ -39,7 +39,6 @@ downloadManager = DownloadManager()
 scheduler = Scheduler(1)
 
 def prune_old_sessions():
-    print('pruning old sessions. Current list:', sessions)
     current_time = time.time()
     for sid in list(sessions.keys()):
         if current_time - sessions[sid].lastPing > 60*10:
@@ -47,7 +46,6 @@ def prune_old_sessions():
 
 scheduler.schedule.every(5).minutes.do(prune_old_sessions)
 scheduler.run_continuously()
-print('at top?')
 
 def allowed_file(filename):
     return '.' in filename and \
