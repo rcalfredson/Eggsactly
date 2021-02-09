@@ -61,10 +61,14 @@ class SessionManager():
             self.emit_to_room('counting-progress',
                                {'data': 'Skew detected in image %s;' +
                                 ' stopping analysis.' % imgBasename})
-        circles, avgDists, numRowsCols, rotatedImg, _ = self.cf.findCircles()
-        self.chamberTypes[imgPath] = self.cf.ct
-        subImgs, bboxes = self.cf.getSubImages(
-            rotatedImg, circles, avgDists, numRowsCols)
+        try:
+            circles, avgDists, numRowsCols, rotatedImg, _ = self.cf.findCircles()
+            self.chamberTypes[imgPath] = self.cf.ct
+            subImgs, bboxes = self.cf.getSubImages(
+                rotatedImg, circles, avgDists, numRowsCols)
+        except Exception:
+            self.emit_to_room('counting-error',
+                {'data': 'Error counting eggs for image %s'%imgBasename})
         self.emit_to_room('counting-progress',
                            {'data': 'Counting eggs in image %s' % imgBasename})
         for subImg in subImgs:

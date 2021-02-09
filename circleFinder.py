@@ -303,10 +303,6 @@ class CircleFinder:
       self.interpolateCentroids()
     prelim_corners = fake_image_corners(self.sortedCentroids)
     true_corners = corners(self.sortedCentroids, prelim_corners)
-    # imgCopy = np.array(self.imageResized)
-    # for corner in true_corners:
-    #   cv2.drawMarker(imgCopy, tuple([int(el) for el in true_corners[corner]]),
-    #     COL_G, cv2.MARKER_TRIANGLE_UP)
     width_skew = abs(distance(true_corners['tr'], true_corners['tl']) - \
       distance(true_corners['br'], true_corners['bl']))
     height_skew = abs(distance(true_corners['br'], true_corners['tr']) - \
@@ -360,6 +356,13 @@ class CircleFinder:
     self.centroids = [centroidnp(np.asarray(list(zip(*np.where(
       prediction == 1))))) for prediction in predictions]
     self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
+    # print('what are centroids?', self.centroids)
+    # imgCopy = np.array(self.imageResized).astype(np.uint8)
+    # for centroid in self.centroids:
+    #   cv2.drawMarker(imgCopy, tuple([int(el) for el in centroid]),
+    #     COL_G, cv2.MARKER_TRIANGLE_UP)
+    # cv2.imshow('debug', imgCopy)
+    # cv2.waitKey(0)
     self.processDetections()
     rotationAngle = 0
     rotatedImg = self.img

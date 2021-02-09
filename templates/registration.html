@@ -138,14 +138,15 @@
         });
 
         $(document).ready(() => {
-            // socket.set("heartbeat timeout", 10);
-            // socket.set("heartbeat interval", 5);
             $("body").fadeIn(200);
             document.getElementById('page-mask').style.display = 'none';
             document.getElementById('modal-1').removeAttribute('style');
             socket.on('counting-progress', (msg) => {
                 $('#updates').append('<p>' + msg.data + '</p>')
             });
+            // socket.on('counting-error', (msg) => {
+            //     $('#updates').append()
+            // });
             socket.on('counting-done', () => {
                 $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
                 setupCanvas();
