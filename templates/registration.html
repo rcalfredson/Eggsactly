@@ -295,9 +295,14 @@
             inputLbl.innerText = "Select more images";
             inputReset.removeAttribute('hidden');
             let curFiles = [];
-            inputs.forEach(i => {
-                curFiles = Array.from(curFiles).concat(Array.from(i.files));
-            })
+            let inputMapping = []
+            inputs.forEach((input, i) => {
+                let newFiles = Array.from(input.files);
+                newFiles.forEach(() => {
+                    inputMapping.push(i); 
+                });
+                curFiles = Array.from(curFiles).concat(newFiles);
+            });
             if (curFiles.length === 0) {
                 const para = document.createElement('p');
                 para.textContent = 'No files currently selected for upload';
@@ -321,6 +326,15 @@
                         para.textContent = `File name ${imgUniqueNames[i]}: Not a valid file type. Update your selection.`;
                         listItem.appendChild(para);
                     }
+                    const xDiv = document.createElement('div')
+                    xDiv.setAttribute('class', 'close-button');
+                    const xStroke1 = document.createElement('div');
+                    xStroke1.setAttribute('class', 'close-button-stroke1');
+                    const xStroke2 = document.createElement('div');
+                    xStroke2.setAttribute('class', 'close-button-stroke2');
+                    xStroke1.appendChild(xStroke2);
+                    xDiv.appendChild(xStroke1);
+                    listItem.append(xDiv);
 
                     list.appendChild(listItem);
                 });

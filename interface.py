@@ -178,6 +178,9 @@ def handle_upload():
             filePath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filePath)
             correct_via_exif(filePath)
+            # img = Image.open(filePath)
+            # img = img.rotate(360)
+            # img.save(filePath)
             socketIO.emit('counting-progress',
                 {'data': 'Processing image %i of %i'%(i+1, len(files))},
                 room=sid)

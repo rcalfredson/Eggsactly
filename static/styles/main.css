@@ -192,29 +192,42 @@ form label, form button, #updates button, form input {
   padding: 12px;
 }
 
-#close-button {
-  width: 25px;
-  height: 25px;
-  border-radius: 2px;
-  background-color: red;
+.close-button:hover {
+  background: linear-gradient(#e49292 45%, #b63232 55%);  
+  box-shadow: 0 0 0.2em #e25b5b;
+}
+
+.close-button:active {
+  background: linear-gradient(#e25b5b 45%, #630707 55%);  
+  box-shadow: 0 0 0.2em #e25b5b;
+}
+
+.close-button {
+  margin-top: 20px;
+  width: 20px;
+  height: 20px;
+  /* background-color: red; */
+  background: linear-gradient(#dd7d7d 45%, #c51717 55%);
   border: 1px solid black;
-  display: inline;
+  border-radius: 7px;
   float: right;
 }
 
 .close-button-stroke1 {
-  height: 25px;
+  height: 20px;
   width: 2px;
-  margin-left: 12px;
-  background-color: black;
+  margin-left: 9px;
+  margin-top: 1px;
+  background-color: white;
   transform: rotate(45deg);
   Z-index: 1;
 }
 
 .close-button-stroke2 {
-  height: 25px;
+  height: 20px;
   width: 2px;
-  background-color: black;
+  margin-top: -1px;
+  background-color: white;
   transform: rotate(90deg);
   Z-index: 2;
 }
