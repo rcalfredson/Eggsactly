@@ -145,44 +145,31 @@ def handle_annot_img_upload():
 @app.route('/upload', methods=['POST'])
 def handle_upload():
     sid = request.form['sid']
-    uniq_names = json.loads(request.form['uniqueNames'])
     sessionManager = sessions[sid]
     sessionManager.clear_data()
     for dirName in ('uploads', 'temp'):
         remove_old_files(dirName)
     socketIO.emit('clear-all',
         room=sid)
-    if 'img-upload-1' not in request.files:
-        flash('No file part')
-        return redirect(request.url)
-    files = []
-    numFiles = None
-    counter = 1
-    while numFiles != 0:
-        newFiles = request.files.getlist('img-upload-%i'%counter)
-        numFiles = len(newFiles)
-        for file in newFiles:
-            if file.content_type != 'application/octet-stream':
-                files.append(file)
-        counter += 1
-    if len(files) == 0:
+    if len(request.files) == 0:
         flash('No selected file')
         return redirect(request.url)
-    for i, file in enumerate(files):
-        if file and allowed_file(uniq_names[i]):
+    n_files = len(request.files)
+    for i, file in enumerate(request.files):
+        if file and allowed_file(file):
             socketIO.emit('clear-display', room=sid)
             socketIO.emit('counting-progress',
-                {'data': 'Uploading image %i of %i'%(i+1, len(files))},
+                {'data': 'Uploading image %i of %i'%(i+1, n_files)},
                 room=sid)
-            filename = secure_filename(uniq_names[i])
+            filename = secure_filename(file)
             filePath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filePath)
+            request.files[file].save(filePath)
             correct_via_exif(filePath)
             # img = Image.open(filePath)
             # img = img.rotate(360)
             # img.save(filePath)
             socketIO.emit('counting-progress',
-                {'data': 'Processing image %i of %i'%(i+1, len(files))},
+                {'data': 'Processing image %i of %i'%(i+1, n_files)},
                 room=sid)
             sessionManager.register_image(filePath)
     socketIO.emit('counting-done', room=sid)

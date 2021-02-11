@@ -65,10 +65,14 @@ form label:active, form button:active:enabled, #updates button:active, form inpu
   color: white;
 }
 
+ol img {
+  margin-left: auto;
+}
+
 form li, .preview>p {
   background: #eee;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   margin-bottom: 10px;
   margin-top: 10px;
   list-style-type: none;
@@ -78,6 +82,7 @@ form li, .preview>p {
 form p {
   line-height: 32px;
   padding-left: 10px;
+  flex: 0 0 440px;
 }
 
 #viewer-nav {
@@ -154,6 +159,10 @@ form label, form button, #updates button, form input {
   height: auto;
 }
 
+form ol {
+  padding-left: 0;
+}
+
 #updates #submit-error-report {
   background-color: rgb(204, 87, 97);
   color: white;
@@ -204,13 +213,13 @@ form label, form button, #updates button, form input {
 
 .close-button {
   margin-top: 20px;
+  margin-left: 10px;
   width: 20px;
   height: 20px;
-  /* background-color: red; */
   background: linear-gradient(#dd7d7d 45%, #c51717 55%);
   border: 1px solid black;
   border-radius: 7px;
-  float: right;
+  float: left;
 }
 
 .close-button-stroke1 {

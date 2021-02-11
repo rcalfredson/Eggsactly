@@ -29,11 +29,12 @@
         let inputAmenderNormalBckgnd;
         let lastKeyPressed;
         let pathAmendId;
+        let filesToUpload = {};
         let annotations = {};
         let orderedImgNames = [];
         let eggLayingRegions = [];
         let imgUniqueNames = {};
-        let numFilesPerName = {};
+        let idsByOrigImgName = {};
         let lastPongTime;
         let numFailedPings = 0;
         let zoom = 1.0;
@@ -59,6 +60,18 @@
         function fileNameAndExt(str) {
             var file = str.split('/').pop();
             return [file.substr(0, file.lastIndexOf('.')), file.substr(file.lastIndexOf('.') + 1, file.length)]
+        }
+
+        function makeid(length, existing_ids = []) {
+            var result = '';
+            do {
+                var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+                var charactersLength = characters.length;
+                for (var i = 0; i < length; i++) {
+                    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+                }
+            } while (existing_ids.indexOf(result) > 0)
+            return result;
         }
     </script>
     <form id=notice><label style="background-color: rgb(252, 226, 113);">Please note: the page has changed recently. If
@@ -120,9 +133,12 @@
             $('#img-upload-btn').click(function () {
                 $(this).prop('disabled', true);
                 resetAllVariables();
-                var form_data = new FormData($('#img-form')[0]);
+                var form_data = new FormData();
+                Object.keys(filesToUpload).forEach((fileName) => {
+                    form_data.append(fileName, filesToUpload[fileName]);
+                })
                 form_data.append('sid', sid);
-                form_data.append('uniqueNames', JSON.stringify(imgUniqueNames));
+
                 $.ajax({
                     type: 'POST',
                     url: '/upload',
@@ -226,7 +242,6 @@
 
         var setUpFileUploadDialog = function () {
             input = document.getElementById('img-upload-1');
-            inputs = [input]
             inputLbl = document.getElementById('img-upload-lbl');
             inputDiv = document.getElementById('img-inputs');
             inputReset = document.getElementById('img-upload-reset')
@@ -236,74 +251,46 @@
         }
 
         var handleResetClick = function () {
-            inputs[0].value = "";
-            inputs.forEach((input, i) => {
-                if (i > 0) {
-                    input.remove();
-                }
-            });
-            inputs = inputs.slice(0, 1);
-            input = inputs[0];
-            input.addEventListener('change', updateImageDisplay);
-            updateImageDisplay(false);
+            input.value = "";
+
+            imgUniqueNames = [];
+            idsByOrigImgName = {};
+            filesToUpload = {};
+            updateImageDisplay();
             inputReset.setAttribute('hidden', true);
-            inputLbl.setAttribute('for', input.id);
             inputLbl.innerText = 'Choose images to upload';
             document.getElementById('img-upload-btn').setAttribute('disabled', 'true');
         };
 
-        var addNewImageInput = () => {
-            let newInput = document.createElement('input');
-            newInput.type = 'file';
-            newInput.multiple = 'multiple';
-            let newInputIdAndName = `img-upload-${document.getElementsByClassName('img-upload').length + 1}`;
-            newInput.id = newInputIdAndName;
-            newInput.name = newInputIdAndName;
-            newInput.setAttribute('class', 'img-upload');
-            newInput.setAttribute('hidden', 'true');
-            inputDiv.appendChild(newInput);
-            inputs.push(newInput);
-            input.removeEventListener('change', updateImageDisplay);
-            input.files[0].internal_name = 'mytest';
-            input = newInput;
-            input.addEventListener('change', updateImageDisplay);
-            inputLbl.setAttribute('for', newInputIdAndName);
-
-        }
-
-        function updateImageDisplay(addNewInput = true) {
-            if (addNewInput) {
-                addNewImageInput();
-            }
+        function updateImageDisplay() {
             while (preview.firstChild) {
                 preview.removeChild(preview.firstChild);
             }
-            imgUniqueNames = [];
-            numFilesPerName = {};
             let imgInputs = document.getElementsByClassName('img-upload');
-            for (var i = 0; i < imgInputs.length; i++) {
-                Array.prototype.forEach.call(imgInputs.item(i).files, file => {
-                    if (file.name in numFilesPerName) {
-                        numFilesPerName[file.name] += 1;
-                    } else {
-                        numFilesPerName[file.name] = 0;
-                    }
-                    let filenameParts = fileNameAndExt(file.name);
-                    imgUniqueNames.push(`${filenameParts[0]}${numFilesPerName[file.name] > 0 ? `_${numFilesPerName[file.name]}` : ''}.${filenameParts[1]}`)
-                });
-            }
+            Array.prototype.forEach.call(input.files, (file) => {
+                let id;
+                if (file.name in idsByOrigImgName) {
+                    id = makeid(3, idsByOrigImgName[file.name])
+                } else {
+                    id = ''
+                }
+
+                let filenameParts = fileNameAndExt(file.name);
+                let imgUniqueName = `${filenameParts[0]}${id.length
+                    > 0 ? `_${id}` : ''}.${filenameParts[1]}`
+                if (file.name in idsByOrigImgName) {
+                    idsByOrigImgName[file.name].push(imgUniqueName)
+                } else {
+                    idsByOrigImgName[file.name] = [imgUniqueName]
+                }
+                filesToUpload[imgUniqueName] = file
+            });
+            input.value = "";
             inputLbl.innerText = "Select more images";
             inputReset.removeAttribute('hidden');
             let curFiles = [];
             let inputMapping = []
-            inputs.forEach((input, i) => {
-                let newFiles = Array.from(input.files);
-                newFiles.forEach(() => {
-                    inputMapping.push(i); 
-                });
-                curFiles = Array.from(curFiles).concat(newFiles);
-            });
-            if (curFiles.length === 0) {
+            if (Object.keys(filesToUpload).length === 0) {
                 const para = document.createElement('p');
                 para.textContent = 'No files currently selected for upload';
                 preview.appendChild(para);
@@ -312,29 +299,44 @@
                 const list = document.createElement('ol');
                 preview.appendChild(list);
 
-                curFiles.forEach((file, i) => {
+                Object.keys(filesToUpload).forEach((file, i) => {
                     const listItem = document.createElement('li');
                     const para = document.createElement('p');
-                    if (validFileType(file)) {
-                        para.textContent = `File name ${imgUniqueNames[i]}, file size ${returnFileSize(file.size)}.`;
+                    const xDiv = document.createElement('div')
+                    xDiv.setAttribute('class', 'close-button');
+                    xDiv.setAttribute('id', `close-${i}`)
+                    xDiv.assocImg = file;
+                    const xStroke1 = document.createElement('div');
+                    xStroke1.setAttribute('class', 'close-button-stroke1');
+                    xStroke1.setAttribute('id', `close-stroke1-${i}`);
+                    const xStroke2 = document.createElement('div');
+                    xStroke2.setAttribute('class', 'close-button-stroke2');
+                    xStroke2.setAttribute('id', `close-stroke2-${i}`);
+                    xStroke1.appendChild(xStroke2);
+                    xDiv.appendChild(xStroke1);
+                    listItem.append(xDiv);
+                    xDiv.onclick = (evt) => {
+                        let splitId = evt.target.id.split('-');
+                        let index = parseInt(splitId[splitId.length - 1]);
+                        let imgKey = document.getElementById(`close-${index}`).assocImg;
+                        idsByOrigImgName[filesToUpload[imgKey].name].splice(idsByOrigImgName[filesToUpload[imgKey].name].indexOf(imgKey), 1);
+                        if (idsByOrigImgName[filesToUpload[imgKey].name].length === 0) {
+                            delete idsByOrigImgName[filesToUpload[imgKey].name];
+                        }
+                        delete filesToUpload[imgKey];
+                        updateImageDisplay();
+                    }
+                    if (validFileType(filesToUpload[file])) {
+                        para.textContent = `File name ${file}, file size ${returnFileSize(filesToUpload[file].size)}.`;
                         const image = document.createElement('img');
-                        image.src = URL.createObjectURL(file);
+                        image.src = URL.createObjectURL(filesToUpload[file]);
 
                         listItem.appendChild(image);
                         listItem.appendChild(para);
                     } else {
-                        para.textContent = `File name ${imgUniqueNames[i]}: Not a valid file type. Update your selection.`;
+                        para.textContent = `File name ${file}: Not a valid file type. Update your selection.`;
                         listItem.appendChild(para);
                     }
-                    const xDiv = document.createElement('div')
-                    xDiv.setAttribute('class', 'close-button');
-                    const xStroke1 = document.createElement('div');
-                    xStroke1.setAttribute('class', 'close-button-stroke1');
-                    const xStroke2 = document.createElement('div');
-                    xStroke2.setAttribute('class', 'close-button-stroke2');
-                    xStroke1.appendChild(xStroke2);
-                    xDiv.appendChild(xStroke1);
-                    listItem.append(xDiv);
 
                     list.appendChild(listItem);
                 });
