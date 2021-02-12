@@ -160,9 +160,11 @@
             socket.on('counting-progress', (msg) => {
                 $('#updates').append('<p>' + msg.data + '</p>')
             });
-            // socket.on('counting-error', (msg) => {
-            //     $('#updates').append()
-            // });
+            socket.on('counting-error', (msg) => {
+                $('#updates').append(`<p style="color: red">${msg.data}</p>`);
+                orderedImgNames.push(msg.filename);
+                annotations[msg.filename] = {}
+            })
             socket.on('counting-done', () => {
                 $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
                 setupCanvas();
@@ -377,7 +379,7 @@
         var collectEditedCounts = function () {
             let editedCounts = {}
             orderedImgNames.forEach((name, i) => {
-                if (!eggLayingRegions[i]) {
+                if (!eggLayingRegions[i] || eggLayingRegions[i].bad) {
                     return;
                 }
                 editedCounts[name] = {};
@@ -506,11 +508,15 @@
             }
             paper.project.clear();
             if (previousImgIndex) {
-                Object.keys(eggLayingRegions[previousImgIndex]).forEach(region => {
-                    eggLayingRegions[previousImgIndex][region].outline.remove();
-                    eggLayingRegions[previousImgIndex][region].fill.remove();
-                    eggLayingRegions[previousImgIndex][region].text.remove();
-                })
+                if (eggLayingRegions[previousImgIndex].bad) {
+                    eggLayingRegions[previousImgIndex].text.remove();
+                } else {
+                    Object.keys(eggLayingRegions[previousImgIndex]).forEach(region => {
+                        eggLayingRegions[previousImgIndex][region].text.remove();
+                        eggLayingRegions[previousImgIndex][region].outline.remove();
+                        eggLayingRegions[previousImgIndex][region].fill.remove();
+                    });
+                }
             }
             $('#updates').append(`<img id=pic src="/uploads/${orderedImgNames[currentImgIndex]}">`);
             backgroundRaster = new paper.Raster('pic');
@@ -521,81 +527,91 @@
                 document.getElementById('pic').remove();
                 let upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
                 let leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
-                if (!eggLayingRegions[currentImgIndex]) {
-                    eggLayingRegions[currentImgIndex] = {};
-                    annotations[orderedImgNames[currentImgIndex]].forEach((annotation, i) => {
-                        let x = annotation.x * scalingFactor + leftPadding;
-                        let y = annotation.y * scalingFactor + upperPadding;
-                        let bbox = annotation.bbox;
-                        bbox = bbox.map(n => n * scalingFactor);
-                        let textOrigin = new paper.Point(x, y)
-                        let pointText = new paper.PointText(new paper.Point(x, y));
-                        pointText.justification = 'center';
-                        pointText.fillColor = 'black';
-                        pointText.content = annotation.count;
-                        pointText.fontSize = defaultFontSize;
-                        let rectangle = new paper.Rectangle(
-                            new paper.Point(bbox[0] + leftPadding, bbox[1] + upperPadding),
-                            new paper.Point(bbox[0] + bbox[2] + leftPadding, bbox[1] + bbox[3] + upperPadding));
-                        rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                        rectPath.strokeColor = colors.grey;
-                        let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                        innerRect.fillColor = 'black';
-                        innerRect.opacity = 0;
-                        addHoverHandler(innerRect, currentImgIndex);
-                        eggLayingRegions[currentImgIndex][innerRect.id] = {
-                            outline: rectPath,
-                            fill: innerRect,
-                            text: pointText,
-                            bboxIndex: i,
-                            originalCount: annotation.count.toString(),
-                            beenEdited() {
-                                return this.originalCount !== this.text.content;
-                            }
-                        };
-                    });
+                if (Object.keys(annotations[orderedImgNames[currentImgIndex]]).length === 0) {
+                    let pointText = new paper.PointText(new paper.Point(paper.view.center.x,
+                        paper.view.center.y));
+                    pointText.content = 'Image could not be analyzed.';
+                    pointText.justification = 'center';
+                    pointText.fillColor = 'red';
+                    pointText.fontSize = '40px';
+                    eggLayingRegions[currentImgIndex] = { bad: true, text: pointText }
                 } else {
-                    Object.keys(eggLayingRegions[currentImgIndex]).forEach(region => {
-                        // recreate the text
-                        let reg = eggLayingRegions[currentImgIndex][region];
-                        if (reg.beenEdited()) {
-                            drawTextForEditedCount(reg, reg.text.content);
-                        } else {
-                            let origText = reg.text;
-                            reg.text = new paper.PointText(new paper.Point(origText.point.x,
-                                origText.point.y));
-                            reg.text.content = origText.content;
-                            reg.text.justification = 'center';
-                            reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
-                            reg.text.fontSize = origText.fontSize;
-                        }
-                        // recreate the outline
-                        let origOutline = reg.outline;
-                        let rectangle = new paper.Rectangle(
-                            new paper.Point(origOutline.bounds.x, origOutline.bounds.y),
-                            new paper.Point(origOutline.bounds.x + origOutline.bounds.width,
-                                origOutline.bounds.y + origOutline.bounds.height)
-                        );
-                        reg.outline = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                        reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
-                        // recreate the inner fill
-                        let origFill = reg.fill;
-                        reg.fill = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                        reg.fill.fillColor = 'black';
-                        reg.fill.opacity = 0;
-                        eggLayingRegions[currentImgIndex][reg.fill.id] = {
-                            outline: reg.outline,
-                            fill: reg.fill,
-                            text: reg.text,
-                            bboxIndex: reg.bboxIndex,
-                            originalCount: reg.originalCount,
-                            beenEdited() {
-                                return this.originalCount !== this.text.content;
+                    if (!eggLayingRegions[currentImgIndex]) {
+                        eggLayingRegions[currentImgIndex] = {};
+                        annotations[orderedImgNames[currentImgIndex]].forEach((annotation, i) => {
+                            let x = annotation.x * scalingFactor + leftPadding;
+                            let y = annotation.y * scalingFactor + upperPadding;
+                            let bbox = annotation.bbox;
+                            bbox = bbox.map(n => n * scalingFactor);
+                            let textOrigin = new paper.Point(x, y)
+                            let pointText = new paper.PointText(new paper.Point(x, y));
+                            pointText.justification = 'center';
+                            pointText.fillColor = 'black';
+                            pointText.content = annotation.count;
+                            pointText.fontSize = defaultFontSize;
+                            let rectangle = new paper.Rectangle(
+                                new paper.Point(bbox[0] + leftPadding, bbox[1] + upperPadding),
+                                new paper.Point(bbox[0] + bbox[2] + leftPadding, bbox[1] + bbox[3] + upperPadding));
+                            rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                            rectPath.strokeColor = colors.grey;
+                            let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                            innerRect.fillColor = 'black';
+                            innerRect.opacity = 0;
+                            addHoverHandler(innerRect, currentImgIndex);
+                            eggLayingRegions[currentImgIndex][innerRect.id] = {
+                                outline: rectPath,
+                                fill: innerRect,
+                                text: pointText,
+                                bboxIndex: i,
+                                originalCount: annotation.count.toString(),
+                                beenEdited() {
+                                    return this.originalCount !== this.text.content;
+                                }
+                            };
+                        });
+                    } else {
+                        Object.keys(eggLayingRegions[currentImgIndex]).forEach(region => {
+                            // recreate the text
+                            let reg = eggLayingRegions[currentImgIndex][region];
+                            if (reg.beenEdited()) {
+                                drawTextForEditedCount(reg, reg.text.content);
+                            } else {
+                                let origText = reg.text;
+                                reg.text = new paper.PointText(new paper.Point(origText.point.x,
+                                    origText.point.y));
+                                reg.text.content = origText.content;
+                                reg.text.justification = 'center';
+                                reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
+                                reg.text.fontSize = origText.fontSize;
                             }
-                        }
-                        delete eggLayingRegions[currentImgIndex][origFill.id];
-                        addHoverHandler(reg.fill, currentImgIndex);
-                    });
+                            // recreate the outline
+                            let origOutline = reg.outline;
+                            let rectangle = new paper.Rectangle(
+                                new paper.Point(origOutline.bounds.x, origOutline.bounds.y),
+                                new paper.Point(origOutline.bounds.x + origOutline.bounds.width,
+                                    origOutline.bounds.y + origOutline.bounds.height)
+                            );
+                            reg.outline = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                            reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
+                            // recreate the inner fill
+                            let origFill = reg.fill;
+                            reg.fill = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+                            reg.fill.fillColor = 'black';
+                            reg.fill.opacity = 0;
+                            eggLayingRegions[currentImgIndex][reg.fill.id] = {
+                                outline: reg.outline,
+                                fill: reg.fill,
+                                text: reg.text,
+                                bboxIndex: reg.bboxIndex,
+                                originalCount: reg.originalCount,
+                                beenEdited() {
+                                    return this.originalCount !== this.text.content;
+                                }
+                            }
+                            delete eggLayingRegions[currentImgIndex][origFill.id];
+                            addHoverHandler(reg.fill, currentImgIndex);
+                        });
+                    }
                 }
                 origCenter = paper.view.center;
                 canvasLoaded = true;
@@ -705,10 +721,6 @@
         }
 
         var amendEggCount = function (event, value = null) {
-            // how to represent whether any counts have been amended
-            // throughout all uploaded images?
-            // ideally, it won't be necessary to recalculate anything.
-            // there should be a v
             if (lastKeyPressed === 'Escape') {
                 let reg = eggLayingRegions[currentImgIndex][pathAmendId];
                 reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
@@ -726,10 +738,6 @@
             }
             if (lastKeyPressed === 'Enter') {
                 if (isNormalInteger(value)) {
-                    // how best to draw both
-                    // vertically aligned in a way that it can be put back if reverted?
-                    // save the positions of the original pointText?
-                    // when to add to idsWithEdits
                     if (value == eggLayingRegions[currentImgIndex][pathAmendId].originalCount) {
                         idsWithEdits.delete(pathAmendId)
                         drawTextForUneditedCount(eggLayingRegions[currentImgIndex][pathAmendId]);
@@ -737,9 +745,6 @@
                         idsWithEdits.add(pathAmendId)
                         drawTextForEditedCount(eggLayingRegions[currentImgIndex][pathAmendId], value);
                     }
-                    // eggLayingRegions[currentImgIndex][pathAmendId].text.content = value;
-                    // eggLayingRegions[currentImgIndex][pathAmendId].text.opacity = 1.0;
-                    // eggLayingRegions[currentImgIndex][pathAmendId].outline.strokeWidth = 1;
                     inputAmender.remove();
                     inputAmender = null;
                     if (idsWithEdits.size > 0) {

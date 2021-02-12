@@ -68,7 +68,11 @@ class SessionManager():
                 rotatedImg, circles, avgDists, numRowsCols)
         except Exception:
             self.emit_to_room('counting-error',
-                {'data': 'Error counting eggs for image %s'%imgBasename})
+                {'data': 'Error counting eggs for image %s'%imgBasename,
+                 'filename': imgBasename})
+            self.predictions[imgPath].append(None)
+            time.sleep(2)
+            return
         self.emit_to_room('counting-progress',
                            {'data': 'Counting eggs in image %s' % imgBasename})
         for subImg in subImgs:
@@ -135,6 +139,9 @@ class SessionManager():
             writer.writerow(['Egg Counter, ALPHA version'])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
+                if None in self.predictions[imgPath]:
+                    writer.writerows([['Image could not be analyzed'], []])
+                    continue
                 base_path = os.path.basename(imgPath)
                 if base_path in edited_counts and len(edited_counts[base_path]) > 0:
                     writer.writerow(
