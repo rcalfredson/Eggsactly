@@ -506,8 +506,7 @@
             if (backgroundRaster) {
                 backgroundRaster.remove();
             }
-            paper.project.clear();
-            if (previousImgIndex) {
+            if (previousImgIndex !== null) {
                 if (eggLayingRegions[previousImgIndex].bad) {
                     eggLayingRegions[previousImgIndex].text.remove();
                 } else {
@@ -519,6 +518,7 @@
                 }
             }
             $('#updates').append(`<img id=pic src="/uploads/${orderedImgNames[currentImgIndex]}">`);
+            paper.project.clear();
             backgroundRaster = new paper.Raster('pic');
             pic = document.getElementById('pic');
             backgroundRaster.onLoad = () => {
