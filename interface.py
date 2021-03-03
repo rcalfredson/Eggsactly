@@ -23,6 +23,7 @@ from PIL import Image
 from werkzeug.utils import secure_filename
 
 from lib.image.exif import correct_via_exif
+from lib.os.pauser import PythonPauser
 from lib.web.downloadManager import DownloadManager
 from lib.web.scheduler import Scheduler
 from lib.web.sessionManager import SessionManager
@@ -155,6 +156,11 @@ def handle_upload():
         flash('No selected file')
         return redirect(request.url)
     n_files = len(request.files)
+    pauser = PythonPauser()
+    socketIO.emit('counting-progress',
+        {'data': 'Pausing any high-impact Python programs already running...'},
+        room=sid)
+    pauser.pause_high_cpu_py_processes()
     for i, file in enumerate(request.files):
         if file and allowed_file(file):
             socketIO.emit('clear-display', room=sid)
@@ -173,6 +179,7 @@ def handle_upload():
                 room=sid)
             sessionManager.register_image(filePath)
     socketIO.emit('counting-done', room=sid)
+    pauser.resume_high_cpu_py_processes()
     return 'OK'
 
 @app.route('/', methods=['GET', 'POST'])
