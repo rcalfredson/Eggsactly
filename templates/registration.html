@@ -22,6 +22,10 @@
             grey: '#313036',
             red: '#fc2c03'
         };
+        const errorMessages = {
+            CountingException: 'Image could not be analyzed.',
+            CUDAMemoryException: 'Error: system ran out of resources.'
+        }
         const defaultFontSize = 17;
         let sid;
         let input, inputs, inputDiv, inputLbl, inputReset, preview;
@@ -163,7 +167,7 @@
             socket.on('counting-error', (msg) => {
                 $('#updates').append(`<p style="color: red">${msg.data}</p>`);
                 orderedImgNames.push(msg.filename);
-                annotations[msg.filename] = {}
+                annotations[msg.filename] = {'error': msg.error_type}
             })
             socket.on('counting-done', () => {
                 $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
@@ -527,10 +531,11 @@
                 document.getElementById('pic').remove();
                 let upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
                 let leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
-                if (Object.keys(annotations[orderedImgNames[currentImgIndex]]).length === 0) {
+                if ('error' in annotations[orderedImgNames[currentImgIndex]]) {
                     let pointText = new paper.PointText(new paper.Point(paper.view.center.x,
                         paper.view.center.y));
-                    pointText.content = 'Image could not be analyzed.';
+                    pointText.content = errorMessages[annotations[
+                        orderedImgNames[currentImgIndex]].error];
                     pointText.justification = 'center';
                     pointText.fillColor = 'red';
                     pointText.fontSize = '40px';

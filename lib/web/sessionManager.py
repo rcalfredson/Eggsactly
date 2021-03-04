@@ -12,6 +12,7 @@ import torch
 from chamber import CT
 from circleFinder import CircleFinder
 from detectors.fcrn import model
+from lib.web.exceptions import CUDAMemoryException, CountingException
 
 MODEL_PATH = 'models/egg_FCRN_A_150epochs_Yang-Lab-Dell2_2021-01-06' + \
              ' 17-04-53.765866.pth'
@@ -20,7 +21,6 @@ network = model.FCRN_A(input_filters=3, N=2).to(device)
 network.train(False)
 network = torch.nn.DataParallel(network)
 network.load_state_dict(torch.load(MODEL_PATH))
-
 
 class SessionManager():
     """Represent and process information while using the egg-counting web app.
@@ -34,10 +34,15 @@ class SessionManager():
         """
         self.chamberTypes = {}
         self.predictions = {}
+        self.basenames = {}
         self.annotations = {}
         self.socketIO = socketIO
         self.room = room
         self.lastPing = time.time()
+        self.errorMessages = {
+            CountingException: 'Image could not be analyzed.',
+            CUDAMemoryException: 'Error: system ran out of resources'
+        }
 
     def clear_data(self):
         self.chamberTypes = {}
@@ -48,11 +53,31 @@ class SessionManager():
         self.socketIO.emit(evt_name,
             data, room=self.room)
 
-    def register_image(self, imgPath):
+    @staticmethod
+    def is_CUDA_mem_error(exc):
+        exc_str = str(exc)
+        return 'CUDA out of memory' in exc_str or\
+            'Unable to find a valid cuDNN' in exc_str or\
+            'cuDNN error' in exc_str
+
+    def report_counting_error(self, imgPath, err_type):
+        prefix = {
+            CountingException: 'Error',
+            CUDAMemoryException: 'Ran out of system resources while'}[err_type]
+        self.emit_to_room('counting-error',
+                {'data': '%s counting eggs for image %s'% (
+                prefix, self.basenames[imgPath]),
+                 'filename': self.basenames[imgPath],
+                'error_type': err_type.__name__})
+        self.predictions[imgPath].append(err_type)
+        time.sleep(2)
+
+    def segment_img_and_count_eggs(self, imgPath):
         imgBasename = os.path.basename(imgPath)
         imgPath = os.path.normpath(imgPath)
         self.imgPath = imgPath
         self.predictions[imgPath] = []
+        self.basenames[imgPath] = imgBasename
         self.emit_to_room('counting-progress',
                            {'data': 'Segmenting image %s' % imgBasename})
         img = np.array(Image.open(imgPath), dtype=np.float32)
@@ -66,12 +91,10 @@ class SessionManager():
             self.chamberTypes[imgPath] = self.cf.ct
             subImgs, bboxes = self.cf.getSubImages(
                 rotatedImg, circles, avgDists, numRowsCols)
-        except Exception:
-            self.emit_to_room('counting-error',
-                {'data': 'Error counting eggs for image %s'%imgBasename,
-                 'filename': imgBasename})
-            self.predictions[imgPath].append(None)
-            time.sleep(2)
+        except Exception as exc:
+            if self.is_CUDA_mem_error(exc):
+                raise CUDAMemoryException
+            self.report_counting_error(imgPath, CountingException)
             return
         self.emit_to_room('counting-progress',
                            {'data': 'Counting eggs in image %s' % imgBasename})
@@ -139,8 +162,9 @@ class SessionManager():
             writer.writerow(['Egg Counter, ALPHA version'])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
-                if None in self.predictions[imgPath]:
-                    writer.writerows([['Image could not be analyzed'], []])
+                first_pred = self.predictions[imgPath][0]
+                if first_pred is type and issubclass(first_pred, Exception):
+                    writer.writerows([[self.errorMessages[first_pred]], []])
                     continue
                 base_path = os.path.basename(imgPath)
                 if base_path in edited_counts and len(edited_counts[base_path]) > 0:
