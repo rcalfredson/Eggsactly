@@ -1,4 +1,5 @@
 import argparse
+from glob import glob
 import json
 import os
 from pathlib import Path
@@ -36,24 +37,24 @@ def numPatches():
         return 1
 
 
-heldOutProb = 0.0
+heldOutProb = 1.0
 fullSizeProb = 1.0
 validationProb = 0.25
-blankPatchRetentionProb = 0.0
+blankPatchRetentionProb = 1.0
 backupCounter = 0
 
-for group in ('train', 'valid'):
-    def mkDestDir(dirName):
-        Path(os.path.join(DEST_PATH, dirName)).mkdir(parents=True, exist_ok=True)
-    mkDestDir('fullsize_%s'%group)
-    mkDestDir('independent_fullsize_%s'%group)
-    mkDestDir(group)
-    mkDestDir('heldout')
+# for group in ('train', 'valid'):
+#     def mkDestDir(dirName):
+#         Path(os.path.join(DEST_PATH, dirName)).mkdir(parents=True, exist_ok=True)
+#     mkDestDir('fullsize_%s'%group)
+#     mkDestDir('independent_fullsize_%s'%group)
+#     mkDestDir(group)
+#     mkDestDir('heldout')
 
 sourceImgDirs = [
-    'C:/Users/Tracking/counting-3/imgs/Charlene/temp2',
-    'P:/Robert/counting-3/imgs/4-circle']
-picklePaths = ['%s/egg_labels_robert.pickle' % sourceImgDir for sourceImgDir in
+    'P:/Egg images_9_3_2020/WT_5'
+    ]
+picklePaths = ['%s/egg_count_labels_robert_manual_amend.pickle' % sourceImgDir for sourceImgDir in
                sourceImgDirs]
 
 clickLabelManager = ClickLabelManager()
@@ -130,6 +131,7 @@ def saveClickPositionImage(patch, outputPath):
         patch.position)
     if not subImageKey in clickLabelManager.clicks:
         print('did not find key', subImageKey, 'in click keys')
+        input()
         return
     x1, y1 = patch.xOffset, patch.yOffset
     clicks = clickLabelManager.clicks[subImageKey]
@@ -188,7 +190,7 @@ def savePatches(subImg, imgPath, rowNum, colNum, position=None):
         patch = Patch(imgPath, subImg, rowNum, colNum, position)
         if MODE == 'full':
             if MODE_FOR_FULL == 'heldout':
-                destPath = os.path.join(DEST_PATH, MODE_FOR_FULL)
+                destPath = os.path.join(DEST_PATH, "%s_robert_WT_5"%MODE_FOR_FULL)
             else:
                 destPath = os.path.join(DEST_PATH, '%s_fullsize_%s'%(
                     MODE_FOR_FULL, GROUP))

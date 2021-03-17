@@ -371,6 +371,7 @@ class CircleFinder:
       rotationAngle = 0.5*(math.atan(np.mean([el['slope'] for el in\
         self.rowRegressions])) - math.atan(np.mean([1/el['slope'] for el in\
         self.colRegressions])))
+      # rotationAngle = 0.0
       rotatedImg = rotate_image(self.img, rotationAngle)
       for i, centroid in enumerate(self.centroids):
         self.centroids[i] = rotate_around_point_highperf(centroid,
