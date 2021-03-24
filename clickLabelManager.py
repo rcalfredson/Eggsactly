@@ -4,9 +4,9 @@ class ClickLabelManager:
     def __init__(self):
         """Create new ClickLabelManager instance."""
         self.clicks = dict()
-        self.categories = ('Blurry', 'Difficult')
+        self.categories = ("Blurry", "Difficult")
         for c in self.categories:
-            setattr(self, 'is%sLabels' % c, dict())
+            setattr(self, "is%sLabels" % c, dict())
         self.chamberTypes = dict()
         self.frontierData = {}
 
@@ -23,7 +23,7 @@ class ClickLabelManager:
                       cases where multiple egg-laying areas share one set of row and
                       column indices.
         """
-        key = '%s_%i_%i' % (imageName, rowNum, colNum)
+        key = "%s_%i_%i" % (imageName, rowNum, colNum)
         if position is not None and len(position) > 0:
             key += "_%s" % position
         return key
@@ -52,10 +52,11 @@ class ClickLabelManager:
         key = self.subImageKey(imageName, rowNum, colNum)
         self.clicks[key] = []
 
-    def addCategoryLabel(self, imageName, rowNum, colNum, category, isPositive,
-                         position=None):
+    def addCategoryLabel(
+        self, imageName, rowNum, colNum, category, isPositive, position=None
+    ):
         key = self.subImageKey(imageName, rowNum, colNum, position)
-        getattr(self, 'is%sLabels' % category)[key] = isPositive
+        getattr(self, "is%sLabels" % category)[key] = isPositive
 
     def addClick(self, imageName, rowNum, colNum, coords, position=None):
         """Associate a click with an egg on the given sub-image.
