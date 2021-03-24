@@ -127,7 +127,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# counting-specific folders and files:
+# counting-specific folders and files
 detectors/
 emptyTest/
 generated/
@@ -141,3 +141,6 @@ uploads/*
 egg_count_labels*
 error_stats*
 results_*
+
+# editor files
+.vscode/*
