@@ -50,7 +50,6 @@
             canvasHeight = Math.min(800, window.innerHeight);
         let pointerDown = false;
         let dragStart = false;
-        let justFinishedDrag = false;
         let timeDownUp;
         let origCenter;
         let currentImgIndex = 0;
@@ -168,7 +167,7 @@
             socket.on('counting-error', (msg) => {
                 $('#updates').append(`<p style="color: red">${msg.data}</p>`);
                 orderedImgNames.push(msg.filename);
-                annotations[msg.filename] = { 'error': msg.error_type }
+                annotations[msg.filename] = {'error': msg.error_type}
             })
             socket.on('counting-done', () => {
                 $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
@@ -689,11 +688,7 @@
                 eggLayingRegions[index][path.id].outline.strokeColor = colors.grey;
             }
             path.onClick = (event) => {
-                console.log('just finished drag?')
-                console.log(justFinishedDrag);
-                // the click event for the input boxes only fires when the mouse button is lifted
-                // at that point, though, dragstart is set to false again
-                if (inputAmender || justFinishedDrag) {
+                if (inputAmender) {
                     return;
                 }
                 let viewer = document.getElementById('viewer')
@@ -707,17 +702,9 @@
                 let fieldHeight = text.bounds.height * paper.view.zoom;
                 let fieldWidth = text.bounds.width * paper.view.zoom;
                 eggLayingRegions[index][path.id].outline.strokeWidth = 2;
-                console.log('region bounds:');
-                console.log(eggLayingRegions[index][path.id].outline.bounds);
-                console.log('transform for the outline:');
-                console.log(eggLayingRegions[index][path.id].outline.viewMatrix)
-                console.log('scaling:');
-                console.log(eggLayingRegions[index][path.id].outline.scaling)
-                let outlineBounds = eggLayingRegions[index][path.id].outline.bounds;
-                let transformMat = eggLayingRegions[index][path.id].outline.viewMatrix;
                 inputAmender.style = 'position: absolute; left:' +
-                    ` ${viewer.offsetLeft + (transformMat._a * outlineBounds.x) + transformMat._tx}px; ` +
-                    `top: ${viewer.offsetTop + (transformMat._a * outlineBounds.y) + transformMat._ty}px; ` +
+                    ` ${viewer.offsetLeft + eggLayingRegions[index][path.id].outline.bounds.x}px; ` +
+                    `top: ${viewer.offsetTop + eggLayingRegions[index][path.id].outline.bounds.y}px; ` +
                     `width: ${50 * paper.view.zoom}px;` +
                     `height: ${26 * paper.view.zoom}px;` +
                     `font-size: ${0.75 * text.fontSize * paper.view.zoom}px;`
@@ -869,14 +856,12 @@
             paper.view.on('mousedown', function () {
                 pointerDown = true;
                 timeDownUp = new Date().getTime();
+                dragStart = true;
             });
             paper.view.on('mouseup', function () {
                 pointerDown = false;
                 timeDownUp = new Date().getTime();
-                justFinishedDrag = dragStart;
                 dragStart = false;
-                console.log('setting dragstart to false')
-                console.log(dragStart)
             });
         }
 
@@ -886,13 +871,14 @@
                 if (inputAmender) {
                     return;
                 }
-                dragStart = true;
                 var timeMove = new Date().getTime();
                 if (timeMove > timeDownUp) {
-                    var offset = new paper.Point(evt.downPoint.x - evt.point.x,
-                        evt.downPoint.y - evt.point.y);
-                    let new_center = paper.view.center.add(offset);
-                    paper.view.setCenter(new_center);
+                    if (dragStart) {
+                        var offset = new paper.Point(evt.downPoint.x - evt.point.x,
+                            evt.downPoint.y - evt.point.y);
+                        let new_center = paper.view.center.add(offset);
+                        paper.view.setCenter(new_center);
+                    }
                 } else {
                     timeDownUp = null;
                 }

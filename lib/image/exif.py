@@ -29,6 +29,5 @@ def correct_via_exif(filepath, read_only=False):
             image.save(filepath)
         image.close()
     except (TypeError, AttributeError, KeyError, IndexError):
-        print('image has no exif')
         # cases: image don't have getexif
         pass

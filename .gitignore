@@ -141,6 +141,7 @@ uploads/*
 egg_count_labels*
 error_stats*
 results_*
+debug/*
 
 # editor files
 .vscode/*

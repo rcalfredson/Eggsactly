@@ -170,8 +170,11 @@ class SessionManager():
                 if base_path in edited_counts and len(edited_counts[base_path]) > 0:
                     writer.writerow(
                         ["Note: this image's counts have been amended by hand"])
+                updated_counts = self.predictions[imgPath].copy()
+                for region_index in edited_counts[base_path]:
+                    updated_counts[int(region_index)] = int(edited_counts[base_path][region_index])
                 CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
-                    [self.predictions[imgPath]], 0, writer)
+                    [updated_counts], 0, writer)
                 writer.writerow([])
         self.emit_to_room('counting-csv',
                            {'data': os.path.basename(resultsPath)})
