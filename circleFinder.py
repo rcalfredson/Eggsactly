@@ -40,9 +40,9 @@ def setup_cfg():
 def centroidnp(arr):
     """Return the column-wise averages for a first 2 columns of a Numpy array.
 
-  Arguments:
-    - arr: Numpy array with at least two columns.
-  """
+    Arguments:
+      - arr: Numpy array with at least two columns.
+    """
     length = arr.shape[0]
     sum_x = np.sum(arr[:, 0])
     sum_y = np.sum(arr[:, 1])
@@ -81,28 +81,20 @@ def corners(xy_sequence, image_corners):
     d = dict()
     seq_shape = xy_sequence.shape
     xy_sequence = xy_sequence.reshape(seq_shape[0] * seq_shape[1], -1)
-    d["tl"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["tl"]))
-    d["tr"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["tr"]))
-    d["bl"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["bl"]))
-    d["br"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["br"]))
+    d["tl"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["tl"]))
+    d["tr"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["tr"]))
+    d["bl"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["bl"]))
+    d["br"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["br"]))
     return d
 
 
 def corners_old(xy_sequence, image_corners):
     """Return a dict with the best point for each corner."""
     d = dict()
-    d["tl"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["tl"]))
-    d["tr"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["tr"]))
-    d["bl"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["bl"]))
-    d["br"] = min(xy_sequence, key=lambda xy: distance(
-        xy, image_corners["br"]))
+    d["tl"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["tl"]))
+    d["tr"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["tr"]))
+    d["bl"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["bl"]))
+    d["br"] = min(xy_sequence, key=lambda xy: distance(xy, image_corners["br"]))
     return d
 
 
@@ -114,11 +106,11 @@ model = VisualizationDemo(cfg)
 
 def getChamberTypeByRowsAndCols(numRowsCols):
     """Return a chamber type name based on a match with the number of rows and
-  columns.
+    columns.
 
-  Arguments:
-    - numRowsCols: list of the form [numRows, numCols]
-  """
+    Arguments:
+      - numRowsCols: list of the form [numRows, numCols]
+    """
     for ct in CT:
         if (
             numRowsCols[0] == ct.value().numRows
@@ -129,50 +121,49 @@ def getChamberTypeByRowsAndCols(numRowsCols):
 
 def subImagesFromGridPoints(img, xs, ys):
     """Split an image into a grid determined by the inputted X and Y coordinates.
-  The returned images are organized in a row-dominant order.
+    The returned images are organized in a row-dominant order.
 
-  Arguments:
-    - img: an image to segment
-    - xs: grid points along X axis
-    - ys: grid points along Y axis
-  """
+    Arguments:
+      - img: an image to segment
+      - xs: grid points along X axis
+      - ys: grid points along Y axis
+    """
     subImgs = []
     for i, y in enumerate(ys):
         for j, x in enumerate(xs):
-            subImgs.append(img[y: ys[j + 1], x: xs[i + 1]])
+            subImgs.append(img[y : ys[j + 1], x : xs[i + 1]])
     return subImgs
 
 
 def subImagesFromBBoxes(img, bboxes):
     """Split an image according to the inputted bounding boxes (whose order
-  determines the order of the returned sub-images).
+    determines the order of the returned sub-images).
 
-  Arguments:
-    - img: an image to segment
-    - bboxes: a list of bounding boxes. Each bounding box is a list of the form
-              [x_min, y_min, width, height] in pixels.
-  """
+    Arguments:
+      - img: an image to segment
+      - bboxes: a list of bounding boxes. Each bounding box is a list of the form
+                [x_min, y_min, width, height] in pixels.
+    """
     subImgs = []
     for bbox in bboxes:
-        subImgs.append(img[bbox[1]: bbox[1] + bbox[3],
-                           bbox[0]: bbox[0] + bbox[2]])
+        subImgs.append(img[bbox[1] : bbox[1] + bbox[3], bbox[0] : bbox[0] + bbox[2]])
     return subImgs
 
 
 class CircleFinder:
     """Detect landmarks in the center of the egg-laying chambers to use in
-  segmenting the image.
-  """
+    segmenting the image.
+    """
 
     def __init__(self, img, imgName, allowSkew=False):
         """Create new CircleFinder instance.
 
-    Arguments:
-      - img: the image to analyze, in Numpy array form
-      - imgName: the basename of the image
-      - allowSkew: boolean which, if set to False, registers an error if skew is
-                   detected in the image.
-    """
+        Arguments:
+          - img: the image to analyze, in Numpy array form
+          - imgName: the basename of the image
+          - allowSkew: boolean which, if set to False, registers an error if skew is
+                       detected in the image.
+        """
         self.img = img
         self.imgName = imgName
         self.skewed = None
@@ -180,7 +171,7 @@ class CircleFinder:
 
     def getPixelToMMRatio(self):
         """Calculate the image's ratio of pixels to mm, averaged between the result
-    for rows and for columns."""
+        for rows and for columns."""
         self.pxToMM = 0.5 * (
             self.avgDists[1] / CT[self.ct].value().rowDist
             + self.avgDists[0] / CT[self.ct].value().colDist
@@ -188,20 +179,20 @@ class CircleFinder:
 
     def getSubImages(self, img, centers, avgDists, numRowsCols):
         """Determine sub-images for the image based on the chamber type and the
-    locations of detected arena wells.
+        locations of detected arena wells.
 
-    Arguments:
-      - img: the image to segment.
-      - centers: list of detected wells for the image (each center is a tuple
-                 ordered pair of X and Y coordinates)
-      - avgDists: tuple list of the average distances along X and Y direction
-                  between neighboring wells
-      - numRowsCols: tuple list of the number of rows and columns of wells.
+        Arguments:
+          - img: the image to segment.
+          - centers: list of detected wells for the image (each center is a tuple
+                     ordered pair of X and Y coordinates)
+          - avgDists: tuple list of the average distances along X and Y direction
+                      between neighboring wells
+          - numRowsCols: tuple list of the number of rows and columns of wells.
 
-    Returns:
-      - sortedSubImgs: list of the sub-images in Numpy array form (CV2-ready)
-      - sortedBBoxes: list of the bounding boxes for each sub-image
-    """
+        Returns:
+          - sortedSubImgs: list of the sub-images in Numpy array form (CV2-ready)
+          - sortedBBoxes: list of the bounding boxes for each sub-image
+        """
         subImgs, bboxes = [], []
 
         def addWidthAndHeightToBBox():
@@ -224,8 +215,7 @@ class CircleFinder:
                 )
                 subImgs.append(
                     img[
-                        slice(bboxes[-1][1], center[1] -
-                              centerAdjacentDistance),
+                        slice(bboxes[-1][1], center[1] - centerAdjacentDistance),
                         slice(bboxes[-1][0], bboxes[-1][0] + acrossCircleD),
                     ]
                 )
@@ -268,8 +258,7 @@ class CircleFinder:
                 subImgs.append(
                     img[
                         slice(bboxes[-1][1], bboxes[-1][1] + acrossCircleD),
-                        slice(bboxes[-1][0], center[0] -
-                              centerAdjacentDistance),
+                        slice(bboxes[-1][0], center[0] - centerAdjacentDistance),
                     ]
                 )
                 addWidthAndHeightToBBox()
@@ -282,8 +271,8 @@ class CircleFinder:
                 )
                 subImgs.append(
                     img[
-                        bboxes[-1][1]: center[1] - int(4 * pxToMM),
-                        bboxes[-1][0]: center[0] + int(0.5 * avgDists[0]),
+                        bboxes[-1][1] : center[1] - int(4 * pxToMM),
+                        bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
                     ]
                 )
                 addWidthAndHeightToBBox()
@@ -295,8 +284,8 @@ class CircleFinder:
                 )
                 subImgs.append(
                     img[
-                        bboxes[-1][1]: center[1] + int(8.5 * pxToMM),
-                        bboxes[-1][0]: center[0] + int(0.5 * avgDists[0]),
+                        bboxes[-1][1] : center[1] + int(8.5 * pxToMM),
+                        bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
                     ]
                 )
                 addWidthAndHeightToBBox()
@@ -309,8 +298,8 @@ class CircleFinder:
                 )
                 subImgs.append(
                     img[
-                        bboxes[-1][1]: center[1] + int(0.5 * avgDists[1]),
-                        bboxes[-1][0]: center[0] - int(4 * pxToMM),
+                        bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
+                        bboxes[-1][0] : center[0] - int(4 * pxToMM),
                     ]
                 )
                 addWidthAndHeightToBBox()
@@ -322,8 +311,8 @@ class CircleFinder:
                 )
                 subImgs.append(
                     img[
-                        bboxes[-1][1]: center[1] + int(0.5 * avgDists[1]),
-                        bboxes[-1][0]: center[0] + int(8.5 * pxToMM),
+                        bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
+                        bboxes[-1][0] : center[0] + int(8.5 * pxToMM),
                     ]
                 )
                 addWidthAndHeightToBBox()
@@ -347,22 +336,19 @@ class CircleFinder:
 
     def processDetections(self):
         """
-    Consolidate the arena well detections by organizing their X and Y
-    coordinates into histograms and finding the bins with local maxima.
+        Consolidate the arena well detections by organizing their X and Y
+        coordinates into histograms and finding the bins with local maxima.
 
-    For all chamber types excluding 4-circle, interpolate any missing detections
-    using linear regressions.
+        For all chamber types excluding 4-circle, interpolate any missing detections
+        using linear regressions.
 
-    Check if the image is skewed, and flag it accordingly.
-    """
-        self.yDetections = np.asarray([centroid[1]
-                                       for centroid in self.centroids])
-        self.xDetections = np.asarray([centroid[0]
-                                       for centroid in self.centroids])
+        Check if the image is skewed, and flag it accordingly.
+        """
+        self.yDetections = np.asarray([centroid[1] for centroid in self.centroids])
+        self.xDetections = np.asarray([centroid[0] for centroid in self.centroids])
         self.wellCoords = [[], []]
         for detI, detections in enumerate((self.xDetections, self.yDetections)):
-            histResults = binned_statistic(
-                detections, [], bins=40, statistic="count")
+            histResults = binned_statistic(detections, [], bins=40, statistic="count")
             binHtsOrig = histResults.statistic
             binClusters = trueRegions(binHtsOrig > 0)
 
@@ -373,8 +359,7 @@ class CircleFinder:
                             np.mean(
                                 [
                                     detections[
-                                        (histResults.binnumber -
-                                         1 >= trueRegion.start)
+                                        (histResults.binnumber - 1 >= trueRegion.start)
                                         & (histResults.binnumber <= trueRegion.stop)
                                     ]
                                 ]
@@ -399,8 +384,7 @@ class CircleFinder:
                 self.centroids.remove(centroid)
         self.sortedCentroids = []
         for i, well in enumerate(wells):
-            closestDetection = min(
-                self.centroids, key=lambda xy: distance(xy, well))
+            closestDetection = min(self.centroids, key=lambda xy: distance(xy, well))
             if self.ct is CT.fourCircle.name:
                 self.sortedCentroids.append(well)
                 continue
@@ -414,10 +398,8 @@ class CircleFinder:
                 + (() if None in self.sortedCentroids else (-1,))
             )
         )
-        self.rowRegressions = np.zeros(
-            self.sortedCentroids.shape[1]).astype(object)
-        self.colRegressions = np.zeros(
-            self.sortedCentroids.shape[0]).astype(object)
+        self.rowRegressions = np.zeros(self.sortedCentroids.shape[1]).astype(object)
+        self.colRegressions = np.zeros(self.sortedCentroids.shape[0]).astype(object)
         if self.ct is not CT.fourCircle.name:
             self.interpolateCentroids()
         prelim_corners = fake_image_corners(self.sortedCentroids)
@@ -447,8 +429,8 @@ class CircleFinder:
 
     def interpolateCentroids(self):
         """Find any centroids with NaN coordinates and interpolate their positions
-    based on neighbors in their row and column.
-    """
+        based on neighbors in their row and column.
+        """
         for i, col in enumerate(self.sortedCentroids):
             for j, centroid in enumerate(col):
                 row = self.sortedCentroids[:, j]
@@ -460,22 +442,21 @@ class CircleFinder:
                 if len(centroid[np.isnan(centroid)]):
                     row = self.sortedCentroids[:, j]
                     self.sortedCentroids[i, j] = linearIntersection(
-                        dict(row=self.rowRegressions[j],
-                             col=self.colRegressions[i])
+                        dict(row=self.rowRegressions[j], col=self.colRegressions[i])
                     )
 
     def findCircles(self, debug=False):
         """Find the location of arena wells for the image in attribute `self.img`.
 
-    Returns:
-      - wells: list of the coordinates of detected wells.
-      - avgDists: tuple list of the average distances along X and Y direction
-                  between neighboring wells.
-      - numRowsCols: tuple list of the number of rows and columns of wells.
-      - rotatedImg: `self.img` after being rotated to best align rows and
-                    columns with the border of the image.
-      - rotationAngle: angle in radians by which the image was rotated.
-    """
+        Returns:
+          - wells: list of the coordinates of detected wells.
+          - avgDists: tuple list of the average distances along X and Y direction
+                      between neighboring wells.
+          - numRowsCols: tuple list of the number of rows and columns of wells.
+          - rotatedImg: `self.img` after being rotated to best align rows and
+                        columns with the border of the image.
+          - rotationAngle: angle in radians by which the image was rotated.
+        """
         self.imageResized = cv2.resize(
             self.img, (0, 0), fx=0.15, fy=0.15, interpolation=cv2.INTER_CUBIC
         )
@@ -488,8 +469,7 @@ class CircleFinder:
             centroidnp(np.asarray(list(zip(*np.where(prediction == 1)))))
             for prediction in predictions
         ]
-        self.centroids = [tuple(reversed(centroid))
-                          for centroid in self.centroids]
+        self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
         if debug:
             print("what are centroids?", self.centroids)
             imgCopy = np.array(self.imageResized).astype(np.uint8)
@@ -509,8 +489,7 @@ class CircleFinder:
         if self.ct is not CT.fourCircle.name:
             rotationAngle = 0.5 * (
                 math.atan(np.mean([el["slope"] for el in self.rowRegressions]))
-                - math.atan(np.mean([1 / el["slope"]
-                                     for el in self.colRegressions]))
+                - math.atan(np.mean([1 / el["slope"] for el in self.colRegressions]))
             )
             rotatedImg = rotate_image(self.img, rotationAngle)
             for i, centroid in enumerate(self.centroids):
@@ -528,11 +507,9 @@ class CircleFinder:
             self.wellCoords[i] = np.round(np.divide(self.wellCoords[i], 0.15)).astype(
                 int
             )
-        wells = wells.reshape(
-            self.numRowsCols[0] * self.numRowsCols[1], 2).astype(int)
+        wells = wells.reshape(self.numRowsCols[0] * self.numRowsCols[1], 2).astype(int)
         self.wells = wells
-        self.avgDists = [np.mean(np.diff(self.wellCoords[i]))
-                         for i in range(2)]
+        self.avgDists = [np.mean(np.diff(self.wellCoords[i])) for i in range(2)]
         self.rotatedImg, self.rotationAngle = rotatedImg, rotationAngle
         return (
             wells,
@@ -546,14 +523,13 @@ class CircleFinder:
 def rotate_image(image, angle):
     """Rotate image by an inputted angle.
 
-  Arguments:
-    - image: the image to rotate.
-    - angle: the degree to which to rotate (in radians).
-  """
+    Arguments:
+      - image: the image to rotate.
+      - angle: the degree to which to rotate (in radians).
+    """
     image_center = tuple(np.array(image.shape[1::-1]) / 2)
     rot_mat = cv2.getRotationMatrix2D(image_center, 180 * angle / math.pi, 1.0)
-    result = cv2.warpAffine(
-        image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
+    result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
     return result
 
 
@@ -580,19 +556,17 @@ def rotate_around_point_highperf(xy, radians, origin=(0, 0)):
 
 def calculateRegressions(row, col):
     """Calculate linear regressions for the Y values in the list of points in a
-  given column and the X values in the list of points in a given row.
+    given column and the X values in the list of points in a given row.
 
-  Arguments:
-    - row: list of points (XY tuples) in a row of interest
-    - col: list of points (XY tuples) in a column of interest
-  """
+    Arguments:
+      - row: list of points (XY tuples) in a row of interest
+      - col: list of points (XY tuples) in a column of interest
+    """
     colModel = LinearRegression()
-    colInd = np.array([el[1]
-                       for el in col if not np.isnan(el).any()]).reshape(-1, 1)
+    colInd = np.array([el[1] for el in col if not np.isnan(el).any()]).reshape(-1, 1)
     colModel.fit(colInd, [el[0] for el in col if not np.isnan(el).any()])
     rowModel = LinearRegression()
-    rowInd = np.array([el[0]
-                       for el in row if not np.isnan(el).any()]).reshape(-1, 1)
+    rowInd = np.array([el[0] for el in row if not np.isnan(el).any()]).reshape(-1, 1)
     rowModel.fit(rowInd, [el[1] for el in row if not np.isnan(el).any()])
     a = (1 / colModel.coef_)[0]
     c = (-colModel.intercept_ / colModel.coef_)[0]
@@ -605,11 +579,11 @@ def calculateRegressions(row, col):
 def linearIntersection(regressions):
     """Calculate the intersection of two linear regressions.
 
-  Arguments:
-    - regression: dictionary of the form
-    {'row': {'slope': number, 'intercept': number},
-     'col': {'slope': number, 'intercept': number}}
-  """
+    Arguments:
+      - regression: dictionary of the form
+      {'row': {'slope': number, 'intercept': number},
+       'col': {'slope': number, 'intercept': number}}
+    """
     r = regressions
     interceptDiff = r["row"]["intercept"] - r["col"]["intercept"]
     slopeDiff = r["col"]["slope"] - r["row"]["slope"]
@@ -621,13 +595,13 @@ def linearIntersection(regressions):
 
 def reject_outliers_by_delta(binCenters, m=1.3):
     """Reject outliers based on the magnitude of their difference from neighboring
-  points.
+    points.
 
-  Arguments:
-    - binCenters: 1D Numpy array of values to check
-    - m: sensitivity of the outlier test, smaller for more sensitivity
-        (default: 1.3)
-  """
+    Arguments:
+      - binCenters: 1D Numpy array of values to check
+      - m: sensitivity of the outlier test, smaller for more sensitivity
+          (default: 1.3)
+    """
     diffs = np.diff(binCenters)
     outIdxs = list(range(len(binCenters)))
     delta_mags = abs(diffs - np.mean(diffs))

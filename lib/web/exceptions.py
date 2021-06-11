@@ -1,5 +1,5 @@
 class CUDAMemoryException(Exception):
     pass
 
-class CountingException(Exception):
+class ImageAnalysisException(Exception):
     pass

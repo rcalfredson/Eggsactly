@@ -25,7 +25,7 @@ from werkzeug.utils import secure_filename
 from lib.image.exif import correct_via_exif
 from lib.os.pauser import PythonPauser
 from lib.web.downloadManager import DownloadManager
-from lib.web.exceptions import CUDAMemoryException
+from lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 from lib.web.scheduler import Scheduler
 from lib.web.sessionManager import SessionManager
 from users import users

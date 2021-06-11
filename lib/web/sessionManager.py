@@ -12,7 +12,7 @@ import torch
 from chamber import CT
 from circleFinder import CircleFinder
 from detectors.fcrn import model
-from lib.web.exceptions import CUDAMemoryException, CountingException
+from lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 
 MODEL_PATH = 'models/egg_FCRN_A_150epochs_Yang-Lab-Dell2_2021-01-06' + \
              ' 17-04-53.765866.pth'
@@ -40,7 +40,7 @@ class SessionManager():
         self.room = room
         self.lastPing = time.time()
         self.errorMessages = {
-            CountingException: 'Image could not be analyzed.',
+            ImageAnalysisException: 'Image could not be analyzed.',
             CUDAMemoryException: 'Error: system ran out of resources'
         }
 
@@ -62,7 +62,7 @@ class SessionManager():
 
     def report_counting_error(self, imgPath, err_type):
         prefix = {
-            CountingException: 'Error',
+            ImageAnalysisException: 'Error',
             CUDAMemoryException: 'Ran out of system resources while'}[err_type]
         self.emit_to_room('counting-error',
                 {'data': '%s counting eggs for image %s'% (
@@ -94,7 +94,7 @@ class SessionManager():
         except Exception as exc:
             if self.is_CUDA_mem_error(exc):
                 raise CUDAMemoryException
-            self.report_counting_error(imgPath, CountingException)
+            self.report_counting_error(imgPath, ImageAnalysisException)
             return
         self.emit_to_room('counting-progress',
                            {'data': 'Counting eggs in image %s' % imgBasename})
