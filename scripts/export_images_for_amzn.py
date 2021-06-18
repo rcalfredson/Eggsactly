@@ -48,7 +48,7 @@ def segment_sub_image_via_GPU(img, img_name):
 
 
 def row_num(i):
-    if currentImgData["ct"] == CT.fourCircle.name:
+    if currentImgData["ct"] == CT.large.name:
         numCirclesPerWell = 4
         numCirclesPerRow = currentImgData["row_cols"][0] * numCirclesPerWell
         return np.floor(i / numCirclesPerRow).astype(int)
@@ -56,7 +56,7 @@ def row_num(i):
 
 
 def col_num(i):
-    if currentImgData["ct"] == CT.fourCircle.name:
+    if currentImgData["ct"] == CT.large.name:
         numCirclesPerWell = 4
         numCirclesPerRow = currentImgData["row_cols"][0] * numCirclesPerWell
         return np.floor((i % numCirclesPerRow) / numCirclesPerWell).astype(int)
@@ -68,14 +68,14 @@ def generate_outputs(lbn, subImgs):
         print("export name is:", lbn)
         print("row", row_num(i))
         print("col", col_num(i))
-        if currentImgData["ct"] == CT.fourCircle.name:
+        if currentImgData["ct"] == CT.large.name:
             print("4c position:", POSITIONS[i % 4])
         exported_filename = "%s_%i_%i%s" % (
             lbn,
             row_num(i),
             col_num(i),
             "_%s" % (POSITIONS[i % 4])
-            if currentImgData["ct"] == CT.fourCircle.name
+            if currentImgData["ct"] == CT.large.name
             else "",
         )
         cv2.imwrite(os.path.join(opts.output_dir, f"{exported_filename}.png"), sub_img[:, :, ::-1])

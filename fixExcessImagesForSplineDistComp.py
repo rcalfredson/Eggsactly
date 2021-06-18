@@ -37,7 +37,7 @@ for i, imgList in enumerate((imgs_in_train_val, imgs_in_heldout)):
         print('ct?', ct)
         print('orig index:', orig_index)
         print('num cols?', ct.numCols)
-        if imgData[goodKey]['ct'] == 'new':
+        if imgData[goodKey]['ct'] == 'opto':
             ct.numCols = ct.numRows
         rowNum = int(np.floor(orig_index / (2*ct.numCols)))
         colNum = orig_index % int(2*ct.numCols)

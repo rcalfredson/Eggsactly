@@ -201,7 +201,7 @@ class CircleFinder:
         self.getPixelToMMRatio()
         pxToMM = self.pxToMM
         for center in centers:
-            if self.ct is CT.fourCircle.name:
+            if self.ct is CT.large.name:
                 outerEdgeDistance = int((1 + 8.6 + 8 + 1) * pxToMM)
                 acrossCircleD = int(10.5 * pxToMM)
                 halfRealCircleD = int((0.5 * 10) * pxToMM)
@@ -262,7 +262,7 @@ class CircleFinder:
                     ]
                 )
                 addWidthAndHeightToBBox()
-            elif self.ct is CT.new.name:
+            elif self.ct is CT.opto.name:
                 bboxes.append(
                     [
                         max(center[0] - int(0.5 * avgDists[0]), 0),
@@ -316,19 +316,19 @@ class CircleFinder:
                     ]
                 )
                 addWidthAndHeightToBBox()
-        if self.ct is CT.new.name:
-            return CT.new.value().getSortedSubImgs(subImgs, bboxes)
+        if self.ct is CT.opto.name:
+            return CT.opto.value().getSortedSubImgs(subImgs, bboxes)
         sortedSubImgs = []
         sortedBBoxes = []
         for j in range(numRowsCols[0]):
             for i in range(numRowsCols[1]):
-                offset = 4 if self.ct is CT.fourCircle.name else 2
+                offset = 4 if self.ct is CT.large.name else 2
                 idx = numRowsCols[0] * offset * i + offset * j
                 sortedSubImgs.append(subImgs[idx])
                 sortedSubImgs.append(subImgs[idx + 1])
                 sortedBBoxes.append(bboxes[idx])
                 sortedBBoxes.append(bboxes[idx + 1])
-                if self.ct is CT.fourCircle.name:
+                if self.ct is CT.large.name:
                     for k in range(2, 4):
                         sortedBBoxes.append(bboxes[idx + k])
                         sortedSubImgs.append(subImgs[idx + k])
@@ -385,7 +385,7 @@ class CircleFinder:
         self.sortedCentroids = []
         for i, well in enumerate(wells):
             closestDetection = min(self.centroids, key=lambda xy: distance(xy, well))
-            if self.ct is CT.fourCircle.name:
+            if self.ct is CT.large.name:
                 self.sortedCentroids.append(well)
                 continue
             if distance(closestDetection, well) > 0.02 * diagDist:
@@ -400,7 +400,7 @@ class CircleFinder:
         )
         self.rowRegressions = np.zeros(self.sortedCentroids.shape[1]).astype(object)
         self.colRegressions = np.zeros(self.sortedCentroids.shape[0]).astype(object)
-        if self.ct is not CT.fourCircle.name:
+        if self.ct is not CT.large.name:
             self.interpolateCentroids()
         prelim_corners = fake_image_corners(self.sortedCentroids)
         true_corners = corners(self.sortedCentroids, prelim_corners)
@@ -486,7 +486,7 @@ class CircleFinder:
         rotationAngle = 0
         rotatedImg = self.img
         image_origin = tuple(np.array(self.imageResized.shape[1::-1]) / 2)
-        if self.ct is not CT.fourCircle.name:
+        if self.ct is not CT.large.name:
             rotationAngle = 0.5 * (
                 math.atan(np.mean([el["slope"] for el in self.rowRegressions]))
                 - math.atan(np.mean([1 / el["slope"] for el in self.colRegressions]))

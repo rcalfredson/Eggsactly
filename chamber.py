@@ -55,9 +55,9 @@ class Chamber:
             if len(row) == 1:
                 if (
                     len(counts.keys()) > 0
-                    and chamberTypes[currentImg] == CT.fourCircle.name
+                    and chamberTypes[currentImg] == CT.large.name
                 ):
-                    counts[currentImg] = FourCircleChamber().flattenCounts(
+                    counts[currentImg] = LargeChamber().flattenCounts(
                         counts[currentImg]
                     )
                 currentImg = row[0].lower()
@@ -67,7 +67,7 @@ class Chamber:
         return counts
 
 
-class NewChamber(Chamber):
+class OptoChamber(Chamber):
     """ "Represent the chamber type with 4 rows and 5 columns. Note: before being
     analyzed by this program, these images need to be rotated so their agarose
     strips run vertically, which is why they are listed below as having 5 rows
@@ -79,6 +79,10 @@ class NewChamber(Chamber):
         self.rowDist, self.colDist = 18, 22
         self.numRepeatedRowsPerCol = 2
         self.numRepeatedColsPerRow = 1
+        self.dist_across_arena = 17
+        self.dist_between_arenas = 5
+        self.dist_along_agarose = 86
+        self.agarose_width = 3.5
 
     def getSortedSubImgs(self, subImgs, bboxes):
         sortedSubImgs, sortedBBoxes = [], []
@@ -94,25 +98,35 @@ class NewChamber(Chamber):
         return sortedSubImgs, sortedBBoxes
 
 
-class OldChamber(Chamber):
+class SixByFourChamber(Chamber):
     """Represent the chamber type with 6 rows and 4 columns."""
 
     def __init__(self):
         """Create a new "Old"-type chamber."""
         self.numRows, self.numCols = 6, 4
         self.rowDist, self.colDist = 12, 25
+        self.dist_across_arena = 22
+        self.dist_between_arenas = 3
+        self.dist_along_agarose = 78
+        self.agarose_width = 6
+        self.dist_trough_to_first_arena = 4
 
 
-class ThreeByFiveChamber(Chamber):
+class FiveByThreeChamber(Chamber):
     """Represent the chamber type with 5 rows and 3 columns."""
 
     def __init__(self):
         """Create a new "3x5"-type chamber."""
         self.numRows, self.numCols = 5, 3
-        self.rowDist, self.colDist = 12, 23
+        self.rowDist, self.colDist = 12, 26
+        self.dist_across_arena = 24
+        self.dist_between_arenas = 3.5
+        self.dist_along_agarose = 64
+        self.agarose_width = 7
+        self.dist_trough_to_first_arena = 3
 
 
-class FourCircleChamber(Chamber):
+class LargeChamber(Chamber):
     """Represent the chamber type with four central points arranged in a square,
     with four agarose wells arranged in a diamond pattern around each of those
     central points."""
@@ -193,7 +207,13 @@ class FourCircleChamber(Chamber):
 class CT(enum.Enum):
     """Hold constructors for all chamber types."""
 
-    new = NewChamber
-    old = OldChamber
-    threeBy5 = ThreeByFiveChamber
-    fourCircle = FourCircleChamber
+    opto = OptoChamber
+    sixByFour = SixByFourChamber
+    fiveByThree = FiveByThreeChamber
+    large = LargeChamber
+    
+    # Legacy aliases
+    new = OptoChamber
+    old = SixByFourChamber
+    threeBy5 = FiveByThreeChamber
+    fourCircle = LargeChamber

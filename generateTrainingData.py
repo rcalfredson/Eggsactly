@@ -322,7 +322,7 @@ for imgPath in subImgs:
         else:
             MODE = "patch"
             assignToTrainingOrValidation()
-        if chamberTypes[imgPath] == CT.fourCircle.name:
+        if chamberTypes[imgPath] == CT.large.name:
             numCirclesPerRow = rowColCounts[imgPath][0] * 4
             rowNum = np.floor(i / numCirclesPerRow).astype(int)
             colNum = np.floor((i % numCirclesPerRow) / 4).astype(int)

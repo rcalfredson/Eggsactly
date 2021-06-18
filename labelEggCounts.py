@@ -193,11 +193,11 @@ class EggCountLabeler:
                     currentImg = row[0].lower()
                     cts = self.clickLabelManager.chamberTypes
                     ctUnknown = currentImg not in cts
-                    getCtsFromFile = ctUnknown or cts[currentImg] != CT.fourCircle.name
+                    getCtsFromFile = ctUnknown or cts[currentImg] != CT.large.name
                     self.existingCounts[currentImg] = []
                     if not getCtsFromFile:
                         self.rowColCounts[currentImg] = [
-                            getattr(CT.fourCircle.value(), name)
+                            getattr(CT.large.value(), name)
                             for name in ("numRows", "numCols")
                         ]
                 else:
@@ -295,16 +295,16 @@ class EggCountLabeler:
                     self.clickLabelManager.chamberTypes[self.lowerBasenames[i]] = ""
                 if (
                     self.clickLabelManager.chamberTypes[self.lowerBasenames[i]]
-                    == CT.fourCircle.name
+                    == CT.large.name
                 ):
                     self.existingCounts[self.lowerBasenames[i]] = itemgetter(
-                        *CT.fourCircle.value().dataIndices
+                        *CT.large.value().dataIndices
                     )(self.existingCounts[self.lowerBasenames[i]])
                     self.existingCounts[self.lowerBasenames[i]] = [
                         x
                         for _, x in sorted(
                             zip(
-                                CT.fourCircle.value().csvToClockwise,
+                                CT.large.value().csvToClockwise,
                                 self.existingCounts[self.lowerBasenames[i]],
                             )
                         )
@@ -969,7 +969,7 @@ class EggCountLabeler:
                         2
                         if i
                         and self.clickLabelManager.chamberTypes[lowerBasename]
-                        != CT.fourCircle.name
+                        != CT.large.name
                         else 1
                     )
                 )
@@ -978,7 +978,7 @@ class EggCountLabeler:
             for i, j in itertools.product(*chamberRange):
                 if (
                     self.clickLabelManager.chamberTypes[lowerBasename]
-                    != CT.fourCircle.name
+                    != CT.large.name
                 ):
                     unofficialEggCounts.append(
                         self.clickLabelManager.getNumClicks(
@@ -1372,7 +1372,7 @@ class EggCountLabeler:
             subImgIdx = self.subImgIdx
         if (
             self.clickLabelManager.chamberTypes[self.lowerBasenames[idx]]
-            == CT.fourCircle.name
+            == CT.large.name
         ):
             return self.rowNumFourCircle(idx, subImgIdx)
         return int(
@@ -1404,7 +1404,7 @@ class EggCountLabeler:
             subImgIdx = self.subImgIdx
         if (
             self.clickLabelManager.chamberTypes[self.lowerBasenames[idx]]
-            == CT.fourCircle.name
+            == CT.large.name
         ):
             return self.colNumFourCircle(idx)
         return subImgIdx % int(2 * self.rowColCounts[self.lowerBasenames[idx]][1])
@@ -1440,7 +1440,7 @@ class EggCountLabeler:
         )
         if (
             self.clickLabelManager.chamberTypes[self.lowerBasenames[self.imgIdx]]
-            == CT.fourCircle.name
+            == CT.large.name
         ):
             self.wellPosition = POSITIONS[self.subImgIdx % 4]
             vidIdStr += ", %s" % self.wellPosition
@@ -1772,7 +1772,7 @@ class EggCountLabeler:
         rowCols = self.rowColCounts[self.lowerBasenames[imgIdx]]
         is4C = (
             self.clickLabelManager.chamberTypes[self.lowerBasenames[imgIdx]]
-            == CT.fourCircle.name
+            == CT.large.name
         )
         numCells = (2 if not is4C else 1) * rowCols[0] * rowCols[1]
         if is4C:

@@ -12,7 +12,7 @@ html {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0, 0, 0, 0.6);
   z-index: 998;
 }
 
@@ -85,6 +85,11 @@ form p {
   flex: 0 0 440px;
 }
 
+#viewer {
+  display: inline-block;
+  width: 1800px;
+}
+
 #viewer-nav {
   display: block;
   height: 30px;
@@ -127,6 +132,29 @@ form p {
   width: 4.45px;
   height: auto;
   display: inline-block;
+}
+
+#help-pane {
+  border: 2px solid rgb(106, 126, 116);
+  display: inline-block;
+  border-radius: 4px;
+  width: 300px;
+  height: 300px;
+  vertical-align: top;
+  padding: 30px;
+  overflow: auto;
+}
+
+#help-pane img {
+  max-height: 100%;
+  max-width: 100%;
+  padding: 10px 0 10px 0;
+}
+
+#help-pane-header {
+  text-align: center;
+  font-weight: 600;
+  font-size: 1.25rem;
 }
 
 #embedded-img, #egg-count-editor {
@@ -181,33 +209,81 @@ form ol {
   width: 100%;
 }
 
-.modal.is-open {
-  /* display: table; */
-  top: 40px;
-  border: 3px solid black;
-  background-color: white;
-  width: 50%;
-  box-shadow: 10px 5px 5px grey;
-  display: block;
+#mode-marker {
+  color: rgb(206, 52, 65);
+}
+
+.modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal__title {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-weight: 600;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: #00449e;
+  box-sizing: border-box;
+}
+
+.modal__overlay {
   position: fixed;
-  z-index: 999;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, .6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-#modal-1-title {
-  display: inline-block;
+.modal__container {
+  background-color: #fff;
+  padding: 30px;
+  max-width: 500px;
+  max-height: 100vh;
+  border-radius: 4px;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
-#egg-flagger-div {
-  padding: 12px;
+.modal.is-open {
+  display: block;
+  background-color: #fff;
+  padding: 30px;
+  max-width: 500px;
+  max-height: 100vh;
+  border-radius: 4px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  line-height: 150%;
+}
+
+#modal-1-message {
+  margin-top: 30px;
+}
+
+#modal-1-close {
+  background: transparent;
+  cursor: pointer;
+  border: 0;
+}
+
+#modal-1-close::before {
+  content: "\2715";
 }
 
 .close-button:hover {
-  background: linear-gradient(#e49292 45%, #b63232 55%);  
+  background: linear-gradient(#e49292 45%, #b63232 55%);
   box-shadow: 0 0 0.2em #e25b5b;
 }
 
 .close-button:active {
-  background: linear-gradient(#e25b5b 45%, #630707 55%);  
+  background: linear-gradient(#e25b5b 45%, #630707 55%);
   box-shadow: 0 0 0.2em #e25b5b;
 }
 

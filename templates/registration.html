@@ -18,9 +18,13 @@
 <body>
     <script type="text/javascript">
         const socket = io();
+        function rgb(r, g, b) {
+            return "rgb(" + r + "," + g + "," + b + ")";
+        }
         const colors = {
             grey: '#313036',
-            red: '#fc2c03'
+            red: '#fc2c03',
+            lightGrey: rgb(115, 109, 125)
         };
         const errorMessages = {
             ImageAnalysisException: 'Image could not be analyzed.',
@@ -41,6 +45,12 @@
         let idsByOrigImgName = {};
         let lastPongTime;
         let numFailedPings = 0;
+        let hasErrors;
+        let numErrors = 0;
+        let chamberRealignmentData = {};
+        let currentRealignmentMarkers = { lines: [], circles: [] }
+        let draggingRealignmentMarker = false;
+        let selectDOM;
         let zoom = 1.0;
         let idsWithEdits = new Set();
         let lastScrollTime;
@@ -48,6 +58,8 @@
         let canvasLoaded = false;
         let canvasWidth = Math.min(1300, window.innerWidth),
             canvasHeight = Math.min(800, window.innerHeight);
+        let upperPadding, leftPadding;
+        let scalingFactor;
         let pointerDown = false;
         let dragStart = false;
         let timeDownUp;
@@ -101,7 +113,9 @@
             <button disabled id='img-upload-btn' type=button>Upload</button>
         </div>
     </form>
-    <div id=updates></div>
+    <div id=updates>
+        <div id=updates-by-image></div>
+    </div>
     <button id="modalToggle" hidden data-micromodal-trigger="modal-1"></button>
     <script type="text/javascript">
         const fileTypes = [
@@ -133,6 +147,13 @@
             previousImgIndex = null;
         }
 
+        function clearAllUpdates() {
+            $('#updates').empty();
+            let tempDiv = document.createElement('div');
+            tempDiv.setAttribute('id', 'updates-by-image');
+            document.getElementById('updates').append(tempDiv);
+        }
+
         $(function () {
             $('#img-upload-btn').click(function () {
                 $(this).prop('disabled', true);
@@ -162,16 +183,16 @@
             document.getElementById('page-mask').style.display = 'none';
             document.getElementById('modal-1').removeAttribute('style');
             socket.on('counting-progress', (msg) => {
-                $('#updates').append('<p>' + msg.data + '</p>')
+                $('#updates-by-image').append('<p>' + msg.data + '</p>')
             });
             socket.on('counting-error', (msg) => {
-                $('#updates').append(`<p style="color: red">${msg.data}</p>`);
+                $('#updates-by-image').append(`<p style="color: red">${msg.data}</p>`);
                 orderedImgNames.push(msg.filename);
-                annotations[msg.filename] = {'error': msg.error_type}
+                annotations[msg.filename] = { 'error': msg.error_type }
             })
-            socket.on('counting-done', () => {
-                $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>')
-                setupCanvas();
+            socket.on('counting-done', (msg) => {
+                $('#updates').append('<div><button type=button id=download-csv>Download results</button></div>');
+                setupCanvas(msg.is_retry);
                 document.getElementById('img-upload-btn').removeAttribute('disabled');
             });
             socket.on('counting-csv', (msg) => {
@@ -184,17 +205,22 @@
             });
             socket.on('counting-annotations', (msg) => {
                 annotations[msg.filename] = JSON.parse(msg.data);
-                orderedImgNames.push(msg.filename);
+                if (!msg.index) {
+                    orderedImgNames.push(msg.filename)
+                } else {
+                    eggLayingRegions[msg.index].text.remove();
+                    delete eggLayingRegions[msg.index];
+                }
             });
             socket.on('clear-all', () => {
                 if (!!document.getElementById('updates')) {
-                    $('#updates').empty();
+                    clearAllUpdates();
                 }
                 annotations = {};
                 orderedImgNames = [];
             });
             socket.on('clear-display', () => {
-                $('#updates').empty();
+                $('#updates-by-image').empty();
             });
             socket.on('report-ready', () => {
                 let el = document.getElementById('submit-error-report')
@@ -239,7 +265,10 @@
                         numFailedPings = 0;
                     }
                     if (numFailedPings >= 2) {
-                        document.getElementById('page-mask').style.display = "block";
+                        document.getElementById('modal-1-close').setAttribute('hidden', true);
+                        document.getElementById('modal-1-title').innerText = "Session expired";
+                        document.getElementById('modal-1-message').innerText =
+                            'The connection to the server has been lost; please refresh the page to continue.';
                         document.getElementById('modalToggle').click();
                     }
                 }, 3000)
@@ -359,9 +388,15 @@
             }
         }
 
+        function setModeMarker() {
+            document.getElementById('mode-marker').innerHTML = numErrors > 0 ?
+                'Note: currently displaying <strong>only</strong> images that need manual alignment to be analyzed.' : '';
+        }
+
         var setCurrentImgName = function () {
+            setModeMarker();
             document.getElementById('current-img').innerText =
-                `Viewing image ${orderedImgNames[currentImgIndex]} (Shift + scroll to zoom)`;
+                `Viewing image ${currentImgIndex + 1} of ${orderedImgNames.length}: ${orderedImgNames[currentImgIndex]} (Shift + scroll to zoom)`;
         }
 
         var appendToFilename = function (filename, addition) {
@@ -397,6 +432,87 @@
             return editedCounts;
         }
 
+        var updateRetryAnalysisButtonAppearance = function () {
+            document.getElementById('retry-analysis-button').style.color =
+                indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
+        }
+
+        var setupErrorAnnotationButtonHandlers = function () {
+            if (numErrors == 0) {
+                return;
+            }
+            document.getElementById('chamber-type-select').onchange = (evt) => {
+                chamberRealignmentData[currentImgIndex] = {
+                    type: evt.target.value,
+                    ignored: chamberRealignmentData[currentImgIndex].ignored,
+                    file_name: chamberRealignmentData[currentImgIndex].file_name
+                };
+                updateRetryAnalysisButtonAppearance();
+                redrawCanvas();
+            };
+            document.getElementById('ignore-img').onclick = () => {
+                let chamberTypeButton = document.getElementById('chamber-type-select');
+                let chamberButtonDisabled = chamberTypeButton.hasAttribute('disabled');
+                if (chamberButtonDisabled) {
+                    chamberRealignmentData[currentImgIndex].ignored = false;
+                    chamberTypeButton.removeAttribute('disabled');
+                    chamberTypeButton.dispatchEvent(new CustomEvent('change'));
+                }
+                else {
+                    chamberRealignmentData[currentImgIndex].ignored = true;
+                    chamberTypeButton.setAttribute('disabled', true);
+                    chamberTypeButton.value = 'null';
+                    resetCurrentRealignmentMarkers();
+                    chamberTypeButton.dispatchEvent(new CustomEvent('change'));
+                }
+                updateIgnoreButtonText();
+                updateRetryAnalysisButtonAppearance();
+            };
+            document.getElementById('retry-analysis-button').onclick = () => {
+                let untriaged = indicesOfUntriagedImages();
+                if (untriaged.length > 0) {
+                    document.getElementById('mode-marker').innerHTML = 'Images can only be submitted if' +
+                        ' each one has either been assigned a chamber type or marked as ignored.' +
+                        ' <br>The following images still need attention:' +
+                        ` ${untriaged.length > 1 ? `${untriaged.slice(0, -1).join(', ')
+                            } and ${untriaged[untriaged.length - 1]}` : untriaged[0]}.`;
+                    setTimeout(() => {
+                        setModeMarker();
+                    }, 3000);
+                    return;
+                }
+                transformAlignmentGuidelinePoints();
+                let dataToSend = {
+                    chamberData: chamberRealignmentData, sid
+                };
+                $.ajax({
+                    url: '/manual-recount',
+                    type: "POST",
+                    data: JSON.stringify(dataToSend),
+                    contentType: "application/json",
+                    success: function (data) {
+                        console.log('Success!');
+                    }
+                });
+                clearAllUpdates();
+            }
+        }
+
+        function transformAlignmentGuidelinePoints() {
+            Object.keys(chamberRealignmentData).forEach(k => {
+                if (chamberRealignmentData[k].ignored) {
+                    return;
+                }
+                chamberRealignmentData[k].lines.forEach((line, i) => {
+                    Object.keys(line).forEach(tp => {
+                        chamberRealignmentData[k].lines[i][tp] =
+                            [(line[tp][0] - leftPadding) / scalingFactor,
+                            (line[tp][1] - upperPadding) / scalingFactor];
+                    });
+                })
+            });
+        }
+
         var setButtonHandlers = function () {
             document.getElementById('download-csv').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
@@ -421,6 +537,7 @@
             document.getElementById('user-select').onchange = (evt) => {
                 window.localStorage.setItem('user', evt.target.value);
             }
+            setupErrorAnnotationButtonHandlers();
             document.getElementById('submit-error-report').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
                 if (document.getElementById('user-select').value === 'null') {
@@ -449,10 +566,16 @@
             }
             document.getElementById('prev-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex - 1;
+                if (numErrors > 0) {
+                    while (!hasErrors[newImgIdx] && newImgIdx >= 0) {
+                        newImgIdx -= 1;
+                    }
+                }
                 if (newImgIdx >= 0) {
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
-
+                    setChamberTypeSelector();
+                    setIgnoreSelector();
                     redrawCanvas();
                     if (newImgIdx == 0) {
                         evt.target.setAttribute('disabled', true);
@@ -464,9 +587,16 @@
             }
             document.getElementById('next-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex + 1;
+                if (numErrors > 0) {
+                    while (!hasErrors[newImgIdx] && newImgIdx <= orderedImgNames.length - 1) {
+                        newImgIdx += 1;
+                    }
+                }
                 if (newImgIdx <= orderedImgNames.length) {
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
+                    setChamberTypeSelector();
+                    setIgnoreSelector();
                     redrawCanvas();
                     if (evt.target.disabled) {
                         evt.target.removeAttribute('disabled');
@@ -480,6 +610,37 @@
                     document.getElementById('prev-img').removeAttribute('disabled');
                 }
             }
+        }
+
+        var setChamberTypeSelector = function () {
+            if (numErrors > 0) {
+                if (chamberRealignmentData[currentImgIndex] && !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type) > 0) {
+                    document.getElementById('chamber-type-select').value = chamberRealignmentData[currentImgIndex].type;
+                }
+                else {
+                    document.getElementById('chamber-type-select').value = 'null';
+                }
+            }
+        }
+
+        var updateIgnoreButtonText = function () {
+            document.getElementById('ignore-img').innerText = `${document.getElementById(
+                'chamber-type-select').hasAttribute('disabled') ? 'Uni' : 'I'}gnore image`;
+
+        }
+
+        var setIgnoreSelector = function () {
+            if (numErrors === 0) {
+                return;
+            }
+            let chamberTypeButton = document.getElementById('chamber-type-select')
+            if (!chamberRealignmentData[currentImgIndex] || !chamberRealignmentData[currentImgIndex].ignored) {
+                chamberTypeButton.removeAttribute('disabled');
+            }
+            else if (chamberRealignmentData[currentImgIndex].ignored) {
+                chamberTypeButton.setAttribute('disabled', true);
+            }
+            updateIgnoreButtonText();
         }
 
         function base64ToBlob(base64, mime) {
@@ -504,13 +665,150 @@
             return new Blob(byteArrays, { type: mime });
         }
 
+        var updateRealignmentGuide = function () {
+            $('#help-pane').empty();
+            let noChamberTypeSelected = ['null', ''].includes(chamberRealignmentData[currentImgIndex].type);
+            let imageIgnored = document.getElementById('chamber-type-select').hasAttribute('disabled');
+            if (noChamberTypeSelected || imageIgnored) {
+                document.getElementById('help-pane').style.height = '300px';
+                document.getElementById('help-pane').innerText = imageIgnored ? 'To add alignment markers' +
+                    ' to this image, click "Unignore image."' : "Please select" +
+                " a chamber type from the menu at left.";
+                return;
+            }
+            document.getElementById('help-pane').style.height = '400px';
+            document.getElementById('help-pane').innerText = 'Please drag and' +
+                ' resize the two lines until they line up with the outer edges of' +
+                ' the agarose areas on the upper and left sides, as shown.'
+            let exampleImg = document.createElement('img');
+            exampleImg.setAttribute('src', `static/imgs/${chamberRealignmentData[currentImgIndex].type}_chamber_lines.jpg`);
+            document.getElementById('help-pane').append(exampleImg);
+            document.getElementById('help-pane').innerHTML += '<span>If the agarose is cut off' +
+                " by the edge of the image, then the line can extend past the image's" +
+                " border. If it is not possible to mark the image's alignment, then click" +
+                ' "Ignore image."</span>'
+        }
+
+        var resetCurrentRealignmentMarkers = function () {
+            currentRealignmentMarkers.lines.forEach(l => {
+                l.remove();
+            })
+            currentRealignmentMarkers.circles.forEach(c => {
+                c.remove();
+            })
+            currentRealignmentMarkers = { lines: [], circles: [] };
+        }
+
+        var addRealignmentEndpointEventHandlers = function (toReset = null) {
+            currentRealignmentMarkers.circles.forEach((circle, i) => {
+                if (toReset !== null && i !== toReset) {
+                    return;
+                }
+                circle.onMouseEnter = () => {
+                    if (draggingRealignmentMarker) {
+                        return;
+                    }
+                    let newCircle = new paper.Path.Circle({
+                        center: currentRealignmentMarkers.circles[i].position,
+                        radius: 5,
+                        strokeColor: 'red',
+                        fillColor: 'red'
+                    })
+
+                    currentRealignmentMarkers.circles[i].remove();
+                    currentRealignmentMarkers.circles[i] = newCircle;
+                    addRealignmentEndpointEventHandlers(i);
+                };
+                circle.onMouseLeave = () => {
+                    if (draggingRealignmentMarker) {
+                        return;
+                    }
+                    let newCircle = new paper.Path.Circle({
+                        center: currentRealignmentMarkers.circles[i].position,
+                        radius: 2,
+                        strokeColor: 'red',
+                        fillColor: 'red'
+                    });
+                    currentRealignmentMarkers.circles[i].remove();
+                    currentRealignmentMarkers.circles[i] = newCircle;
+                    addRealignmentEndpointEventHandlers(i);
+                };
+                circle.onMouseDrag = (evt) => {
+                    draggingRealignmentMarker = true;
+                    currentRealignmentMarkers.circles[i].position.x += evt.delta.x;
+                    currentRealignmentMarkers.circles[i].position.y += evt.delta.y;
+                    currentRealignmentMarkers.circles[i].opacity = 0.0;
+                    let lineIndex = Math.floor(i / 2);
+                    let pairedPointIndex = i % 2 == 0 ? i + 1 : i - 1;
+                    currentRealignmentMarkers.lines[lineIndex].remove();
+                    currentRealignmentMarkers.lines[lineIndex] = new paper.Path.Line(
+                        currentRealignmentMarkers.circles[i].position,
+                        currentRealignmentMarkers.circles[pairedPointIndex].position
+                    );
+                    currentRealignmentMarkers.lines[lineIndex].strokeColor = 'red';
+                    currentRealignmentMarkers.lines[lineIndex].strokeWidth = 2;
+                }
+                circle.onMouseUp = () => {
+                    draggingRealignmentMarker = false;
+                    currentRealignmentMarkers.circles[i].opacity = 1.0;
+                    for (let index = 0; index < chamberRealignmentData[currentImgIndex].lines.length; index++) {
+                        chamberRealignmentData[currentImgIndex].lines[index] =
+                        {
+                            start: [currentRealignmentMarkers.circles[index * 2].position.x,
+                            currentRealignmentMarkers.circles[index * 2].position.y],
+                            end: [
+                                currentRealignmentMarkers.circles[index * 2 + 1].position.x,
+                                currentRealignmentMarkers.circles[index * 2 + 1].position.y
+                            ]
+                        }
+
+                    }
+                }
+            });
+        }
+
+        var drawChamberAlignmentMarkers = function () {
+            if (!chamberRealignmentData[currentImgIndex].lines) {
+                let imageYEdge = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
+                let imageXEdge = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
+                chamberRealignmentData[currentImgIndex].lines = [{ start: [leftPadding + 80, upperPadding + 80], end: [leftPadding + 300, upperPadding + 80] },
+                { start: [leftPadding + 80, upperPadding + 80], end: [leftPadding + 80, upperPadding + 300] }]
+            }
+            chamberRealignmentData[currentImgIndex].lines.forEach((line, i) => {
+                let from = new paper.Point(...line.start);
+                let to = new paper.Point(...line.end);
+                currentRealignmentMarkers.lines.push(new paper.Path.Line(from, to));
+                ['start', 'end'].forEach(point => {
+                    currentRealignmentMarkers.circles.push(new paper.Path.Circle({
+                        center: line[point], radius: 2, strokeColor: 'red', fillColor: 'red'
+                    }));
+                });
+                currentRealignmentMarkers.lines[i].strokeColor = 'red';
+                currentRealignmentMarkers.lines[i].strokeWidth = 2;
+            });
+            addRealignmentEndpointEventHandlers();
+        }
+
         var redrawCanvas = function () {
             canvasLoaded = false;
+
+            if (numErrors > 0) {
+                if (!chamberRealignmentData[currentImgIndex]) {
+                    chamberRealignmentData[currentImgIndex] = {
+                        type: '',
+                        file_name: orderedImgNames[currentImgIndex]
+                    }
+                }
+                updateRealignmentGuide();
+                resetCurrentRealignmentMarkers();
+            }
+
+
             setCurrentImgName()
             if (backgroundRaster) {
                 backgroundRaster.remove();
             }
-            if (previousImgIndex !== null) {
+            if (previousImgIndex !== null && eggLayingRegions[previousImgIndex]) {
                 if (eggLayingRegions[previousImgIndex].bad) {
                     eggLayingRegions[previousImgIndex].text.remove();
                 } else {
@@ -527,10 +825,10 @@
             pic = document.getElementById('pic');
             backgroundRaster.onLoad = () => {
                 backgroundRaster.fitBounds(paper.view.viewSize);
-                let scalingFactor = Math.min(canvasHeight / pic.height, canvasWidth / pic.width);
+                scalingFactor = Math.min(canvasHeight / pic.height, canvasWidth / pic.width);
                 document.getElementById('pic').remove();
-                let upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
-                let leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
+                upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
+                leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
                 if ('error' in annotations[orderedImgNames[currentImgIndex]]) {
                     let pointText = new paper.PointText(new paper.Point(paper.view.center.x,
                         paper.view.center.y));
@@ -540,6 +838,9 @@
                     pointText.fillColor = 'red';
                     pointText.fontSize = '40px';
                     eggLayingRegions[currentImgIndex] = { bad: true, text: pointText }
+                    if (!['', 'null'].includes(chamberRealignmentData[currentImgIndex].type)) {
+                        drawChamberAlignmentMarkers();
+                    }
                 } else {
                     if (!eggLayingRegions[currentImgIndex]) {
                         eggLayingRegions[currentImgIndex] = {};
@@ -767,50 +1068,180 @@
             }
         }
 
-        var setupCanvas = function () {
-            let scalingFactor;
-            $('#updates').append('<div id=viewer-nav></div>');
-            $('#viewer-nav').append('<div id=button-row></div>')
-            $('#button-row').append('<button class=nav-button id=reset-view>Reset view</button>');
-            $('#button-row').append('<div class=divider></div>');
-            $('#button-row').append('<button class=nav-button disabled id=prev-img>Previous image</button>');
-            $('#button-row').append('<div class=divider></div>');
-            $('#button-row').append('<button class=nav-button id=next-img>Next image</button>');
-            $('#button-row').append('<div class=divider></div>');
-            $('#button-row').append('<button id=download-imgs>Download annotated images</button>');
-            $('#button-row').append('<div class=divider></div>');
-            $('#button-row').append('<button hidden id=submit-error-report>Submit error report for all images</button>');
-            $('#button-row').append('<div class=divider></div>');
-            $('#button-row').append('<select id=user-select></select><br>');
-            let selector = document.getElementById('user-select');
-            let opt;
-            opt = document.createElement('option');
-            opt.value = null;
-            opt.innerText = 'User: not set';
-            selector.append(opt);
+        var dividerString = function () {
+            return '<div class=divider></div>'
+        }
+
+        var buttonString = function (id, text, hidden = false) {
+            let doms = [`<button id=${id} ${hidden ? 'hidden' : ''}>${text}</button>`]
+            if (!hidden) {
+                doms.push(dividerString());
+            }
+            return doms
+        }
+
+        var errorAnnotationButtons = function () {
+            return [{ id: 'ignore-img', text: 'Ignore image' }, {
+                id: 'chamber-type-select', text: 'Chamber type: not set',
+                selectOptions: [{ value: 'sixByFour', text: 'Chamber type: 6 rows x 4 cols' },
+                { value: 'fiveByThree', text: 'Chamber type: 5 rows x 3 cols' },
+                { value: 'opto', text: 'Chamber type: optogenetic' },
+                { value: 'large', text: 'Chamber type: large' }
+                ]
+            },
+            { id: 'retry-analysis-button', text: 'Submit images for re-analysis' }
+            ]
+        }
+
+        var analyzedImagesButtons = function (hidden = false) {
+
+            userSelectOptions = [];
             {% for user in users %}
-            opt = document.createElement('option');
-            opt.value = '{{user}}'
-            opt.innerText = 'User: {{user}}'
-            selector.appendChild(opt);
+            userSelectOptions.push({ value: '{{user}}', text: 'User: {{user}}' })
             {% endfor %}
+            return [
+                { id: 'download-imgs', text: 'Download annotated images', hidden: hidden },
+                {
+                    id: 'submit-error-report', text: 'Submit error report for all images',
+                    hidden: true
+                },
+                {
+                    id: 'user-select', text: 'User: not set',
+                    selectOptions: userSelectOptions, hidden: hidden
+                }
+            ];
+        }
+
+        var getContextSpecificButtons = function () {
+            if (numErrors > 0) {
+                document.getElementById('download-csv').setAttribute('hidden', true);
+                return errorAnnotationButtons().concat(analyzedImagesButtons(hidden = true));
+            }
+            return analyzedImagesButtons();
+        }
+
+        var displayImageAnalysisErrorMessage = function () {
+            document.getElementById('modal-1-close').removeAttribute('hidden');
+            document.getElementById('modal-1-title').innerText = 'Image analysis error';
+            document.getElementById('modal-1-message').innerText =
+                `We were not able to detect the egg-laying regions in ${numErrors}` +
+                ' of your images, but with your help, they can still be analyzed.' +
+                ' After dismissing this message, any images with errors will be displayed' +
+                ' in a tool allowing you to mark two boundary lines on the image which' +
+                ' will allow it to be split into individual regions. Click X to continue.'
+            document.getElementById('modalToggle').click();
+        }
+
+        var setupCanvas = function (isRetry = false) {
+            if (isRetry) {
+                hasErrors = [];
+                numErrors = 0;
+            } else {
+                hasErrors = Object.keys(annotations).map((k) => {
+                    return 'error' in annotations[k];
+                });
+                numErrors = hasErrors.filter(Boolean).length;
+            }
+
+            if (numErrors > 0) {
+                document.getElementById('updates-by-image').innerHTML = '';
+                chamberRealignmentData = {};
+                displayImageAnalysisErrorMessage();
+            }
+
+            const constant_buttons = [{ id: 'reset-view', text: 'Reset view' },
+            {
+                id: 'prev-img', text: 'Previous image',
+            },
+            { id: 'next-img', text: 'Next image' }];
+
+
+
+            $('#updates').append('<div id=viewer-nav></div>');
+            $('#viewer-nav').append('<div id=button-row></div>');
+            constant_buttons.forEach(b => {
+                let doms = buttonString(b.id, b.text, b.hidden);
+                doms.forEach(d => {
+                    $('#button-row').append(d);
+                })
+            });
+            getContextSpecificButtons().forEach(b => {
+                if (b.selectOptions) {
+                    $('#button-row').append(`<select id=${b.id} ${b.hidden ? 'hidden' : ''}></select>`);
+                    selectDOM = document.getElementById(b.id);
+                    let opt = document.createElement('option');
+                    opt.value = null;
+                    opt.innerText = b.text;
+                    selectDOM.append(opt);
+                    b.selectOptions.forEach(so => {
+                        opt = document.createElement('option');
+                        opt.innerText = so.text;
+                        opt.value = so.value;
+                        selectDOM.appendChild(opt)
+                    });
+                    $('#button-row').append(dividerString());
+                }
+                else {
+                    let doms = buttonString(b.id, b.text, b.hidden);
+                    doms.forEach(d => {
+                        $('#button-row').append(d);
+                    })
+                }
+            });
+
+            if (numErrors > 0) {
+                currentImgIndex = hasErrors.findIndex(el => el === true);
+                document.getElementById('prev-img').setAttribute('disabled', true);
+                if (numErrors === 1) {
+                    document.getElementById('next-img').setAttribute('disabled', true);
+                }
+            } else {
+                currentImgIndex = 0;
+                document.getElementById('prev-img').setAttribute('disabled', true);
+                if (orderedImgNames.length > 1) {
+                    document.getElementById('next-img').removeAttribute('disabled');
+                } else {
+                    document.getElementById('next-img').setAttribute('disabled', true);
+                }
+            }
+
             if (window.localStorage.getItem('user')) {
-                selector.value = window.localStorage.getItem('user');
+                selectDOM.value = window.localStorage.getItem('user');
             }
             $('#viewer-nav').append('<div class=divider></div>');
-            $('#updates').append('<br><div id=current-img-parent><p id=current-img></p>');
+            $('#updates').append('<br><div id=current-img-parent><p id=mode-marker></p><p id=current-img></p>');
             setCurrentImgName()
             setButtonHandlers()
             $('#reset-view').click(reposition)
             $('#updates').append('<div id=viewer></div>')
             $('#viewer').append('<canvas keepalive=true id=detectionResults></canvas>');
             canvas = document.getElementById('detectionResults');
+            if (numErrors > 0) {
+                $('#viewer').append('<div id=help-pane></div>');
+                document.getElementById('retry-analysis-button').style.color = colors.lightGrey;
+            }
             paper.install(window);
             paper.setup(canvas);
             paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
             redrawCanvas();
             setPointerHandlers();
             setDragHandler();
+        }
+        var indicesOfUntriagedImages = function () {
+            let untriaged = []
+            for (let index = 0; index < orderedImgNames.length; index++) {
+                if (!hasErrors[index]) {
+                    continue;
+                }
+                if (!chamberRealignmentData[index]) {
+                    untriaged.push(index + 1)
+                }
+                else if (!(chamberRealignmentData[index].ignored ||
+                    !['', 'null'].includes(chamberRealignmentData[index].type))) {
+                    untriaged.push(index + 1);
+                }
+            }
+            return untriaged;
         }
 
         var zoomInAndOut = e => {
@@ -868,7 +1299,7 @@
         var setDragHandler = () => {
             var toolPan = new paper.Tool();
             toolPan.onMouseDrag = function (evt) {
-                if (inputAmender) {
+                if (inputAmender || draggingRealignmentMarker) {
                     return;
                 }
                 var timeMove = new Date().getTime();
@@ -894,19 +1325,15 @@
 
     <div class="modal" id="modal-1" aria-hidden="true">
         <div class="modal__overlay" tabindex="-1" data-micromodal-close>
-            <div id='egg-flagger-div' role="dialog" aria-modal="true" aria-labelledby="modal-1-title">
-                <header>
-                    <h2 id="modal-1-title">
+            <div class="modal__container w-90 w-40-ns" id='egg-flagger-div' role="dialog" aria-modal="true"
+                aria-labelledby="modal-1-title">
+                <header class="modal__header">
+                    <h3 id="modal-1-title" class="modal__title">
                         Session expired
-                    </h2>
-                    <div style="display: none;" hidden id="close-button">
-                        <div class="close-button-stroke1">
-                            <div class="close-button-stroke2"></div>
-                        </div>
-                    </div>
-                    <button id=close-modal hidden aria-label="Close modal" data-micromodal-close></button>
+                        </h2>
+                        <button id=modal-1-close hidden aria-label="Close modal" data-micromodal-close></button>
                 </header>
-                <div id="egg-flagger-dialog">
+                <div id="modal-1-message">
                     <p>The connection to the server has been lost; please refresh the page to continue.</p>
                 </div>
             </div>
@@ -915,8 +1342,5 @@
     <div id="page-mask"></div>
     <script>
         MicroModal.init();
-        document.getElementById('close-button').onclick = () => {
-            document.getElementById('close-modal').click();
-        };
     </script>
 </body>

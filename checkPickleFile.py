@@ -3,14 +3,15 @@ import pickle
 # with open(r"P:\Egg images_9_3_2020\WT_5\egg_count_labels_robert.pickle", 'rb') as my_f:
     # labels = pickle.load(my_f)
 
-with open("P:\Egg images_9_3_2020\WT_3 - Copy\images.metadata", 'rb') as my_f:
+with open(r"P:\Egg images_9_3_2020\egg_count_labels_dorsa.pickle", 'rb') as my_f:
     new_meta = pickle.load(my_f)
-with open("P:\Egg images_9_3_2020\WT_3\images.metadata", 'rb') as my_f:
-    old_meta = pickle.load(my_f)
+# with open("P:\Egg images_9_3_2020\WT_3\images.metadata", 'rb') as my_f:
+    # old_meta = pickle.load(my_f)
 
 print('keys of metadata?', new_meta.keys())
-print('old metadata:', old_meta['jun18poxn14_11right.jpg'])
-print('new metadata:', new_meta['jun18poxn14_11right.jpg'])
+print(new_meta['chamberTypes'])
+# print('old metadata:', old_meta['jun18poxn14_11right.jpg'])
+# print('new metadata:', new_meta['jun18poxn14_11right.jpg'])
 # print('data?', labels['isBlurryLabels'].keys())
 # for key in ['img_0002.jpg_0_0_right', 'img_0002.jpg_0_1_upper', 'img_0002.jpg_0_1_left', 'img_0002.jpg_1_0_lower', 'img_0002.jpg_1_1_right']:
 #     labels['clicks']['2020-11-20_%s'%key] = labels['clicks'][key]

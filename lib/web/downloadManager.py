@@ -81,7 +81,7 @@ class DownloadManager():
         print('creating images for download?')
         for path in sm.predictions:
             self.path_base = os.path.basename(path)
-            if None in sm.predictions[path]:
+            if any(type(el) != int for el in sm.predictions[path]):
                 img = self.prepareImageWithError(path)
             else:
                 img = self.prepareAnnotatedImage(sm, ts, path)

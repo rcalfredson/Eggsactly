@@ -50,7 +50,7 @@ for directory in pickleFiles:
       imageName = '%s%s'%(fileName.split(extension)[0], extension)
       imageNamesToChamberType[imageName] = loadedData['chamberTypes'][imageName]
     for imageName in imageNamesToChamberType:
-      if imageNamesToChamberType[imageName] == CT.fourCircle.name:
+      if imageNamesToChamberType[imageName] == CT.large.name:
         possibleKeys = concat([["%s_%i_%i_%s"%(imageName, combo[0], combo[1],
           pos) for combo in itertools.product(range(FourCircleChamber().numRows
           ), range(FourCircleChamber().numCols))] for pos in ('upper', 'lower',
