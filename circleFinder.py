@@ -177,6 +177,77 @@ class CircleFinder:
             + self.avgDists[0] / CT[self.ct].value().colDist
         )
 
+    @staticmethod
+    def getLargeChamberBBoxesAndImages(img, centers, pxToMM):
+        bboxes, subImgs = [], []
+        for center in centers:
+            outerEdgeDistance = round((1 + 8.6 + 8 + 1) * pxToMM)
+            acrossCircleD = round(10.5 * pxToMM)
+            halfRealCircleD = round((0.5 * 10) * pxToMM)
+            centerAdjacentDistance = round(1 * pxToMM)
+
+            bboxes.append(
+                [
+                    round(max(center[0] - halfRealCircleD, 0)),
+                    round(max(center[1] - outerEdgeDistance, 0)),
+                ]
+            )
+            subImgs.append(
+                img[
+                    slice(round(bboxes[-1][1]), round(center[1] - centerAdjacentDistance)),
+                    slice(round(bboxes[-1][0]), round(bboxes[-1][0] + acrossCircleD)),
+                ]
+            )
+            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+
+            bboxes.append(
+                [
+                    round(center[0] + centerAdjacentDistance),
+                    round(max(center[1] - halfRealCircleD, 0)),
+                ]
+            )
+            subImgs.append(
+                img[
+                    slice(round(bboxes[-1][1]), round(bboxes[-1][1] + acrossCircleD)),
+                    slice(round(bboxes[-1][0]), round(center[0] + outerEdgeDistance)),
+                ]
+            )
+            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+
+            bboxes.append(
+                [
+                    round(max(center[0] - halfRealCircleD, 0)),
+                    round(center[1] + centerAdjacentDistance),
+                ]
+            )
+            subImgs.append(
+                img[
+                    slice(round(bboxes[-1][1]), round(center[1] + outerEdgeDistance)),
+                    slice(round(bboxes[-1][0]), round(bboxes[-1][0] + acrossCircleD)),
+                ]
+            )
+            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+
+            bboxes.append(
+                [
+                    round(max(center[0] - outerEdgeDistance, 0)),
+                    round(max(center[1] - halfRealCircleD, 0)),
+                ]
+            )
+            subImgs.append(
+                img[
+                    slice(round(bboxes[-1][1]), round(bboxes[-1][1] + acrossCircleD)),
+                    slice(round(bboxes[-1][0]), round(center[0] - centerAdjacentDistance)),
+                ]
+            )
+            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+        return bboxes, subImgs
+
+    @staticmethod
+    def addWidthAndHeightToBBox(bboxes, subImgs):
+        bboxes[-1] += reversed(subImgs[-1].shape[0:2])
+        return bboxes
+
     def getSubImages(self, img, centers, avgDists, numRowsCols):
         """Determine sub-images for the image based on the chamber type and the
         locations of detected arena wells.
@@ -200,122 +271,64 @@ class CircleFinder:
 
         self.getPixelToMMRatio()
         pxToMM = self.pxToMM
-        for center in centers:
-            if self.ct is CT.large.name:
-                outerEdgeDistance = int((1 + 8.6 + 8 + 1) * pxToMM)
-                acrossCircleD = int(10.5 * pxToMM)
-                halfRealCircleD = int((0.5 * 10) * pxToMM)
-                centerAdjacentDistance = int(1 * pxToMM)
-
-                bboxes.append(
-                    [
-                        max(center[0] - halfRealCircleD, 0),
-                        max(center[1] - outerEdgeDistance, 0),
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        slice(bboxes[-1][1], center[1] - centerAdjacentDistance),
-                        slice(bboxes[-1][0], bboxes[-1][0] + acrossCircleD),
-                    ]
-                )
-                addWidthAndHeightToBBox()
-
-                bboxes.append(
-                    [
-                        center[0] + centerAdjacentDistance,
-                        max(center[1] - halfRealCircleD, 0),
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        slice(bboxes[-1][1], bboxes[-1][1] + acrossCircleD),
-                        slice(bboxes[-1][0], center[0] + outerEdgeDistance),
-                    ]
-                )
-                addWidthAndHeightToBBox()
-
-                bboxes.append(
-                    [
-                        max(center[0] - halfRealCircleD, 0),
-                        center[1] + centerAdjacentDistance,
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        slice(bboxes[-1][1], center[1] + outerEdgeDistance),
-                        slice(bboxes[-1][0], bboxes[-1][0] + acrossCircleD),
-                    ]
-                )
-                addWidthAndHeightToBBox()
-
-                bboxes.append(
-                    [
-                        max(center[0] - outerEdgeDistance, 0),
-                        max(center[1] - halfRealCircleD, 0),
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        slice(bboxes[-1][1], bboxes[-1][1] + acrossCircleD),
-                        slice(bboxes[-1][0], center[0] - centerAdjacentDistance),
-                    ]
-                )
-                addWidthAndHeightToBBox()
-            elif self.ct is CT.opto.name:
-                bboxes.append(
-                    [
-                        max(center[0] - int(0.5 * avgDists[0]), 0),
-                        max(center[1] - int(8.5 * pxToMM), 0),
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        bboxes[-1][1] : center[1] - int(4 * pxToMM),
-                        bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
-                    ]
-                )
-                addWidthAndHeightToBBox()
-                bboxes.append(
-                    [
-                        max(center[0] - int(0.5 * avgDists[0]), 0),
-                        max(center[1] + int(4 * pxToMM), 0),
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        bboxes[-1][1] : center[1] + int(8.5 * pxToMM),
-                        bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
-                    ]
-                )
-                addWidthAndHeightToBBox()
-            else:
-                bboxes.append(
-                    [
-                        max(center[0] - int(8.5 * pxToMM), 0),
-                        max(center[1] - int(0.5 * avgDists[1]), 0),
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
-                        bboxes[-1][0] : center[0] - int(4 * pxToMM),
-                    ]
-                )
-                addWidthAndHeightToBBox()
-                bboxes.append(
-                    [
-                        max(center[0] + int(4 * pxToMM), 0),
-                        max(center[1] - int(0.5 * avgDists[1]), 0),
-                    ]
-                )
-                subImgs.append(
-                    img[
-                        bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
-                        bboxes[-1][0] : center[0] + int(8.5 * pxToMM),
-                    ]
-                )
-                addWidthAndHeightToBBox()
+        if self.ct is CT.large.name:
+            bboxes, subImgs = self.getLargeChamberBBoxesAndImages(img, centers, pxToMM)
+        else:
+            for center in centers:
+                if self.ct is CT.opto.name:
+                    bboxes.append(
+                        [
+                            max(center[0] - int(0.5 * avgDists[0]), 0),
+                            max(center[1] - int(8.5 * pxToMM), 0),
+                        ]
+                    )
+                    subImgs.append(
+                        img[
+                            bboxes[-1][1] : center[1] - int(4 * pxToMM),
+                            bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
+                        ]
+                    )
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                    bboxes.append(
+                        [
+                            max(center[0] - int(0.5 * avgDists[0]), 0),
+                            max(center[1] + int(4 * pxToMM), 0),
+                        ]
+                    )
+                    subImgs.append(
+                        img[
+                            bboxes[-1][1] : center[1] + int(8.5 * pxToMM),
+                            bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
+                        ]
+                    )
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                else:
+                    bboxes.append(
+                        [
+                            max(center[0] - int(8.5 * pxToMM), 0),
+                            max(center[1] - int(0.5 * avgDists[1]), 0),
+                        ]
+                    )
+                    subImgs.append(
+                        img[
+                            bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
+                            bboxes[-1][0] : center[0] - int(4 * pxToMM),
+                        ]
+                    )
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                    bboxes.append(
+                        [
+                            max(center[0] + int(4 * pxToMM), 0),
+                            max(center[1] - int(0.5 * avgDists[1]), 0),
+                        ]
+                    )
+                    subImgs.append(
+                        img[
+                            bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
+                            bboxes[-1][0] : center[0] + int(8.5 * pxToMM),
+                        ]
+                    )
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
         if self.ct is CT.opto.name:
             return CT.opto.value().getSortedSubImgs(subImgs, bboxes)
         sortedSubImgs = []

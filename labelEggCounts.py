@@ -45,8 +45,7 @@ def options():
         description="Input egg counts for each region"
         + " in a series of images of egg-laying chambers."
     )
-    p.add_argument(
-        "dir", help="Path to directory containing images to annotate")
+    p.add_argument("dir", help="Path to directory containing images to annotate")
     p.add_argument(
         "--countsFile",
         default=DEFAULT_EXPORT_PATH,
@@ -172,8 +171,7 @@ class EggCountLabeler:
         subImgsFromCounts = sum(countListLengths)
         if [] not in self.eggCounts:
             return subImgsFromCounts
-        averageCountPerImg = np.round(
-            np.mean(countListLengths[countListLengths != 0]))
+        averageCountPerImg = np.round(np.mean(countListLengths[countListLengths != 0]))
         numUnfilledImgs = np.count_nonzero(np.asarray(countListLengths) == 0)
         return subImgsFromCounts + numUnfilledImgs * averageCountPerImg
 
@@ -217,8 +215,7 @@ class EggCountLabeler:
         for idx in self.imgs_to_ignore:
             abs_start_index = self.absolutePosition(idx, 0)
             self.abs_idxs_ignored = self.abs_idxs_ignored.union(
-                set(range(abs_start_index, abs_start_index +
-                          len(self.subImgs[idx])))
+                set(range(abs_start_index, abs_start_index + len(self.subImgs[idx])))
             )
 
     def segmentSubImageFromExistingData(self, img, imgIndex):
@@ -237,12 +234,10 @@ class EggCountLabeler:
         """Segment one image into sub-images using the GPU-dependent CircleFinder
         class.
         """
-        self.cf = CircleFinder(img, os.path.basename(
-            imgPath), allowSkew=opts.allowSkew)
+        self.cf = CircleFinder(img, os.path.basename(imgPath), allowSkew=opts.allowSkew)
         circles, avgDists, numRowsCols, rotatedImg, rotAngle = self.cf.findCircles()
         self.rowColCounts[self.lowerBasenames[imgIndex]] = numRowsCols
-        self.clickLabelManager.setChamberType(
-            self.lowerBasenames[imgIndex], self.cf.ct)
+        self.clickLabelManager.setChamberType(self.lowerBasenames[imgIndex], self.cf.ct)
         self.subImgs[imgIndex], bboxes = self.cf.getSubImages(
             rotatedImg, circles, avgDists, numRowsCols
         )
@@ -277,8 +272,7 @@ class EggCountLabeler:
             else:
                 self.segmentSubImageViaGPU(img, imgPath, index)
             if len(self.eggCounts[index]) == 0:
-                self.eggCounts[index] = [
-                    None for _ in range(len(self.subImgs[index]))]
+                self.eggCounts[index] = [None for _ in range(len(self.subImgs[index]))]
             self.processingCompleted.add(imgPath)
 
     def setEggCounts(self):
@@ -363,8 +357,7 @@ class EggCountLabeler:
                     ["is%sLabels" % c for c in self.clickLabelManager.categories]
                 ):
                     if keyName in tempData:
-                        setattr(self.clickLabelManager,
-                                keyName, tempData[keyName])
+                        setattr(self.clickLabelManager, keyName, tempData[keyName])
         if not filesExist[2]:
             self.imgMetadata = {}
         else:
@@ -477,12 +470,10 @@ class EggCountLabeler:
         singleTextHeight = textDims[0][0]
         largestTextWidth = max([dim[1] for dim in textDims])
         textDims = [
-            singleTextHeight * len(textDims) +
-            (len(textDims) + 2) * heightBuffer,
+            singleTextHeight * len(textDims) + (len(textDims) + 2) * heightBuffer,
             largestTextWidth,
         ]
-        offsets = [imgDimsHalf[i] * (wthOffset if i else htOffset)
-                   for i in range(2)]
+        offsets = [imgDimsHalf[i] * (wthOffset if i else htOffset) for i in range(2)]
         maskSlices = [
             slice(
                 int(max(imgDimsHalf[i] + offsets[i] - textDims[i] / 2 - 5, 0)),
@@ -512,8 +503,9 @@ class EggCountLabeler:
             self.frontierSubImgIdx = None
             return
         if len(unfilledRegions) == 0:
-            frontierImgIdx = [i for i in range(
-                len(self.eggCounts)) if i not in self.imgs_to_ignore][-1]
+            frontierImgIdx = [
+                i for i in range(len(self.eggCounts)) if i not in self.imgs_to_ignore
+            ][-1]
             subImgIdx = (
                 2
                 * self.rowColCounts[self.lowerBasenames[frontierImgIdx]][0]
@@ -678,8 +670,7 @@ class EggCountLabeler:
                     [
                         self.zoom_factor
                         * (
-                            self.scalingFactor *
-                            (el - self.vectors["current"][0][i])
+                            self.scalingFactor * (el - self.vectors["current"][0][i])
                             + 50
                         )
                         for i, el in enumerate(
@@ -723,8 +714,7 @@ class EggCountLabeler:
     def calculate_mean_vector(self):
         self.mean_vector = [
             np.mean(
-                [self.vectors[k][1][i] - self.vectors[k][0][i]
-                    for k in self.vectors]
+                [self.vectors[k][1][i] - self.vectors[k][0][i] for k in self.vectors]
             )
             for i in range(2)
         ]
@@ -748,8 +738,7 @@ class EggCountLabeler:
     def start_new_vector(self):
         if self.closestEggIdx is None:
             return
-        self.vectors["current"] = [
-            self.currentClickLabels()[self.closestEggIdx]]
+        self.vectors["current"] = [self.currentClickLabels()[self.closestEggIdx]]
         cvk = self.current_vector_key()
         if cvk in self.vectors:
             del self.vectors[cvk]
@@ -758,10 +747,10 @@ class EggCountLabeler:
         vec = self.vectors["current"]
         self.zoom_image = cv2.resize(
             self.centerImg[
-                round(vec[0][1] * self.scalingFactor - 50): round(
+                round(vec[0][1] * self.scalingFactor - 50) : round(
                     vec[0][1] * self.scalingFactor + 50
                 ),
-                round(vec[0][0] * self.scalingFactor - 50): round(
+                round(vec[0][0] * self.scalingFactor - 50) : round(
                     vec[0][0] * self.scalingFactor + 50
                 ),
             ],
@@ -783,8 +772,7 @@ class EggCountLabeler:
 
     def cursorDisplay(self):
         """Draw a yellow circle at the position of the cursor."""
-        cv2.circle(self.liveImg, (self.lastX, self.lastY),
-                   4, COL_Y, thickness=2)
+        cv2.circle(self.liveImg, (self.lastX, self.lastY), 4, COL_Y, thickness=2)
 
     def annotateEggCounts(self):
         """Start GUI and set up handling of keyboard and mouse events."""
@@ -833,15 +821,13 @@ class EggCountLabeler:
     def saveMessageDisplay(self):
         """Display message in GUI indicating successful save."""
         if self.justSaved:
-            self.showCenteredMessage(
-                "Successfully saved to file!", overBlank=False)
+            self.showCenteredMessage("Successfully saved to file!", overBlank=False)
 
     def helpText(self):
         """Display help message in GUI."""
         if self.showHelp:
             corner, dims = (44, 17), (127, 435)
-            self.setMask([slice(corner[i], corner[i] + dims[i])
-                          for i in range(2)])
+            self.setMask([slice(corner[i], corner[i] + dims[i]) for i in range(2)])
             self.img = overlay(self.img, self.mask, COL_W)
             helpTexts = (
                 "keyboard commands:\nh\ns\nq\n0-9\nbksp\n.\n,",
@@ -956,8 +942,6 @@ class EggCountLabeler:
         """
         unofficialEggCounts = []
         self.getIndicesOfIgnoredImages()
-        print('how many total images?', self.totalNumSubImgs())
-        print('how mnay non-overlapping?', self.totalNumSubImgs() - len(self.abs_idxs_ignored))
         for i in range(len(self.imgPaths)):
             lowerBasename = self.lowerBasenames[i]
             if lowerBasename not in self.rowColCounts:
@@ -976,13 +960,9 @@ class EggCountLabeler:
                 for i, ct in enumerate(self.rowColCounts[lowerBasename])
             ]
             for i, j in itertools.product(*chamberRange):
-                if (
-                    self.clickLabelManager.chamberTypes[lowerBasename]
-                    != CT.large.name
-                ):
+                if self.clickLabelManager.chamberTypes[lowerBasename] != CT.large.name:
                     unofficialEggCounts.append(
-                        self.clickLabelManager.getNumClicks(
-                            lowerBasename, i, j)
+                        self.clickLabelManager.getNumClicks(lowerBasename, i, j)
                     )
                 else:
                     for pos in POSITIONS:
@@ -998,7 +978,7 @@ class EggCountLabeler:
             sum(
                 [
                     len(subImgList)
-                    for subImgList in self.subImgs[0: self.frontierImgIdx]
+                    for subImgList in self.subImgs[0 : self.frontierImgIdx]
                 ]
             )
             + self.frontierSubImgIdx
@@ -1044,8 +1024,7 @@ class EggCountLabeler:
         attrNames = ["%ssFile" % fileType for fileType in ("count", "label")]
         fileExtensions = ("csv", "pickle")
         userSuffix = "_%s" % username
-        filePaths = [getattr(opts, attrName).split(".")[0]
-                     for attrName in attrNames]
+        filePaths = [getattr(opts, attrName).split(".")[0] for attrName in attrNames]
         for i, f in enumerate(filePaths):
             setattr(
                 self,
@@ -1095,7 +1074,7 @@ class EggCountLabeler:
             and self.frontierSubImgIdx + 1 == len(self.subImgs[-1]),
         }
         for clickKey in list(self.clickLabelManager.clicks):
-            for frontierImageName in self.lowerBasenames[self.frontierImgIdx + 1:]:
+            for frontierImageName in self.lowerBasenames[self.frontierImgIdx + 1 :]:
                 if frontierImageName in clickKey:
                     del self.clickLabelManager.clicks[clickKey]
         with open(self.labelsFile, "wb") as labelsFile:
@@ -1308,8 +1287,7 @@ class EggCountLabeler:
             self.scalingFactor = 1.5
         else:
             self.scalingFactor = 2
-        resizedDims = [self.scalingFactor *
-                       dim for dim in self.centerImg.shape]
+        resizedDims = [self.scalingFactor * dim for dim in self.centerImg.shape]
         bufferVert = 100
         bufferHoriz, combinedHeightUpperLowerBorders = 100, 80
         self.upperBorderHt, self.sidebarWidth = 30, 230
@@ -1322,12 +1300,10 @@ class EggCountLabeler:
             ) / self.centerImg.shape[0]
         self.sidebarWidth = max(
             self.sidebarWidth,
-            int(0.5 * (vidIdWidth - self.scalingFactor *
-                       self.centerImg.shape[1])),
+            int(0.5 * (vidIdWidth - self.scalingFactor * self.centerImg.shape[1])),
         )
         widthDiff = (self.monitorInfo.width - bufferHoriz) - (
-            self.centerImg.shape[1] *
-            self.scalingFactor + 2 * self.sidebarWidth
+            self.centerImg.shape[1] * self.scalingFactor + 2 * self.sidebarWidth
         )
         if widthDiff < 0:
             if abs(widthDiff) < 2 * self.sidebarWidth:
@@ -1349,11 +1325,9 @@ class EggCountLabeler:
         )
         mainImg = np.hstack(
             (
-                np.zeros(
-                    (self.centerImg.shape[0], self.sidebarWidth, 3), np.uint8),
+                np.zeros((self.centerImg.shape[0], self.sidebarWidth, 3), np.uint8),
                 self.centerImg,
-                np.zeros(
-                    (self.centerImg.shape[0], self.sidebarWidth, 3), np.uint8),
+                np.zeros((self.centerImg.shape[0], self.sidebarWidth, 3), np.uint8),
             )
         )
         upperBorder, lowerBorder = [
@@ -1376,8 +1350,7 @@ class EggCountLabeler:
         ):
             return self.rowNumFourCircle(idx, subImgIdx)
         return int(
-            np.floor(
-                subImgIdx / (2 * self.rowColCounts[self.lowerBasenames[idx]][1]))
+            np.floor(subImgIdx / (2 * self.rowColCounts[self.lowerBasenames[idx]][1]))
         )
 
     def rowNumFourCircle(self, idx, subImgIdx):
@@ -1426,8 +1399,7 @@ class EggCountLabeler:
 
     def vidIDDisplay(self):
         """Display image filename, row number, and column number in the GUI."""
-        putText(self.baseImg, self.vidID(), (10, 10),
-                (0, 1), textStyle(color=COL_BK))
+        putText(self.baseImg, self.vidID(), (10, 10), (0, 1), textStyle(color=COL_BK))
 
     def vidID(self):
         """Return image filename, row number, and column number as a
@@ -1474,8 +1446,7 @@ class EggCountLabeler:
         putText(
             self.baseImg,
             usernameText,
-            (self.baseImg.shape[1] - textWidth -
-             10, self.baseImg.shape[0] - 18),
+            (self.baseImg.shape[1] - textWidth - 10, self.baseImg.shape[0] - 18),
             (0, 1),
             textStyle(color=COL_BK),
         )
@@ -1551,8 +1522,7 @@ class EggCountLabeler:
             textStyle(1.8, COL_R_D, 2),
         )
         alpha = 0.4
-        self.eggsImg = cv2.addWeighted(
-            overlay, alpha, self.eggsImg, 1 - alpha, 0)
+        self.eggsImg = cv2.addWeighted(overlay, alpha, self.eggsImg, 1 - alpha, 0)
 
     def imageFrameToAppFrame(self, xy):
         return (
@@ -1664,8 +1634,7 @@ class EggCountLabeler:
             (
                 round(np.mean([self.buttonCoords[tp][i][0] for i in range(2)]))
                 - round(0.5 * textWidth),
-                round(np.mean([self.buttonCoords[tp][i][1]
-                               for i in range(2)])),
+                round(np.mean([self.buttonCoords[tp][i][1] for i in range(2)])),
             ),
             (0, 1),
             (cv2.FONT_HERSHEY_PLAIN, textSize, COL_W, textWt, cv2.LINE_AA),
@@ -1722,6 +1691,7 @@ class EggCountLabeler:
         if self.mode == EditMode.translate and len(self.vectors) == 0:
             self.buttons["translate"].disabled = True
         for b_key in self.buttons:
+            self.buttons[b_key].coords = self.getButtonCoords(b_key)
             self.buttons[b_key].display(self.eggsImg)
 
     def absolutePosition(self, idx=None, subImgIdx=None, guess=False):
@@ -1735,8 +1705,7 @@ class EggCountLabeler:
         ):
             return None
         return (
-            sum([len(eggCountList)
-                 for eggCountList in self.subImgs[:idx]]) + subImgIdx
+            sum([len(eggCountList) for eggCountList in self.subImgs[:idx]]) + subImgIdx
         )
 
     def getImgAndSubImgIdx(self, absIdx):
@@ -1839,8 +1808,7 @@ class EggCountLabeler:
             self.baseImg,
             introText,
             (
-                int(0.5 * (self.sidebarWidth -
-                           getTextSize(introText, 0.7)[1])),
+                int(0.5 * (self.sidebarWidth - getTextSize(introText, 0.7)[1])),
                 round(self.baseImg.shape[0] * heightOffset) - halfHeight - 20,
             ),
             (0, 1),
@@ -1921,8 +1889,7 @@ class EggCountLabeler:
                 putText(
                     self.eggsImg,
                     text,
-                    (self.eggsImg.shape[1] - 98, 40 +
-                     labelOffsetPx * numLabelsAdded),
+                    (self.eggsImg.shape[1] - 98, 40 + labelOffsetPx * numLabelsAdded),
                     (0, 1),
                     textStyle(color=COL_W),
                 )
@@ -1968,8 +1935,7 @@ class EggCountLabeler:
             self.deltaMsgHeight = 40
         else:
             self.deltaMsgHeight = 30
-        putText(self.eggsImg, message, (10, 68),
-                (0, 1), textStyle(color=COL_O))
+        putText(self.eggsImg, message, (10, 68), (0, 1), textStyle(color=COL_O))
 
     def saveBlockerDisplay(self):
         """
@@ -2086,8 +2052,7 @@ def getNumericSelection(
     numberedOptionList = "\t".join(
         ["%i) %s" % (i + 1, option) for i, option in enumerate(options)]
     )
-    reminderMessage = "\nreminder: %s is %s" % (
-        optionListName, numberedOptionList)
+    reminderMessage = "\nreminder: %s is %s" % (optionListName, numberedOptionList)
     attempts = 0
     smallestPossibleVal = 0 if zeroToSkip else -1
     enteredInt = False

@@ -42,13 +42,14 @@
         let orderedImgNames = [];
         let eggLayingRegions = [];
         let imgUniqueNames = {};
+        let rotationAngles = {};
         let idsByOrigImgName = {};
         let lastPongTime;
         let numFailedPings = 0;
         let hasErrors;
         let numErrors = 0;
         let chamberRealignmentData = {};
-        let currentRealignmentMarkers = { lines: [], circles: [] }
+        let currentRealignmentMarkers = { lines: {}, circles: {} }
         let draggingRealignmentMarker = false;
         let selectDOM;
         let zoom = 1.0;
@@ -210,6 +211,7 @@
                 } else {
                     eggLayingRegions[msg.index].text.remove();
                     delete eggLayingRegions[msg.index];
+                    rotationAngles[msg.filename] = msg.rotationAngle;
                 }
             });
             socket.on('clear-all', () => {
@@ -503,12 +505,12 @@
                 if (chamberRealignmentData[k].ignored) {
                     return;
                 }
-                chamberRealignmentData[k].lines.forEach((line, i) => {
-                    Object.keys(line).forEach(tp => {
-                        chamberRealignmentData[k].lines[i][tp] =
-                            [(line[tp][0] - leftPadding) / scalingFactor,
-                            (line[tp][1] - upperPadding) / scalingFactor];
-                    });
+                Object.keys(chamberRealignmentData[k].nodes).forEach(node => {
+                    let pt = chamberRealignmentData[k].nodes[node];
+                    chamberRealignmentData[k].nodes[node] = [
+                        (pt[0] - leftPadding) / scalingFactor,
+                        (pt[1] - upperPadding) / scalingFactor
+                    ];
                 })
             });
         }
@@ -690,101 +692,121 @@
         }
 
         var resetCurrentRealignmentMarkers = function () {
-            currentRealignmentMarkers.lines.forEach(l => {
-                l.remove();
+            Object.keys(currentRealignmentMarkers.lines).forEach(l => {
+                currentRealignmentMarkers.lines[l].remove();
             })
-            currentRealignmentMarkers.circles.forEach(c => {
-                c.remove();
+            Object.keys(currentRealignmentMarkers.circles).forEach(c => {
+                currentRealignmentMarkers.circles[c].remove();
             })
-            currentRealignmentMarkers = { lines: [], circles: [] };
+            currentRealignmentMarkers = { lines: {}, circles: {} };
         }
 
         var addRealignmentEndpointEventHandlers = function (toReset = null) {
-            currentRealignmentMarkers.circles.forEach((circle, i) => {
-                if (toReset !== null && i !== toReset) {
+            Object.keys(currentRealignmentMarkers.circles).forEach((circle) => {
+                if (toReset !== null && circle !== toReset) {
                     return;
                 }
-                circle.onMouseEnter = () => {
+                currentRealignmentMarkers.circles[circle].onMouseEnter = () => {
                     if (draggingRealignmentMarker) {
                         return;
                     }
                     let newCircle = new paper.Path.Circle({
-                        center: currentRealignmentMarkers.circles[i].position,
+                        center: currentRealignmentMarkers.circles[circle].position,
                         radius: 5,
                         strokeColor: 'red',
                         fillColor: 'red'
                     })
 
-                    currentRealignmentMarkers.circles[i].remove();
-                    currentRealignmentMarkers.circles[i] = newCircle;
-                    addRealignmentEndpointEventHandlers(i);
+                    currentRealignmentMarkers.circles[circle].remove();
+                    currentRealignmentMarkers.circles[circle] = newCircle;
+                    addRealignmentEndpointEventHandlers(circle);
                 };
-                circle.onMouseLeave = () => {
+                currentRealignmentMarkers.circles[circle].onMouseLeave = () => {
                     if (draggingRealignmentMarker) {
                         return;
                     }
                     let newCircle = new paper.Path.Circle({
-                        center: currentRealignmentMarkers.circles[i].position,
+                        center: currentRealignmentMarkers.circles[circle].position,
                         radius: 2,
                         strokeColor: 'red',
                         fillColor: 'red'
                     });
-                    currentRealignmentMarkers.circles[i].remove();
-                    currentRealignmentMarkers.circles[i] = newCircle;
-                    addRealignmentEndpointEventHandlers(i);
+                    currentRealignmentMarkers.circles[circle].remove();
+                    currentRealignmentMarkers.circles[circle] = newCircle;
+                    addRealignmentEndpointEventHandlers(circle);
                 };
-                circle.onMouseDrag = (evt) => {
+                currentRealignmentMarkers.circles[circle].onMouseDrag = (evt) => {
                     draggingRealignmentMarker = true;
-                    currentRealignmentMarkers.circles[i].position.x += evt.delta.x;
-                    currentRealignmentMarkers.circles[i].position.y += evt.delta.y;
-                    currentRealignmentMarkers.circles[i].opacity = 0.0;
-                    let lineIndex = Math.floor(i / 2);
-                    let pairedPointIndex = i % 2 == 0 ? i + 1 : i - 1;
-                    currentRealignmentMarkers.lines[lineIndex].remove();
-                    currentRealignmentMarkers.lines[lineIndex] = new paper.Path.Line(
-                        currentRealignmentMarkers.circles[i].position,
-                        currentRealignmentMarkers.circles[pairedPointIndex].position
-                    );
-                    currentRealignmentMarkers.lines[lineIndex].strokeColor = 'red';
-                    currentRealignmentMarkers.lines[lineIndex].strokeWidth = 2;
-                }
-                circle.onMouseUp = () => {
-                    draggingRealignmentMarker = false;
-                    currentRealignmentMarkers.circles[i].opacity = 1.0;
-                    for (let index = 0; index < chamberRealignmentData[currentImgIndex].lines.length; index++) {
-                        chamberRealignmentData[currentImgIndex].lines[index] =
-                        {
-                            start: [currentRealignmentMarkers.circles[index * 2].position.x,
-                            currentRealignmentMarkers.circles[index * 2].position.y],
-                            end: [
-                                currentRealignmentMarkers.circles[index * 2 + 1].position.x,
-                                currentRealignmentMarkers.circles[index * 2 + 1].position.y
-                            ]
+                    currentRealignmentMarkers.circles[circle].position.x += evt.delta.x;
+                    currentRealignmentMarkers.circles[circle].position.y += evt.delta.y;
+                    currentRealignmentMarkers.circles[circle].opacity = 0.0;
+                    // if it's the middle point, both lines need to move.
+                    let lineDefaults = { strokeColor: 'red', strokeWidth: 2 }
+                    if (circle === 'end1' || circle === 'middle') {
+                        currentRealignmentMarkers.lines.toEnd1.remove();
+                        currentRealignmentMarkers.lines.toEnd1 = new paper.Path.Line({
+                            ...{
+                                from: currentRealignmentMarkers.circles.middle.position,
+                                to: currentRealignmentMarkers.circles.end1.position,
+                            }, ...lineDefaults
                         }
-
+                        );
                     }
+                    if (circle === 'end2' || circle === 'middle') {
+                        currentRealignmentMarkers.lines.toEnd2.remove();
+                        currentRealignmentMarkers.lines.toEnd2 = new paper.Path.Line({
+                            ...
+                            {
+                                from: currentRealignmentMarkers.circles.middle.position,
+                                to: currentRealignmentMarkers.circles.end2.position,
+                            }, ...lineDefaults
+                        }
+                        )
+                    }
+                }
+                currentRealignmentMarkers.circles[circle].onMouseUp = () => {
+                    draggingRealignmentMarker = false;
+                    currentRealignmentMarkers.circles[circle].opacity = 1.0;
+                    chamberRealignmentData[currentImgIndex].nodes[circle] = [
+                        currentRealignmentMarkers.circles[circle].position.x,
+                        currentRealignmentMarkers.circles[circle].position.y
+                    ]
                 }
             });
         }
 
         var drawChamberAlignmentMarkers = function () {
-            if (!chamberRealignmentData[currentImgIndex].lines) {
-                let imageYEdge = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
-                let imageXEdge = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
-                chamberRealignmentData[currentImgIndex].lines = [{ start: [leftPadding + 80, upperPadding + 80], end: [leftPadding + 300, upperPadding + 80] },
-                { start: [leftPadding + 80, upperPadding + 80], end: [leftPadding + 80, upperPadding + 300] }]
+            if (!chamberRealignmentData[currentImgIndex].nodes) {
+                chamberRealignmentData[currentImgIndex].nodes = {
+                    end1: [leftPadding + 0.9 * backgroundRaster.bounds.width, upperPadding + 80],
+                    middle: [leftPadding + 80, upperPadding + 80],
+                    end2: [leftPadding + 80, upperPadding + 0.9 * backgroundRaster.bounds.height]
+                }
             }
-            chamberRealignmentData[currentImgIndex].lines.forEach((line, i) => {
-                let from = new paper.Point(...line.start);
-                let to = new paper.Point(...line.end);
-                currentRealignmentMarkers.lines.push(new paper.Path.Line(from, to));
-                ['start', 'end'].forEach(point => {
-                    currentRealignmentMarkers.circles.push(new paper.Path.Circle({
-                        center: line[point], radius: 2, strokeColor: 'red', fillColor: 'red'
-                    }));
-                });
-                currentRealignmentMarkers.lines[i].strokeColor = 'red';
-                currentRealignmentMarkers.lines[i].strokeWidth = 2;
+            let currentNodes = chamberRealignmentData[currentImgIndex].nodes;
+            currentRealignmentMarkers.lines = {
+                toEnd1:
+                    new paper.Path.Line({
+                        from: new paper.Point(currentNodes.end1),
+                        to: new paper.Point(currentNodes.middle),
+                        strokeColor: 'red',
+                        strokeWidth: 2
+                    }), toEnd2:
+                    new paper.Path.Line({
+                        from: new paper.Point(currentNodes.end2),
+                        to: new paper.Point(currentNodes.middle),
+                        strokeColor: 'red',
+                        strokeWidth: 2
+                    })
+            };
+            Object.keys(currentNodes).forEach(node => {
+                currentRealignmentMarkers.circles[node] =
+                    new paper.Path.Circle({
+                        center: currentNodes[node],
+                        radius: 2,
+                        strokeColor: 'red',
+                        fillColor: 'red'
+                    });
             });
             addRealignmentEndpointEventHandlers();
         }
@@ -820,15 +842,24 @@
                 }
             }
             $('#updates').append(`<img id=pic src="/uploads/${orderedImgNames[currentImgIndex]}?lastmod=${Date.now()}">`);
+            let rotationAngle = rotationAngles[orderedImgNames[currentImgIndex]] || 0;
             paper.project.clear();
             backgroundRaster = new paper.Raster('pic');
             pic = document.getElementById('pic');
             backgroundRaster.onLoad = () => {
+                if (rotationAngle) {
+                    backgroundRaster.rotate(-rotationAngle * 180 / Math.PI)
+                }
                 backgroundRaster.fitBounds(paper.view.viewSize);
-                scalingFactor = Math.min(canvasHeight / pic.height, canvasWidth / pic.width);
+                scalingFactor = Math.min(canvasHeight / (Math.abs(pic.width * Math.sin(rotationAngle)) +
+                    Math.abs(pic.height * Math.cos(rotationAngle))),
+                    canvasWidth / (Math.abs(pic.width * Math.cos(rotationAngle)) +
+                        Math.abs(pic.height * Math.sin(rotationAngle))));
                 document.getElementById('pic').remove();
-                upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height);
-                leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width);
+                upperPadding = 0.5 * (canvasHeight - backgroundRaster.bounds.height)
+                    + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.bounds.width);
+                leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width)
+                    + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.bounds.height);
                 if ('error' in annotations[orderedImgNames[currentImgIndex]]) {
                     let pointText = new paper.PointText(new paper.Point(paper.view.center.x,
                         paper.view.center.y));

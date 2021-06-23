@@ -83,10 +83,11 @@ class SessionManager:
 
     def segment_image_via_alignment_data(self, img, img_path, alignment_data):
         segmenter = ManualSegmenter(
-            img, alignment_data["lines"], alignment_data["type"]
+            img, alignment_data["nodes"], alignment_data["type"]
         )
         self.subImgs, self.bboxes = segmenter.calc_bboxes_and_subimgs()
-        self.chamberTypes[img_path] = alignment_data['type']
+        self.chamberTypes[img_path] = alignment_data["type"]
+        self.rotation_angle = segmenter.rotation_angle
 
     def segment_image_via_object_detection(self, img, img_path):
         self.cf = CircleFinder(img, os.path.basename(img_path), allowSkew=True)
@@ -124,7 +125,7 @@ class SessionManager:
         if alignment_data is None:
             self.segment_image_via_object_detection(img, img_path)
         else:
-            if 'ignored' in alignment_data and alignment_data['ignored']:
+            if "ignored" in alignment_data and alignment_data["ignored"]:
                 self.predictions[img_path].append(ImageAnalysisException)
                 return
             self.segment_image_via_alignment_data(img, img_path, alignment_data)
@@ -168,6 +169,7 @@ class SessionManager:
         counting_data = {
             "data": json.dumps(resultsData, separators=(",", ":")),
             "filename": self.imgBasename,
+            'rotationAngle': self.rotation_angle if hasattr(self, 'rotation_angle') else None,
             "index": index,
         }
         self.emit_to_room(

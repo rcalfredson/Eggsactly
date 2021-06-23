@@ -158,7 +158,6 @@ def handle_annot_img_upload():
 @app.route("/manual-recount", methods=["POST"])
 def manual_recount():
     pauser.set_resume_timer()
-    n_files = len(request.json["chamberData"])
     process_imgs(request.json["sid"], data_type=AllowedDataTypes.json)
     pauser.set_resume_timer()
     socketIO.emit("counting-done", {"is_retry": True}, room=request.json["sid"])

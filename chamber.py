@@ -53,10 +53,7 @@ class Chamber:
         counts = dict()
         for row in reader:
             if len(row) == 1:
-                if (
-                    len(counts.keys()) > 0
-                    and chamberTypes[currentImg] == CT.large.name
-                ):
+                if len(counts.keys()) > 0 and chamberTypes[currentImg] == CT.large.name:
                     counts[currentImg] = LargeChamber().flattenCounts(
                         counts[currentImg]
                     )
@@ -105,10 +102,12 @@ class SixByFourChamber(Chamber):
         """Create a new "Old"-type chamber."""
         self.numRows, self.numCols = 6, 4
         self.rowDist, self.colDist = 12, 25
-        self.dist_across_arena = 22
+        self.dist_across_all_arenas = 70
+        self.floor_side_length = 10
         self.dist_between_arenas = 3
         self.dist_along_agarose = 78
         self.agarose_width = 6
+        self.dist_between_floors = 2 * self.agarose_width + self.dist_between_arenas
         self.dist_trough_to_first_arena = 4
 
 
@@ -119,10 +118,12 @@ class FiveByThreeChamber(Chamber):
         """Create a new "3x5"-type chamber."""
         self.numRows, self.numCols = 5, 3
         self.rowDist, self.colDist = 12, 26
-        self.dist_across_arena = 24
-        self.dist_between_arenas = 3.5
+        self.dist_across_all_arenas = 58
+        self.floor_side_length = 10
+        self.dist_between_arenas = 3
         self.dist_along_agarose = 64
         self.agarose_width = 7
+        self.dist_between_floors = 2 * self.agarose_width + self.dist_between_arenas
         self.dist_trough_to_first_arena = 3
 
 
@@ -211,7 +212,7 @@ class CT(enum.Enum):
     sixByFour = SixByFourChamber
     fiveByThree = FiveByThreeChamber
     large = LargeChamber
-    
+
     # Legacy aliases
     new = OptoChamber
     old = SixByFourChamber
