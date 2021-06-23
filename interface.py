@@ -2,6 +2,7 @@ from enum import Enum
 import os
 import shutil
 import time
+import timeit
 import zipfile
 
 from flask import (
@@ -22,6 +23,7 @@ from lib.image.exif import correct_via_exif
 from lib.os.pauser import PythonPauser
 from lib.web.downloadManager import DownloadManager
 from lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
+from lib.web.network_loader import NetworkLoader
 from lib.web.scheduler import Scheduler
 from lib.web.sessionManager import SessionManager
 from users import users
@@ -30,11 +32,13 @@ sessions = {}
 
 UPLOAD_FOLDER = "./uploads"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
+NET_ARCH = ("fcrn", "splinedist")[1]
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.secret_key = os.urandom(24)
 socketIO = SocketIO(app)
 downloadManager = DownloadManager()
+network_loader = NetworkLoader(NET_ARCH)
 pauser = PythonPauser()
 scheduler = Scheduler(1)
 
@@ -85,7 +89,9 @@ def field_ping(data):
 
 @socketIO.on("connect")
 def connected():
-    sessions[request.sid] = SessionManager(socketIO, request.sid)
+    sessions[request.sid] = SessionManager(
+        socketIO, request.sid, network_loader
+    )
     socketIO.emit("sid-from-server", {"sid": request.sid}, room=request.sid)
 
 
@@ -166,6 +172,7 @@ def manual_recount():
 
 @app.route("/upload", methods=["POST"])
 def handle_upload():
+    start_t = timeit.default_timer()
     pauser.set_resume_timer()
     sid = request.form["sid"]
     sessions[sid].clear_data()
@@ -178,6 +185,7 @@ def handle_upload():
     process_imgs(sid, data_type=AllowedDataTypes.file)
     pauser.set_resume_timer()
     socketIO.emit("counting-done", {"is_retry": False}, room=sid)
+    print('total processing time:', timeit.default_timer() - start_t)
     return "OK"
 
 

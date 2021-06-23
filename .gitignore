@@ -128,7 +128,6 @@ dmypy.json
 .pyre/
 
 # counting-specific folders and files
-detectors/
 emptyTest/
 generated/
 imgs/

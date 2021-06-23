@@ -2,9 +2,12 @@ import csv
 from datetime import datetime
 import inspect
 import json
+from lib.web.network_loader import NetworkLoader
 from lib.image.manual_segmenter import ManualSegmenter
 import os
 import time
+import warnings
+warnings.filterwarnings("error")
 
 import cv2
 import numpy as np
@@ -16,20 +19,11 @@ from circleFinder import CircleFinder
 from detectors.fcrn import model
 from lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 
-MODEL_PATH = (
-    "models/egg_FCRN_A_150epochs_Yang-Lab-Dell2_2021-01-06" + " 17-04-53.765866.pth"
-)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-network = model.FCRN_A(input_filters=3, N=2).to(device)
-network.train(False)
-network = torch.nn.DataParallel(network)
-network.load_state_dict(torch.load(MODEL_PATH))
-
 
 class SessionManager:
     """Represent and process information while using the egg-counting web app."""
 
-    def __init__(self, socketIO, room):
+    def __init__(self, socketIO, room, network_loader: NetworkLoader):
         """Create a new SessionData instance.
 
         Arguments:
@@ -41,6 +35,7 @@ class SessionManager:
         self.annotations = {}
         self.socketIO = socketIO
         self.room = room
+        self.network_loader = network_loader
         self.lastPing = time.time()
         self.errorMessages = {
             ImageAnalysisException: "Image could not be analyzed.",
@@ -110,6 +105,8 @@ class SessionManager:
                 raise CUDAMemoryException
             else:
                 raise ImageAnalysisException
+        except RuntimeWarning:
+            raise ImageAnalysisException
 
     def segment_img_and_count_eggs(self, img_path, alignment_data=None, index=None):
         imgBasename = os.path.basename(img_path)
@@ -133,11 +130,7 @@ class SessionManager:
             "counting-progress", {"data": "Counting eggs in image %s" % imgBasename}
         )
         for subImg in self.subImgs:
-            subImg = torch.from_numpy(
-                (1 / 255) * np.expand_dims(np.moveaxis(subImg, 2, 0), 0)
-            )
-            result = network(subImg)
-            self.predictions[img_path].append(int(torch.sum(result).item() / 100))
+            self.predictions[img_path].append(self.network_loader.predict_instances(subImg))
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
         self.bboxes = [[int(el) for el in bbox] for bbox in self.bboxes]
         self.sendAnnotationsToClient(index)
