@@ -184,6 +184,19 @@
             document.getElementById('page-mask').style.display = 'none';
             document.getElementById('modal-1').removeAttribute('style');
             socket.on('counting-progress', (msg) => {
+                if (msg.overwrite) {
+                    let elementToOverwrite = document.getElementById('replaceable-counting-msg');
+                    if (elementToOverwrite) {
+                        elementToOverwrite.innerText = msg.data;
+                    }
+                    else {
+                        let newPara = document.createElement('p');
+                        newPara.setAttribute('id', 'replaceable-counting-msg');
+                        newPara.innerText = msg.data;
+                        document.getElementById('updates-by-image').appendChild(newPara);
+                    }
+                    return;
+                }
                 $('#updates-by-image').append('<p>' + msg.data + '</p>')
             });
             socket.on('counting-error', (msg) => {

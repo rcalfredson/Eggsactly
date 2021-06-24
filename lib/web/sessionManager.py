@@ -129,7 +129,12 @@ class SessionManager:
         self.emit_to_room(
             "counting-progress", {"data": "Counting eggs in image %s" % imgBasename}
         )
-        for subImg in self.subImgs:
+        num_sub_imgs = len(self.subImgs)
+        for i, subImg in enumerate(self.subImgs):
+            self.emit_to_room('counting-progress', {
+                'overwrite': True,
+                "data": f"Counting eggs in region {i+1} of {num_sub_imgs}"
+            })
             self.predictions[img_path].append(self.network_loader.predict_instances(subImg))
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
         self.bboxes = [[int(el) for el in bbox] for bbox in self.bboxes]
