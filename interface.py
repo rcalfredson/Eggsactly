@@ -2,7 +2,6 @@ from enum import Enum
 import os
 import shutil
 import time
-import timeit
 import zipfile
 
 from flask import (
@@ -172,7 +171,6 @@ def manual_recount():
 
 @app.route("/upload", methods=["POST"])
 def handle_upload():
-    start_t = timeit.default_timer()
     pauser.set_resume_timer()
     sid = request.form["sid"]
     sessions[sid].clear_data()
@@ -185,7 +183,6 @@ def handle_upload():
     process_imgs(sid, data_type=AllowedDataTypes.file)
     pauser.set_resume_timer()
     socketIO.emit("counting-done", {"is_retry": False}, room=sid)
-    print('total processing time:', timeit.default_timer() - start_t)
     return "OK"
 
 

@@ -132,7 +132,7 @@ emptyTest/
 generated/
 imgs/
 investigation/
-models/
+/models/
 results/
 error_cases/*
 temp/*

@@ -78,7 +78,6 @@ class DownloadManager():
 
     def createImagesForDownload(self, ts):
         sm = self.sessions[ts]['session_manager']
-        print('creating images for download?')
         for path in sm.predictions:
             self.path_base = os.path.basename(path)
             if any(type(el) != int for el in sm.predictions[path]):
