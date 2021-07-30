@@ -163,7 +163,7 @@ for i, imgPath in enumerate(sourceImgs):
     print('chamber type?', chamberTypes[imgPath])
 for imgPath in subImgs:
     for i, subImg in enumerate(subImgs[imgPath]):
-        if chamberTypes[imgPath] == CT.large.name:
+        if chamberTypes[imgPath] == CT.fourCircle.name:
             numCirclesPerRow = rowColCounts[imgPath][0]*4
             rowNum = np.floor(i / numCirclesPerRow).astype(int)
             colNum = np.floor((i % numCirclesPerRow) / 4).astype(int)

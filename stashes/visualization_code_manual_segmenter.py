@@ -5,20 +5,20 @@ im_copy = cv2.resize(
     fx=debug_resize_factor,
     fy=debug_resize_factor,
 )
-for bbox in bboxes:
-    cv2.rectangle(
-        im_copy,
-        (
-            int(bbox[0] * debug_resize_factor),
-            int(bbox[1] * debug_resize_factor),
-        ),
-        (
-            int((bbox[0] + bbox[2]) * debug_resize_factor),
-            int((bbox[1] + bbox[3]) * debug_resize_factor),
-        ),
-        (255, 0, 0),
-        2,
-    )
+# for bbox in bboxes:
+#     cv2.rectangle(
+#         im_copy,
+#         (
+#             int(bbox[0] * debug_resize_factor),
+#             int(bbox[1] * debug_resize_factor),
+#         ),
+#         (
+#             int((bbox[0] + bbox[2]) * debug_resize_factor),
+#             int((bbox[1] + bbox[3]) * debug_resize_factor),
+#         ),
+#         (255, 0, 0),
+#         2,
+#     )
 for div in latitude_divisions:
     cv2.drawMarker(
         im_copy,

@@ -309,11 +309,17 @@ class EggCountLabeler:
                         rowNum = self.rowNum(idx=i, subImgIdx=j)
                         colNum = self.colNum(idx=i, subImgIdx=j)
                         key = self.clickLabelManager.subImageKey(
-                            self.lowerBasenames[i], rowNum, colNum
+                            self.lowerBasenames[i],
+                            rowNum,
+                            colNum,
+                            position=self.getWellPosition(i, j),
                         )
                         if key not in self.clickLabelManager.clicks:
                             self.clickLabelManager.addKey(
-                                self.lowerBasenames[i], rowNum, colNum
+                                self.lowerBasenames[i],
+                                rowNum,
+                                colNum,
+                                position=self.getWellPosition(i, j),
                             )
                     else:
                         self.eggCounts[i].append(None)
@@ -1189,6 +1195,7 @@ class EggCountLabeler:
                 )
                 == None
             ):
+                input("adding subimage key from keyboard command")
                 self.clickLabelManager.addKey(
                     self.lowerBasenames[self.imgIdx],
                     self.rowNum(),
@@ -1336,6 +1343,18 @@ class EggCountLabeler:
         ]
         self.baseImg = np.vstack((upperBorder, mainImg, lowerBorder))
 
+    def getWellPosition(self, idx=None, subImgIdx=None):
+        if idx == None:
+            idx = self.imgIdx
+        if subImgIdx == None:
+            subImgIdx = self.subImgIdx
+        if (
+            self.clickLabelManager.chamberTypes[self.lowerBasenames[idx]]
+            != CT.large.name
+        ):
+            return None
+        return POSITIONS[subImgIdx % 4]
+
     def rowNum(self, idx=None, subImgIdx=None):
         """Return row index of the current sub-image based on its position in the
         original image.
@@ -1414,7 +1433,7 @@ class EggCountLabeler:
             self.clickLabelManager.chamberTypes[self.lowerBasenames[self.imgIdx]]
             == CT.large.name
         ):
-            self.wellPosition = POSITIONS[self.subImgIdx % 4]
+            self.wellPosition = self.getWellPosition()
             vidIdStr += ", %s" % self.wellPosition
         else:
             self.wellPosition = None

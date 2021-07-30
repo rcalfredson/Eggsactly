@@ -43,7 +43,7 @@ backupCounter = 0
 #     mkDestDir('heldout')
 
 sourceImgDirs = [
-    'P:/Egg images_9_3_2020/WT_5'
+    'P:/Egg images_9_3_2020/WT_1'
 ]
 picklePaths = ['%s/egg_count_labels_robert.pickle' % sourceImgDir for sourceImgDir in
                sourceImgDirs]
@@ -171,7 +171,7 @@ def savePatches(subImg, imgPath, rowNum, colNum, position=None):
         patch = Patch(imgPath, subImg, rowNum, colNum, position)
         if MODE == 'full':
             if MODE_FOR_FULL == 'heldout':
-                destPath = os.path.join(DEST_PATH, "%s_robert_WT_5"%MODE_FOR_FULL)
+                destPath = os.path.join(DEST_PATH, "%s_robert_WT_1"%MODE_FOR_FULL)
             else:
                 destPath = os.path.join(DEST_PATH, '%s_fullsize_%s'%(
                     MODE_FOR_FULL, GROUP))
@@ -208,7 +208,7 @@ for imgPath in subImgs:
                 imgPath in loadedData['frontierData']['fileName'] and \
                 i >= loadedData['frontierData']['subImgIdx']:
             continue
-        if chamberTypes[imgPath] == CT.large.name:
+        if chamberTypes[imgPath] == CT.fourCircle.name:
             numCirclesPerRow = rowColCounts[imgPath][0]*4
             rowNum = np.floor(i / numCirclesPerRow).astype(int)
             colNum = np.floor((i % numCirclesPerRow) / 4).astype(int)

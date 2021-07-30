@@ -1,4 +1,5 @@
 from glob import glob
+from lib.datamanagement.helpers import to_dots
 import os
 import pickle
 import shutil
@@ -37,7 +38,7 @@ for i, imgList in enumerate((imgs_in_train_val, imgs_in_heldout)):
         print('ct?', ct)
         print('orig index:', orig_index)
         print('num cols?', ct.numCols)
-        if imgData[goodKey]['ct'] == 'opto':
+        if imgData[goodKey]['ct'] == 'new':
             ct.numCols = ct.numRows
         rowNum = int(np.floor(orig_index / (2*ct.numCols)))
         colNum = orig_index % int(2*ct.numCols)
@@ -51,8 +52,6 @@ print('len(converted_heldout)', len(converted_heldout))
 print('len(converted_train_val)', len(converted_train_val))
 input()
 num_not_found = 0
-def to_dots(fileName):
-    return fileName.split('.jpg')[0]+ '_dots.png'
 for i, img in enumerate(fcrn_imgs):
     if img not in converted_train_val and img not in converted_heldout:
         print('didnot find image', img, 'in splinedist data')

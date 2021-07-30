@@ -8,12 +8,12 @@ import cv2
 import numpy as np
 
 from chamber import CT, FourCircleChamber
-from circleFinder import CircleFinder
+from circleFinder import CircleFinder, rotate_image, subImagesFromBBoxes
 from util import *
 
 import pickle
 
-MAX_DIFF = 5
+MAX_DIFF = 2
 TEXT_SIZE_LG = 1.4
 TEXT_SIZE_SM = 0.9
 MARGIN_HT = 25
@@ -30,6 +30,7 @@ opts = options()
 
 pickleFiles = {}
 counts = {}
+
 for f in opts.files:
   parent = Path(f).parent
   if parent in pickleFiles:
@@ -38,7 +39,12 @@ for f in opts.files:
     pickleFiles[parent] = [f]
 
 for directory in pickleFiles:
+  imgMetadata = None
   counts[directory] = {}
+  imgMetadataPath = os.path.join(directory, 'images.metadata')
+  if os.path.isfile(imgMetadataPath):
+      with open(imgMetadataPath, 'rb') as myFile:
+          imgMetadata = pickle.load(myFile)
   for f in pickleFiles[directory]:
     counts[directory][f] = {}
     with open(f, 'rb') as openedF:
@@ -50,7 +56,7 @@ for directory in pickleFiles:
       imageName = '%s%s'%(fileName.split(extension)[0], extension)
       imageNamesToChamberType[imageName] = loadedData['chamberTypes'][imageName]
     for imageName in imageNamesToChamberType:
-      if imageNamesToChamberType[imageName] == CT.large.name:
+      if imageNamesToChamberType[imageName] == CT.fourCircle.name:
         possibleKeys = concat([["%s_%i_%i_%s"%(imageName, combo[0], combo[1],
           pos) for combo in itertools.product(range(FourCircleChamber().numRows
           ), range(FourCircleChamber().numCols))] for pos in ('upper', 'lower',
@@ -100,10 +106,16 @@ for directory in counts:
       print('\tNo difference in counts above tolerance!')
     if len(flaggedIndices) > 0:
       flaggedImg = cv2.imread(os.path.join(directory, img))
-      circleFinder = CircleFinder(flaggedImg, img)
-      circles, avgDists, numRowsCols, rotatedImg, _ = circleFinder.findCircles()
-      subImgs = circleFinder.getSubImages(rotatedImg, circles, avgDists,
-        numRowsCols)[0]
+      if imgMetadata is not None and img in imgMetadata:
+        rotatedImg = rotate_image(
+            flaggedImg, imgMetadata[img]['rotationAngle'])
+        subImgs = subImagesFromBBoxes(
+            rotatedImg, imgMetadata[img]['bboxes']) 
+      else:
+        circleFinder = CircleFinder(flaggedImg, img)
+        circles, avgDists, numRowsCols, rotatedImg, _ = circleFinder.findCircles()
+        subImgs = circleFinder.getSubImages(rotatedImg, circles, avgDists,
+          numRowsCols)[0]
       for flaggedIndex in flaggedIndices:
         imgCopies = []
         for i, pickleFile in enumerate(pickleFilesByImg[img]):
@@ -139,11 +151,11 @@ for directory in counts:
         cv2.imwrite('P:\\Egg images_9_3_2020\\click_comparisons\\' +\
           'diff_%s_idx_%i.jpg'%(img.split('.')[0], indexInTask), combinedImgs)
         discrepancyIndices.append(numImgsChecked + flaggedIndex)
-        cv2.imshow('Img: %s. Index: %i'%(img, indexInTask), combinedImgs)
+        # cv2.imshow('Img: %s. Index: %i'%(img, indexInTask), combinedImgs)
         print('\tLargest difference in number of labels: %i'%
           maxAbsDiffs[-1][flaggedIndex])
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
     numImgsChecked += samples.shape[-1]
   maxAbsDiffs = np.array(concat(maxAbsDiffs))
   print('\nSummary for directory %s:'%directory)

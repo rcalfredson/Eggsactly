@@ -2,7 +2,7 @@ import argparse, os
 import cv2
 
 from common import globFiles
-from circleFinder import CircleFinder,  rotate_around_point_highperf, getChamberTypeByRowColRatio
+from circleFinder import CircleFinder,  rotate_around_point_highperf, getChamberTypeByRowsAndCols
 
 def options():
   """Parse options for sub-image detector."""
@@ -23,11 +23,11 @@ for path in imagePaths:
     imgName = os.path.basename(path)
     print('checking image', imgName)
     cf = CircleFinder(img, imgName)
-    wells, avgDists, numRowsCols, rotatedImg, rotationAngle = cf.findCircles()
+    wells, avgDists, numRowsCols, rotatedImg, rotationAngle = cf.findCircles(debug=True)
     print('rows and col?', numRowsCols)
     if not cf.skewed:
         unskewedImages.append(path)
-    getChamberTypeByRowColRatio(numRowsCols)
+    getChamberTypeByRowsAndCols(numRowsCols)
 
 with open('unskewedImgs.txt', 'w') as f:
     [f.write('%s\n'%datum) for datum in unskewedImages]

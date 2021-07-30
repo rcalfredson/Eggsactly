@@ -493,7 +493,7 @@ class CircleFinder:
                     COL_G,
                     cv2.MARKER_TRIANGLE_UP,
                 )
-            cv2.imshow("debug", imgCopy)
+            cv2.imshow('debug', imgCopy)
             cv2.waitKey(0)
         self.processDetections()
         rotationAngle = 0
