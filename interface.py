@@ -88,9 +88,7 @@ def field_ping(data):
 
 @socketIO.on("connect")
 def connected():
-    sessions[request.sid] = SessionManager(
-        socketIO, request.sid, network_loader
-    )
+    sessions[request.sid] = SessionManager(socketIO, request.sid, network_loader)
     socketIO.emit("sid-from-server", {"sid": request.sid}, room=request.sid)
 
 

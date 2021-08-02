@@ -181,6 +181,16 @@
 
         $(document).ready(() => {
             $("body").fadeIn(200);
+            document.body.addEventListener('keydown', function (evt) {
+                if (evt.key === 'Shift') {
+                    hideEggOutlines();
+                }
+            });
+            document.body.addEventListener('keyup', function (evt) {
+                if (evt.key === 'Shift') {
+                    showEggOutlines();
+                }
+            });
             document.getElementById('page-mask').style.display = 'none';
             document.getElementById('modal-1').removeAttribute('style');
             socket.on('counting-progress', (msg) => {
@@ -238,7 +248,7 @@
                 $('#updates-by-image').empty();
             });
             socket.on('report-ready', () => {
-                let el = document.getElementById('submit-error-report')
+                let el = document.getElementById('submit-error-report');
                 el.removeAttribute('disabled');
                 el.innerText = 'Submitted!';
                 setTimeout(() => {
@@ -411,7 +421,8 @@
         var setCurrentImgName = function () {
             setModeMarker();
             document.getElementById('current-img').innerText =
-                `Viewing image ${currentImgIndex + 1} of ${orderedImgNames.length}: ${orderedImgNames[currentImgIndex]} (Shift + scroll to zoom)`;
+                `Viewing image ${currentImgIndex + 1} of ${orderedImgNames.length}` +
+                `: ${orderedImgNames[currentImgIndex]} (Shift to hide egg outlines; shift + scroll to zoom)`;
         }
 
         var appendToFilename = function (filename, addition) {
@@ -898,10 +909,28 @@
                             pointText.justification = 'center';
                             pointText.fillColor = 'black';
                             pointText.content = annotation.count;
+                            annotation.outlines = annotation.outlines.map(
+                                outline => {
+                                    return outline.map(pt => {
+                                        return [bbox[0] + pt[1] * scalingFactor + leftPadding,
+                                        bbox[1] + pt[0] * scalingFactor + upperPadding]
+                                    })
+                                }
+                            )
                             pointText.fontSize = defaultFontSize;
                             let rectangle = new paper.Rectangle(
                                 new paper.Point(bbox[0] + leftPadding, bbox[1] + upperPadding),
                                 new paper.Point(bbox[0] + bbox[2] + leftPadding, bbox[1] + bbox[3] + upperPadding));
+                            let eggOutlines = [];
+                            annotation.outlines.forEach(outline => {
+                                eggOutlines.push(new paper.Path({
+                                    segments: outline,
+                                    strokeColor: 'white',
+                                    closed: true,
+                                    strokeWidth: 0.20,
+                                    opacity: 0.8
+                                }))
+                            });
                             rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
                             rectPath.strokeColor = colors.grey;
                             let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
@@ -912,6 +941,7 @@
                                 outline: rectPath,
                                 fill: innerRect,
                                 text: pointText,
+                                eggShapes: eggOutlines,
                                 bboxIndex: i,
                                 originalCount: annotation.count.toString(),
                                 beenEdited() {
@@ -920,7 +950,7 @@
                             };
                         });
                     } else {
-                        Object.keys(eggLayingRegions[currentImgIndex]).forEach(region => {
+                        Object.keys(eggLayingRegions[currentImgIndex]).forEach((region, i) => {
                             // recreate the text
                             let reg = eggLayingRegions[currentImgIndex][region];
                             if (reg.beenEdited()) {
@@ -948,10 +978,20 @@
                             reg.fill = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
                             reg.fill.fillColor = 'black';
                             reg.fill.opacity = 0;
+                            let origEggShapes = reg.eggShapes;
+                            reg.eggShapes = origEggShapes.map(shape => {
+                                let newPath = new paper.Path(shape.segments);
+                                newPath.strokeColor = 'white';
+                                newPath.closed = true;
+                                newPath.strokeWidth = 0.20;
+                                newPath.opacity = 0.8;
+                                return newPath;
+                            })
                             eggLayingRegions[currentImgIndex][reg.fill.id] = {
                                 outline: reg.outline,
                                 fill: reg.fill,
                                 text: reg.text,
+                                eggShapes: reg.eggShapes,
                                 bboxIndex: reg.bboxIndex,
                                 originalCount: reg.originalCount,
                                 beenEdited() {
@@ -966,6 +1006,7 @@
                 origCenter = paper.view.center;
                 canvasLoaded = true;
             }
+            document.activeElement.blur();
         }
 
         var drawTextForUneditedCount = (reg) => {
@@ -1324,6 +1365,22 @@
             let a = p.subtract(pc.multiply(beta)).subtract(c);
 
             return { zoom: zoomTemp, offset: a };
+        }
+
+        function setEggOutlineOpacity(opacity) {
+            Object.keys(eggLayingRegions[currentImgIndex]).forEach(region => {
+                eggLayingRegions[currentImgIndex][region].eggShapes.forEach(outline => {
+                    outline.opacity = opacity;
+                });
+            });
+        }
+
+        function hideEggOutlines() {
+            setEggOutlineOpacity(0);
+        }
+
+        function showEggOutlines() {
+            setEggOutlineOpacity(0.8);
         }
 
         var setPointerHandlers = function () {

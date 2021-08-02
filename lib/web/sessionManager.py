@@ -3,10 +3,12 @@ from datetime import datetime
 import inspect
 import json
 from lib.web.network_loader import NetworkLoader
+from lib.image.drawing import draw_line
 from lib.image.manual_segmenter import ManualSegmenter
 import os
 import time
 import warnings
+
 warnings.filterwarnings("error")
 
 import cv2
@@ -131,11 +133,16 @@ class SessionManager:
         )
         num_sub_imgs = len(self.subImgs)
         for i, subImg in enumerate(self.subImgs):
-            self.emit_to_room('counting-progress', {
-                'overwrite': True,
-                "data": f"Counting eggs in region {i+1} of {num_sub_imgs}"
-            })
-            self.predictions[img_path].append(self.network_loader.predict_instances(subImg))
+            self.emit_to_room(
+                "counting-progress",
+                {
+                    "overwrite": True,
+                    "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
+                },
+            )
+            self.predictions[img_path].append(
+                self.network_loader.predict_instances(subImg)
+            )
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
         self.bboxes = [[int(el) for el in bbox] for bbox in self.bboxes]
         self.sendAnnotationsToClient(index)
@@ -163,11 +170,13 @@ class SessionManager:
             else:
                 x = bboxes[i][0] + (1.40 if i % 2 == 0 else -0.32) * bboxes[i][2]
                 y = bboxes[i][1] + 0.55 * bboxes[i][3]
-            resultsData.append({"count": prediction, "x": x, "y": y, "bbox": bboxes[i]})
+            resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
         counting_data = {
             "data": json.dumps(resultsData, separators=(",", ":")),
             "filename": self.imgBasename,
-            'rotationAngle': self.rotation_angle if hasattr(self, 'rotation_angle') else None,
+            "rotationAngle": self.rotation_angle
+            if hasattr(self, "rotation_angle")
+            else None,
             "index": index,
         }
         self.emit_to_room(
@@ -186,6 +195,9 @@ class SessionManager:
                     annot["bbox"][1] : annot["bbox"][1] + annot["bbox"][3],
                     annot["bbox"][0] : annot["bbox"][0] + annot["bbox"][2],
                 ]
+                for outline in self.predictions[rel_path][int(i)]["outlines"]:
+                    reversed_outline = [list(reversed(el)) for el in outline]
+                    draw_line(imgSection, [reversed_outline])
                 cv2.imwrite(
                     os.path.join(
                         "error_cases",

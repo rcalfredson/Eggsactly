@@ -2,6 +2,7 @@ from csbdeep.utils import normalize
 from detectors.fcrn import model
 from detectors.splinedist.config import Config
 from detectors.splinedist.models.model2d import SplineDist2D
+from lib.image.drawing import get_interpolated_points
 import torch
 import numpy as np
 
@@ -23,11 +24,13 @@ class NetworkLoader:
             image = torch.from_numpy(
                 (1 / 255) * np.expand_dims(np.moveaxis(image, 2, 0), 0)
             )
-            return int(torch.sum(self.network(image)).item() / 100)
+            return {"count": int(torch.sum(self.network(image)).item() / 100)}
         elif self.net_arch == "splinedist":
             image = normalize(image, 1, 99.8, axis=(0, 1))
             image = image.astype(np.float32)
-            return len(self.network.predict_instances(image)[1]["points"])
+            results = self.network.predict_instances(image)[1]
+            sampled_points = get_interpolated_points(results['coord'])
+            return {"count": len(results["points"]), "outlines": sampled_points}
 
     def init_fcrn_network(self):
         self.model_path = (
