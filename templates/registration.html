@@ -55,6 +55,8 @@
         let zoom = 1.0;
         let idsWithEdits = new Set();
         let lastScrollTime;
+        let lastMouseDownTime;
+        let lastCanvasMoveTime;
         let canvas;
         let canvasLoaded = false;
         let canvasWidth = Math.min(1300, window.innerWidth),
@@ -601,6 +603,7 @@
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
                     setChamberTypeSelector();
+                    resetInputAmender();
                     setIgnoreSelector();
                     redrawCanvas();
                     if (newImgIdx == 0) {
@@ -622,6 +625,7 @@
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
                     setChamberTypeSelector();
+                    resetInputAmender()
                     setIgnoreSelector();
                     redrawCanvas();
                     if (evt.target.disabled) {
@@ -635,6 +639,13 @@
                     evt.target.setAttribute('disabled', true);
                     document.getElementById('prev-img').removeAttribute('disabled');
                 }
+            }
+        }
+
+        function resetInputAmender() {
+            if (inputAmender) {
+                inputAmender.remove();
+                inputAmender = null;
             }
         }
 
@@ -1074,7 +1085,9 @@
                 eggLayingRegions[index][path.id].outline.strokeColor = colors.grey;
             }
             path.onClick = (event) => {
-                if (inputAmender) {
+                if (inputAmender ||
+                    new Date().getTime() - lastMouseDownTime > 300 ||
+                    lastCanvasMoveTime > lastMouseDownTime) {
                     return;
                 }
                 let viewer = document.getElementById('viewer')
@@ -1388,6 +1401,7 @@
             paper.view.on('mousedown', function () {
                 pointerDown = true;
                 timeDownUp = new Date().getTime();
+                lastMouseDownTime = timeDownUp;
                 dragStart = true;
             });
             paper.view.on('mouseup', function () {
@@ -1410,6 +1424,7 @@
                             evt.downPoint.y - evt.point.y);
                         let new_center = paper.view.center.add(offset);
                         paper.view.setCenter(new_center);
+                        lastCanvasMoveTime = new Date().getTime()
                     }
                 } else {
                     timeDownUp = null;
