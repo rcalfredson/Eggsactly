@@ -7,6 +7,7 @@ from lib.image.drawing import draw_line
 from lib.image.manual_segmenter import ManualSegmenter
 import os
 import time
+import traceback
 import warnings
 
 warnings.filterwarnings("error")
@@ -17,7 +18,7 @@ from PIL import Image
 import torch
 
 from chamber import CT
-from circleFinder import CircleFinder
+from circleFinder import CircleFinder, rotate_image
 from detectors.fcrn import model
 from lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 
@@ -97,7 +98,13 @@ class SessionManager:
                 },
             )
         try:
-            circles, avgDists, numRowsCols, rotatedImg, _ = self.cf.findCircles()
+            (
+                circles,
+                avgDists,
+                numRowsCols,
+                rotatedImg,
+                self.rotation_angle,
+            ) = self.cf.findCircles()
             self.chamberTypes[img_path] = self.cf.ct
             self.subImgs, self.bboxes = self.cf.getSubImages(
                 rotatedImg, circles, avgDists, numRowsCols
@@ -120,7 +127,8 @@ class SessionManager:
         self.emit_to_room(
             "counting-progress", {"data": "Segmenting image %s" % imgBasename}
         )
-        img = np.array(Image.open(img_path), dtype=np.float32)
+        self.img = np.array(Image.open(img_path), dtype=np.float32)
+        img = self.img
         if alignment_data is None:
             self.segment_image_via_object_detection(img, img_path)
         else:
@@ -188,7 +196,7 @@ class SessionManager:
     def createErrorReport(self, edited_counts, user):
         for imgPath in edited_counts:
             rel_path = os.path.normpath(os.path.join("./uploads", imgPath))
-            img = cv2.imread(rel_path)
+            img = rotate_image(cv2.imread(rel_path), self.rotation_angle)
             for i in edited_counts[imgPath]:
                 annot = self.annotations[rel_path][int(i)]
                 imgSection = img[
@@ -218,12 +226,12 @@ class SessionManager:
             writer.writerow(["Egg Counter, ALPHA version"])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
-                first_pred = self.predictions[imgPath][0]
+                first_pred = self.predictions[imgPath][0]["count"]
                 if inspect.isclass(first_pred) and issubclass(first_pred, Exception):
                     writer.writerows([[self.errorMessages[first_pred]], []])
                     continue
                 base_path = os.path.basename(imgPath)
-                updated_counts = self.predictions[imgPath].copy()
+                updated_counts = [el["count"] for el in self.predictions[imgPath]]
                 if base_path in edited_counts and len(edited_counts[base_path]) > 0:
                     writer.writerow(
                         ["Note: this image's counts have been amended by hand"]

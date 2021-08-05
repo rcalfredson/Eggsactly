@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageFont, ImageDraw
 
+from circleFinder import rotate_image
 from lib.image import drawing
 from util import putText, textStyle
 
@@ -34,7 +35,7 @@ class DownloadManager:
 
     def prepareAnnotatedImage(self, sm, ts, path):
         self.loadFont(80)
-        img = cv2.imread(path)
+        img = rotate_image(cv2.imread(path), sm.rotation_angle)
         check_counts = self.path_base in self.sessions[ts]["edited_counts"]
         if check_counts:
             been_edited = [

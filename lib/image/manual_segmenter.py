@@ -39,7 +39,7 @@ class ManualSegmenter:
                 line = getattr(self, line_type)
                 try:
                     getattr(self, line_type)["slope"] = calc_slope(line["points"])
-                except ZeroDivisionError:
+                except (ZeroDivisionError, RuntimeWarning):
                     getattr(self, line_type)["slope"] = np.infty
         else:
             slopes = []
@@ -380,8 +380,8 @@ class ManualSegmenter:
             ],
         ]
 
-        bboxes, subImgs = CircleFinder.getLargeChamberBBoxesAndImages(
-            self.image, centers, self.px_to_mm
+        bboxes, subImgs = CircleFinder(self.image, '').getLargeChamberBBoxesAndImages(
+            centers, self.px_to_mm
         )
         self.bboxes = bboxes
         self.sub_imgs = subImgs

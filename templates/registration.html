@@ -231,6 +231,7 @@
             });
             socket.on('counting-annotations', (msg) => {
                 annotations[msg.filename] = JSON.parse(msg.data);
+                rotationAngles[msg.filename] = msg.rotationAngle;
                 if (!msg.index) {
                     orderedImgNames.push(msg.filename)
                 } else {
@@ -940,7 +941,7 @@
                                     closed: true,
                                     strokeWidth: 0.20,
                                     opacity: 0.8
-                                }))
+                                }));
                             });
                             rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
                             rectPath.strokeColor = colors.grey;

@@ -177,71 +177,223 @@ class CircleFinder:
             + self.avgDists[0] / CT[self.ct].value().colDist
         )
 
-    @staticmethod
-    def getLargeChamberBBoxesAndImages(img, centers, pxToMM):
+    def findAgaroseWells(self, img, centers, pxToMM, cannyParam1=40, cannyParam2=35):
+        circles = cv2.HoughCircles(
+            img,
+            cv2.HOUGH_GRADIENT,
+            1,
+            140,
+            param1=cannyParam1,
+            param2=cannyParam2,
+            minRadius=30,
+            maxRadius=50,
+        )
+        self.shortest_distances = {}
+        self.grouped_circles = {}
+        self.well_to_well_slopes = {}
+        circles = np.uint16(np.around(circles))
+        dist_threshold = 0.5 * 0.25 * CT.large.value().floorSideLength * pxToMM
+        for i, center in enumerate(centers):
+            center = np.round(np.multiply(center, 0.25)).astype(np.int)
+            for circ in circles[0, :]:
+                circ = circ.astype(np.int32)
+                to_well_dist = distance(circ[:2], center)
+                if to_well_dist > dist_threshold:
+                    continue
+                else:
+                    if i in self.grouped_circles:
+                        self.grouped_circles[i]["raw"].append(circ.tolist())
+                    else:
+                        self.grouped_circles[i] = {"raw": [circ.tolist()]}
+                if (
+                    i not in self.shortest_distances
+                    or to_well_dist < self.shortest_distances[i]
+                ):
+                    self.shortest_distances[i] = to_well_dist
+            if i not in self.grouped_circles or len(self.grouped_circles[i]["raw"]) < 2:
+                continue
+            (
+                leftmost,
+                rightmost,
+                uppermost,
+                lowermost,
+            ) = self.getRelativePositionsOfAgaroseWells(i, center)
+            self.well_to_well_slopes[i] = []
+            if None not in (lowermost, uppermost):
+                self.well_to_well_slopes[i].append(
+                    (uppermost[0] - lowermost[0]) / (uppermost[1] - lowermost[1])
+                )
+            if None not in (leftmost, rightmost):
+                self.well_to_well_slopes[i].append(
+                    -(rightmost[1] - leftmost[1]) / (rightmost[0] - leftmost[0])
+                )
+
+    def getLargeChamberBBoxesAndImages(self, centers, pxToMM, img=None):
+        if type(img) == type(None):
+            img = self.img
         bboxes, subImgs = [], []
-        for center in centers:
-            outerEdgeDistance = round((1 + 8.6 + 8 + 1) * pxToMM)
+        img = cv2.medianBlur(img, 5)
+        img_for_circles = cv2.resize(
+            cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (0, 0), fx=0.25, fy=0.25
+        ).astype(np.uint8)
+
+        self.findAgaroseWells(img_for_circles, centers, pxToMM)
+        if len(self.well_to_well_slopes.values()) == 0:
+            self.findAgaroseWells(
+                img_for_circles, centers, pxToMM, cannyParam1=35, cannyParam2=30
+            )
+
+        center_to_agarose_dist = np.mean(list(self.shortest_distances.values())) / 0.25
+        skew_slope = np.mean(
+            [el for sub_l in list(self.well_to_well_slopes.values()) for el in sub_l]
+        )
+        rotation_angle = math.atan(skew_slope)
+        for i, center in enumerate(centers):
             acrossCircleD = round(10.5 * pxToMM)
             halfRealCircleD = round((0.5 * 10) * pxToMM)
-            centerAdjacentDistance = round(1 * pxToMM)
-
-            bboxes.append(
-                [
-                    round(max(center[0] - halfRealCircleD, 0)),
-                    round(max(center[1] - outerEdgeDistance, 0)),
-                ]
-            )
-            subImgs.append(
-                img[
-                    slice(round(bboxes[-1][1]), round(center[1] - centerAdjacentDistance)),
-                    slice(round(bboxes[-1][0]), round(bboxes[-1][0] + acrossCircleD)),
-                ]
-            )
-            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
-
-            bboxes.append(
-                [
-                    round(center[0] + centerAdjacentDistance),
-                    round(max(center[1] - halfRealCircleD, 0)),
-                ]
-            )
-            subImgs.append(
-                img[
-                    slice(round(bboxes[-1][1]), round(bboxes[-1][1] + acrossCircleD)),
-                    slice(round(bboxes[-1][0]), round(center[0] + outerEdgeDistance)),
-                ]
-            )
-            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
-
-            bboxes.append(
-                [
-                    round(max(center[0] - halfRealCircleD, 0)),
-                    round(center[1] + centerAdjacentDistance),
-                ]
-            )
-            subImgs.append(
-                img[
-                    slice(round(bboxes[-1][1]), round(center[1] + outerEdgeDistance)),
-                    slice(round(bboxes[-1][0]), round(bboxes[-1][0] + acrossCircleD)),
-                ]
-            )
-            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
-
-            bboxes.append(
-                [
-                    round(max(center[0] - outerEdgeDistance, 0)),
-                    round(max(center[1] - halfRealCircleD, 0)),
-                ]
-            )
-            subImgs.append(
-                img[
-                    slice(round(bboxes[-1][1]), round(bboxes[-1][1] + acrossCircleD)),
-                    slice(round(bboxes[-1][0]), round(center[0] - centerAdjacentDistance)),
-                ]
-            )
-            bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+            deltas = {
+                "up": {
+                    "x": -halfRealCircleD,
+                    "y": -(center_to_agarose_dist + halfRealCircleD),
+                },
+                "right": {
+                    "x": center_to_agarose_dist - halfRealCircleD,
+                    "y": -halfRealCircleD,
+                },
+                "down": {
+                    "x": -halfRealCircleD,
+                    "y": center_to_agarose_dist - halfRealCircleD,
+                },
+                "left": {
+                    "x": -(center_to_agarose_dist + halfRealCircleD),
+                    "y": -halfRealCircleD,
+                },
+            }
+            for position in deltas:
+                if position in self.grouped_circles[i]:
+                    bboxes = CircleFinder.addUpperLeftCornerToBBox(
+                        bboxes,
+                        np.divide(self.grouped_circles[i][position][:2], 0.25),
+                        -halfRealCircleD,
+                        -halfRealCircleD,
+                        0,
+                    )
+                    subImgs = CircleFinder.sampleSubImageBasedOnBBox(
+                        subImgs, img, bboxes, acrossCircleD, 0
+                    )
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                else:
+                    bboxes = CircleFinder.addUpperLeftCornerToBBox(
+                        bboxes,
+                        center,
+                        deltas[position]["x"],
+                        deltas[position]["y"],
+                        rotation_angle,
+                    )
+                    subImgs = CircleFinder.sampleSubImageBasedOnBBox(
+                        subImgs, img, bboxes, acrossCircleD, rotation_angle
+                    )
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
         return bboxes, subImgs
+
+    def getRelativePositionsOfAgaroseWells(self, i, center):
+        leftmost, rightmost, uppermost, lowermost = None, None, None, None
+        for circ in self.grouped_circles[i]["raw"]:
+            if type(leftmost) == type(None) or circ[0] < leftmost[0]:
+                leftmost = circ
+        for circ in self.grouped_circles[i]["raw"]:
+            if circ == leftmost:
+                continue
+            if circ[0] - leftmost[0] < 100 or abs(center[0] - leftmost[0]) < 100:
+                leftmost = None
+                break
+        if leftmost is not None:
+            self.grouped_circles[i]["left"] = leftmost
+            self.grouped_circles[i]["raw"].remove(leftmost)
+        for circ in self.grouped_circles[i]["raw"]:
+            if type(rightmost) == type(None) or circ[0] > rightmost[0]:
+                rightmost = circ
+        for circ in self.grouped_circles[i]["raw"] + [leftmost]:
+            if None in (rightmost, circ) or circ == rightmost:
+                continue
+            if rightmost[0] - circ[0] < 100:
+                rightmost = None
+                break
+            if leftmost is not None and abs(leftmost[1] - rightmost[1]) > 20:
+                rightmost = None
+                break
+        if rightmost is not None:
+            self.grouped_circles[i]["right"] = rightmost
+            self.grouped_circles[i]["raw"].remove(rightmost)
+        for circ in self.grouped_circles[i]["raw"]:
+            if type(uppermost) == type(None) or circ[1] < uppermost[1]:
+                uppermost = circ
+        for circ in self.grouped_circles[i]["raw"] + [leftmost, rightmost]:
+            if None in (uppermost, circ) or circ == uppermost:
+                continue
+            if circ[1] - uppermost[1] < 100:
+                uppermost = None
+        if uppermost is not None:
+            self.grouped_circles[i]["up"] = uppermost
+            self.grouped_circles[i]["raw"].remove(uppermost)
+        for circ in self.grouped_circles[i]["raw"]:
+            if type(lowermost) == type(None) or circ[1] > lowermost[1]:
+                lowermost = circ
+        for circ in self.grouped_circles[i]["raw"] + [leftmost, rightmost, uppermost]:
+            if None in (lowermost, circ) or circ == lowermost:
+                continue
+            if lowermost[1] - circ[1] < 100:
+                lowermost = None
+        if lowermost is not None:
+            self.grouped_circles[i]["down"] = lowermost
+            self.grouped_circles[i]["raw"].remove(lowermost)
+        return leftmost, rightmost, uppermost, lowermost
+
+    @staticmethod
+    def addUpperLeftCornerToBBox(bboxes, center, x_del, y_del, rotation_angle):
+        bboxes.append(
+            [
+                round(
+                    max(
+                        center[0]
+                        + x_del * math.cos(rotation_angle)
+                        + y_del * math.sin(rotation_angle),
+                        0,
+                    )
+                ),
+                round(
+                    max(
+                        center[1]
+                        - x_del * math.sin(rotation_angle)
+                        + y_del * math.cos(rotation_angle),
+                        0,
+                    )
+                ),
+            ]
+        )
+        return bboxes
+
+    @staticmethod
+    def sampleSubImageBasedOnBBox(subImgs, img, bboxes, delta, rotation_angle):
+        subImgs.append(
+            img[
+                slice(
+                    round(bboxes[-1][1]),
+                    round(
+                        bboxes[-1][1]
+                        + delta * (math.cos(rotation_angle) + math.sin(rotation_angle))
+                    ),
+                ),
+                slice(
+                    round(bboxes[-1][0]),
+                    round(
+                        bboxes[-1][0]
+                        + delta * (-math.sin(rotation_angle) + math.cos(rotation_angle))
+                    ),
+                ),
+            ]
+        )
+        return subImgs
 
     @staticmethod
     def addWidthAndHeightToBBox(bboxes, subImgs):
@@ -272,7 +424,9 @@ class CircleFinder:
         self.getPixelToMMRatio()
         pxToMM = self.pxToMM
         if self.ct is CT.large.name:
-            bboxes, subImgs = self.getLargeChamberBBoxesAndImages(img, centers, pxToMM)
+            bboxes, subImgs = self.getLargeChamberBBoxesAndImages(
+                centers, pxToMM, img=img
+            )
         else:
             for center in centers:
                 if self.ct is CT.opto.name:
@@ -398,9 +552,6 @@ class CircleFinder:
         self.sortedCentroids = []
         for i, well in enumerate(wells):
             closestDetection = min(self.centroids, key=lambda xy: distance(xy, well))
-            if self.ct is CT.large.name:
-                self.sortedCentroids.append(well)
-                continue
             if distance(closestDetection, well) > 0.02 * diagDist:
                 self.sortedCentroids.append((np.nan, np.nan))
             else:
@@ -413,8 +564,8 @@ class CircleFinder:
         )
         self.rowRegressions = np.zeros(self.sortedCentroids.shape[1]).astype(object)
         self.colRegressions = np.zeros(self.sortedCentroids.shape[0]).astype(object)
-        if self.ct is not CT.large.name:
-            self.interpolateCentroids()
+        self.interpolateCentroids()
+
         prelim_corners = fake_image_corners(self.sortedCentroids)
         true_corners = corners(self.sortedCentroids, prelim_corners)
         width_skew = abs(
@@ -493,7 +644,7 @@ class CircleFinder:
                     COL_G,
                     cv2.MARKER_TRIANGLE_UP,
                 )
-            cv2.imshow('debug', imgCopy)
+            cv2.imshow("debug", imgCopy)
             cv2.waitKey(0)
         self.processDetections()
         rotationAngle = 0

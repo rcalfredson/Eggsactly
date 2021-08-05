@@ -136,6 +136,7 @@ class LargeChamber(Chamber):
         """Create a new "4-circle"-type chamber."""
         self.numRows, self.numCols = 2, 2
         self.rowDist, self.colDist = 42, 42
+        self.floorSideLength = 39
         self.dataIndices = tuple(
             [
                 item
