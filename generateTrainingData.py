@@ -43,9 +43,9 @@ def numPatches():
         return 1
 
 
-heldOutProb = 1.0
+heldOutProb = 0
 fullSizeProb = 1.0
-validationProb = 0.25
+validationProb = 0.0
 blankPatchRetentionProb = 1.0
 backupCounter = 0
 
@@ -59,7 +59,7 @@ for group in ("train", "valid"):
     mkDestDir(group)
     mkDestDir("heldout")
 
-sourceImgDirs = ["P:\\Egg images_9_3_2020"]
+sourceImgDirs = ["P:\\Robert\\amazon_annots\\images\\challenging"]
 picklePaths = [
     "%s/egg_count_labels_robert.pickle" % sourceImgDir for sourceImgDir in sourceImgDirs
 ]
@@ -194,8 +194,6 @@ def saveClickPositionImage(patch, outputPath):
     clickArray[cols, rows] = (0, 0, 255)
     # cv2.imshow('clicks', clickArray)
     cv2.imwrite(outputPath, clickArray)
-    print("wrote image to this path:", outputPath)
-
 
 def saveSinglePatch(destPath, patch):
     imgDest = os.path.join(destPath, "%s.jpg" % patch.basename)
@@ -322,7 +320,7 @@ for imgPath in subImgs:
         else:
             MODE = "patch"
             assignToTrainingOrValidation()
-        if chamberTypes[imgPath] == CT.fourCircle.name:
+        if chamberTypes[imgPath] == CT.large.name:
             numCirclesPerRow = rowColCounts[imgPath][0] * 4
             rowNum = np.floor(i / numCirclesPerRow).astype(int)
             colNum = np.floor((i % numCirclesPerRow) / 4).astype(int)

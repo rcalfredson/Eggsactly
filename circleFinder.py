@@ -227,6 +227,9 @@ class CircleFinder:
                 self.well_to_well_slopes[i].append(
                     -(rightmost[1] - leftmost[1]) / (rightmost[0] - leftmost[0])
                 )
+        self.skew_slopes = [
+            el for sub_l in list(self.well_to_well_slopes.values()) for el in sub_l
+        ]
 
     def getLargeChamberBBoxesAndImages(self, centers, pxToMM, img=None):
         if type(img) == type(None):
@@ -238,15 +241,13 @@ class CircleFinder:
         ).astype(np.uint8)
 
         self.findAgaroseWells(img_for_circles, centers, pxToMM)
-        if len(self.well_to_well_slopes.values()) == 0:
+        if len(self.skew_slopes) == 0:
             self.findAgaroseWells(
                 img_for_circles, centers, pxToMM, cannyParam1=35, cannyParam2=30
             )
 
         center_to_agarose_dist = np.mean(list(self.shortest_distances.values())) / 0.25
-        skew_slope = np.mean(
-            [el for sub_l in list(self.well_to_well_slopes.values()) for el in sub_l]
-        )
+        skew_slope = np.mean(self.skew_slopes)
         rotation_angle = math.atan(skew_slope)
         for i, center in enumerate(centers):
             acrossCircleD = round(10.5 * pxToMM)
@@ -644,7 +645,7 @@ class CircleFinder:
                     COL_G,
                     cv2.MARKER_TRIANGLE_UP,
                 )
-            cv2.imshow("debug", imgCopy)
+            cv2.imwrite(f"debug/{self.imgName}", imgCopy)
             cv2.waitKey(0)
         self.processDetections()
         rotationAngle = 0

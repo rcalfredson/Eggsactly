@@ -667,7 +667,7 @@ class EggCountLabeler:
             tuple(
                 map(
                     round,
-                    [self.zoom_factor * 50 for el in self.vectors["current"][0]],
+                    [self.zoom_factor * coord for coord in self.vector_start_point],
                 )
             ),
             tuple(
@@ -677,7 +677,7 @@ class EggCountLabeler:
                         self.zoom_factor
                         * (
                             self.scalingFactor * (el - self.vectors["current"][0][i])
-                            + 50
+                            + self.vector_start_point[i]
                         )
                         for i, el in enumerate(
                             self.appFrameToImageFrame((self.lastX, self.lastY))
@@ -751,14 +751,33 @@ class EggCountLabeler:
 
     def draw_temporary_edit_window(self):
         vec = self.vectors["current"]
+
+        to_right, to_bottom = 50, 50
+        col_start_idx = round(vec[0][0] * self.scalingFactor - 50)
+        self.vector_start_point = [50, 50]
+        if col_start_idx < 0:
+            to_right -= col_start_idx
+            self.vector_start_point[0] += col_start_idx
+            col_start_idx = 0
+        col_end_idx = round(vec[0][0] * self.scalingFactor + to_right)
+        if col_end_idx > self.centerImg.shape[1]:
+            col_start_idx -= col_end_idx - self.centerImg.shape[1]
+            self.vector_start_point[0] += col_end_idx - self.centerImg.shape[1]
+            col_end_idx = self.centerImg.shape[1]
+        row_start_idx = round(vec[0][1] * self.scalingFactor - 50)
+        if row_start_idx < 0:
+            to_bottom -= row_start_idx
+            self.vector_start_point[1] += row_start_idx
+            row_start_idx = 0
+        row_end_idx = round(vec[0][1] * self.scalingFactor + to_bottom)
+        if row_end_idx > self.centerImg.shape[0]:
+            row_start_idx -= row_end_idx - self.centerImg.shape[0]
+            self.vector_start_point[1] += row_end_idx - self.centerImg.shape[0]
+            row_end_idx = self.centerImg.shape[0]
         self.zoom_image = cv2.resize(
             self.centerImg[
-                round(vec[0][1] * self.scalingFactor - 50) : round(
-                    vec[0][1] * self.scalingFactor + 50
-                ),
-                round(vec[0][0] * self.scalingFactor - 50) : round(
-                    vec[0][0] * self.scalingFactor + 50
-                ),
+                row_start_idx : row_end_idx,
+                col_start_idx : col_end_idx,
             ],
             (0, 0),
             fx=self.zoom_factor,
@@ -990,16 +1009,16 @@ class EggCountLabeler:
             + self.frontierSubImgIdx
         )
         abs_idxs = list(range(len(unofficialEggCounts)))
-        unofficialEggCounts = [
+        unofficialEggCounts = np.array([
             i
             for j, i in enumerate(unofficialEggCounts)
             if j not in self.abs_idxs_ignored and j < cumulativeFrontierIdx
-        ]
-        eggCountsConcatTrimmed = [
+        ])
+        eggCountsConcatTrimmed = np.array([
             i
             for j, i in enumerate(self.eggCountsConcat)
             if j not in self.abs_idxs_ignored and j < cumulativeFrontierIdx
-        ]
+        ])
         abs_idxs_trimmed = [
             i
             for i in abs_idxs
