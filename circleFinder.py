@@ -6,35 +6,30 @@ import threading
 import cv2
 import timeit
 from adet.config import get_cfg
+from detectors.splinedist.config import Config
+from detectors.splinedist.models.model2d import SplineDist2D
 from predictor import VisualizationDemo
 from skimage.measure import label
 from sklearn.linear_model import LinearRegression
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import binned_statistic
+import torch
 
 from util import *
 from chamber import CT
+from csbdeep.utils import normalize
 
-CONFIDENCE_THRESHOLD = 0.5
-
-
-def setup_cfg():
-    """Load config of the detection model from file and command-line arguments."""
-    cfg = get_cfg()
-    dirname = os.path.dirname(__file__)
-    cfg.merge_from_file(os.path.join(dirname, "configs/arena_pit.yaml"))
-    cfg.merge_from_list(
-        ["MODEL.WEIGHTS", os.path.join(dirname, "models/arena_pit.pth")]
-    )
-    # Set score_threshold for builtin models
-    cfg.MODEL.RETINANET.SCORE_THRESH_TEST = CONFIDENCE_THRESHOLD
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = CONFIDENCE_THRESHOLD
-    cfg.MODEL.FCOS.INFERENCE_TH_TEST = CONFIDENCE_THRESHOLD
-    cfg.MODEL.MEInst.INFERENCE_TH_TEST = CONFIDENCE_THRESHOLD
-    cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = CONFIDENCE_THRESHOLD
-    cfg.freeze()
-    return cfg
+UNET_SETTINGS = {
+    "config_path": "configs/unet_reduced_backbone_arena_wells.json",
+    "n_channel": 3,
+    "weights_path": "models/arena_pit_v2.pth",
+}
+unet_config = Config(UNET_SETTINGS["config_path"], UNET_SETTINGS["n_channel"])
+model = SplineDist2D(unet_config)
+model.cuda()
+model.train(False)
+model.load_state_dict(torch.load(UNET_SETTINGS["weights_path"]))
 
 
 def centroidnp(arr):
@@ -99,9 +94,6 @@ def corners_old(xy_sequence, image_corners):
 
 
 # end corner-finding
-
-cfg = setup_cfg()
-model = VisualizationDemo(cfg)
 
 
 def getChamberTypeByRowsAndCols(numRowsCols):
@@ -622,30 +614,31 @@ class CircleFinder:
                         columns with the border of the image.
           - rotationAngle: angle in radians by which the image was rotated.
         """
+        predict_resize_factor = 0.186
         self.imageResized = cv2.resize(
-            self.img, (0, 0), fx=0.15, fy=0.15, interpolation=cv2.INTER_CUBIC
+            self.img,
+            (0, 0),
+            fx=predict_resize_factor,
+            fy=predict_resize_factor,
+            interpolation=cv2.INTER_CUBIC,
         )
-        predictions, _ = model.run_on_image(self.imageResized)
-        predictions = [
-            predictions["instances"].pred_masks.cpu().numpy()[i, :, :]
-            for i in range(predictions["instances"].pred_masks.shape[0])
-        ]
-        self.centroids = [
-            centroidnp(np.asarray(list(zip(*np.where(prediction == 1)))))
-            for prediction in predictions
-        ]
+        image = normalize(self.imageResized, 1, 99.8, axis=(0, 1))
+        self.imageResized = image.astype(np.float32)
+        labels, details = model.predict_instances(self.imageResized)
+        self.centroids = details["points"]
         self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
         if debug:
             print("what are centroids?", self.centroids)
-            imgCopy = np.array(self.imageResized).astype(np.uint8)
+
+            imgCopy = cv2.resize(np.array(self.imageResized), (0, 0), fx=0.5, fy=0.5)
             for centroid in self.centroids:
                 cv2.drawMarker(
                     imgCopy,
-                    tuple([int(el) for el in centroid]),
+                    tuple([int(el * 0.5) for el in centroid]),
                     COL_G,
                     cv2.MARKER_TRIANGLE_UP,
                 )
-            cv2.imwrite(f"debug/{self.imgName}", imgCopy)
+            cv2.imshow(f"debug/{self.imgName}", imgCopy)
             cv2.waitKey(0)
         self.processDetections()
         rotationAngle = 0
@@ -664,14 +657,14 @@ class CircleFinder:
         self.processDetections()
         wells = np.array(
             [
-                np.round(np.divide(well, 0.15)).astype(int)
+                np.round(np.divide(well, predict_resize_factor)).astype(int)
                 for well in self.sortedCentroids
             ]
         )
         for i in range(len(self.wellCoords)):
-            self.wellCoords[i] = np.round(np.divide(self.wellCoords[i], 0.15)).astype(
-                int
-            )
+            self.wellCoords[i] = np.round(
+                np.divide(self.wellCoords[i], predict_resize_factor)
+            ).astype(int)
         wells = wells.reshape(self.numRowsCols[0] * self.numRowsCols[1], 2).astype(int)
         self.wells = wells
         self.avgDists = [np.mean(np.diff(self.wellCoords[i])) for i in range(2)]
@@ -733,8 +726,12 @@ def calculateRegressions(row, col):
     rowModel = LinearRegression()
     rowInd = np.array([el[0] for el in row if not np.isnan(el).any()]).reshape(-1, 1)
     rowModel.fit(rowInd, [el[1] for el in row if not np.isnan(el).any()])
-    a = (1 / colModel.coef_)[0]
-    c = (-colModel.intercept_ / colModel.coef_)[0]
+    if colModel.coef_[0] == 0:
+        colSlope = 1e-6
+    else:
+        colSlope = colModel.coef_[0]
+    a = 1 / colSlope
+    c = -colModel.intercept_ / colSlope
     b = rowModel.coef_[0]
     d = rowModel.intercept_
 
