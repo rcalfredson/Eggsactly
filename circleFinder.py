@@ -5,10 +5,8 @@ import math
 import threading
 import cv2
 import timeit
-from adet.config import get_cfg
 from detectors.splinedist.config import Config
 from detectors.splinedist.models.model2d import SplineDist2D
-from predictor import VisualizationDemo
 from skimage.measure import label
 from sklearn.linear_model import LinearRegression
 import numpy as np
@@ -20,16 +18,17 @@ from util import *
 from chamber import CT
 from csbdeep.utils import normalize
 
+dirname = os.path.dirname(__file__)
 UNET_SETTINGS = {
     "config_path": "configs/unet_reduced_backbone_arena_wells.json",
     "n_channel": 3,
-    "weights_path": "models/arena_pit_v2.pth",
+    "weights_path": os.path.join(dirname, "models/arena_pit_v2.pth"),
 }
 unet_config = Config(UNET_SETTINGS["config_path"], UNET_SETTINGS["n_channel"])
-model = SplineDist2D(unet_config)
-model.cuda()
-model.train(False)
-model.load_state_dict(torch.load(UNET_SETTINGS["weights_path"]))
+default_model = SplineDist2D(unet_config)
+default_model.cuda()
+default_model.train(False)
+default_model.load_state_dict(torch.load(UNET_SETTINGS["weights_path"]))
 
 
 def centroidnp(arr):
@@ -147,7 +146,7 @@ class CircleFinder:
     segmenting the image.
     """
 
-    def __init__(self, img, imgName, allowSkew=False):
+    def __init__(self, img, imgName, allowSkew=False, model=default_model):
         """Create new CircleFinder instance.
 
         Arguments:
@@ -160,6 +159,7 @@ class CircleFinder:
         self.imgName = imgName
         self.skewed = None
         self.allowSkew = allowSkew
+        self.model = model
 
     def getPixelToMMRatio(self):
         """Calculate the image's ratio of pixels to mm, averaged between the result
@@ -185,6 +185,7 @@ class CircleFinder:
         self.well_to_well_slopes = {}
         circles = np.uint16(np.around(circles))
         dist_threshold = 0.5 * 0.25 * CT.large.value().floorSideLength * pxToMM
+
         for i, center in enumerate(centers):
             center = np.round(np.multiply(center, 0.25)).astype(np.int)
             for circ in circles[0, :]:
@@ -602,7 +603,7 @@ class CircleFinder:
                         dict(row=self.rowRegressions[j], col=self.colRegressions[i])
                     )
 
-    def findCircles(self, debug=False):
+    def findCircles(self, debug=False, predict_resize_factor=0.186):
         """Find the location of arena wells for the image in attribute `self.img`.
 
         Returns:
@@ -614,7 +615,6 @@ class CircleFinder:
                         columns with the border of the image.
           - rotationAngle: angle in radians by which the image was rotated.
         """
-        predict_resize_factor = 0.186
         self.imageResized = cv2.resize(
             self.img,
             (0, 0),
@@ -624,7 +624,7 @@ class CircleFinder:
         )
         image = normalize(self.imageResized, 1, 99.8, axis=(0, 1))
         self.imageResized = image.astype(np.float32)
-        labels, details = model.predict_instances(self.imageResized)
+        labels, details = self.model.predict_instances(self.imageResized)
         self.centroids = details["points"]
         self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
         if debug:

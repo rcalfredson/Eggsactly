@@ -128,19 +128,23 @@ dmypy.json
 .pyre/
 
 # counting-specific folders and files
+*backup/
 emptyTest/
 generated/
 imgs/
 investigation/
-/models/
+models/
 results/
 error_cases/*
-temp/*
+temp*/*
 uploads/*
 egg_count_labels*
 error_stats*
 results_*
 debug/*
+.DS_Store
+Thumbs.db
+
 
 # editor files
 .vscode/*

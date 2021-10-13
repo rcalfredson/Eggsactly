@@ -4,13 +4,13 @@ import numpy as np
 
 
 def rotate_point(pt, center, angle):
-    print('angle by which to rotate:', 180 * angle / np.pi)
+    print("angle by which to rotate:", 180 * angle / np.pi)
     temp_x = pt[1] - center[1]
     temp_y = pt[0] - center[0]
-    print('x and y after reorienting:', temp_x, temp_y)
+    print("x and y after reorienting:", temp_x, temp_y)
     rotated_x = temp_x * np.cos(angle) - temp_y * np.sin(angle)
     rotated_y = temp_x * np.sin(angle) + temp_y * np.cos(angle)
-    print('after rotating:', rotated_x, rotated_y)
+    print("after rotating:", rotated_x, rotated_y)
     return (rotated_y + center[0], rotated_x + center[1])
 
 
@@ -40,18 +40,24 @@ plt.gca().axis("equal")
 print("angle from centroid to upper left corner:", 180 * angle_to_upper_left / np.pi)
 for rot_angle in range(360):
     print("rotation angle:", rot_angle)
-    rotated_pt_outside_shape = list(reversed(rotate_point(
-        (bnds[3], bnds[0]),
-        (
-            polygon1.centroid.y,
-            polygon1.centroid.x,
-        ),
-        -(rot_angle * np.pi / 180 + angle_to_upper_left),
-    )))
-    intersect_finder_line = LineString([
-        (polygon1.centroid.x, polygon1.centroid.y),
-        (rotated_pt_outside_shape[0], rotated_pt_outside_shape[1])
-    ])
+    rotated_pt_outside_shape = list(
+        reversed(
+            rotate_point(
+                (bnds[3], bnds[0]),
+                (
+                    polygon1.centroid.y,
+                    polygon1.centroid.x,
+                ),
+                -(rot_angle * np.pi / 180 + angle_to_upper_left),
+            )
+        )
+    )
+    intersect_finder_line = LineString(
+        [
+            (polygon1.centroid.x, polygon1.centroid.y),
+            (rotated_pt_outside_shape[0], rotated_pt_outside_shape[1]),
+        ]
+    )
     # amount by which to rotate would be the actual rotation angle + angle to upper left.
     plt.plot([rotated_pt_outside_shape[1]], [rotated_pt_outside_shape[0]], "go")
 plt.show()

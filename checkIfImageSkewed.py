@@ -22,7 +22,7 @@ for path in imagePaths:
     img = cv2.imread(path)
     imgName = os.path.basename(path)
     print('checking image', imgName)
-    cf = CircleFinder(img, imgName)
+    cf = CircleFinder(img, path.replace('/', '_')[1:])
     wells, avgDists, numRowsCols, rotatedImg, rotationAngle = cf.findCircles(debug=True)
     print('rows and col?', numRowsCols)
     if not cf.skewed:

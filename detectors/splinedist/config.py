@@ -1,8 +1,10 @@
 import json
+import os
 from .models.backbone_types import BackboneTypes
 from .utils import normalize_grid
 
-DEFAULT_CONFIG = "configs/unet_defaults.json"
+dirname = os.path.dirname(__file__)
+DEFAULT_CONFIG = os.path.join(dirname, '../../configs/unet_defaults.json')
 
 
 class Config:

@@ -42,7 +42,7 @@ def non_maximum_suppression(
     coord = np.transpose(coord, (0, 1, 3, 2))
     M = np.shape(coord)[2]
 
-    phi = np.load(os.path.join(data_dir(), "phi_" + str(M) + ".npy"))
+    phi = np.load(os.path.join(data_dir(as_abs_path=True), "phi_" + str(M) + ".npy"))
     # phi = torch.from_numpy(phi).float().to(DEVICE)
     SplineContour = sg.SplineCurveVectorized(
         M, sg.B3(), True, coord, useTorch=False

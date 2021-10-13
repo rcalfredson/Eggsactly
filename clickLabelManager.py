@@ -1,3 +1,5 @@
+import os
+
 class ClickLabelManager:
     """Track clicks for annotating egg positions."""
 

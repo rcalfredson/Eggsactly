@@ -40,7 +40,7 @@ def polygons_to_label(coord, prob, points, shape=None, thr=-np.inf):
     points = points[ind]
 
     M = coord.shape[3]
-    phi = np.load(os.path.join(data_dir(), "phi_" + str(M) + ".npy"))
+    phi = np.load(os.path.join(data_dir(as_abs_path=True), "phi_" + str(M) + ".npy"))
 
     i = 1
     for p in points:

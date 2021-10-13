@@ -1,7 +1,7 @@
 import argparse, os
 import cv2
 from common import globFiles
-from circleFinder import CircleFinder
+from circleFinder import CircleFinder, getSubImages
 
 def options():
   """Parse options for sub-image detector."""
@@ -28,9 +28,9 @@ for imgPath in imgs:
   print('imgName:', imgName)
   if includedImgs and imgName not in includedImgs: continue
   img = cv2.imread(imgPath)
-  cf = CircleFinder(img, imgName)
-  circles, avgDists, numRowsCols, rotatedImg, rotationAngle = cf.findCircles()
-  subImgs, origins = cf.getSubImages(rotatedImg, circles, avgDists, numRowsCols)
+  circles, avgDists, numRowsCols, rotatedImg, rotationAngle = CircleFinder(
+    img, imgName).findCircles()
+  subImgs, origins = getSubImages(rotatedImg, circles, avgDists, numRowsCols)
   for i, subImg in enumerate(subImgs):
     writePath = os.path.join(opts.dest, '%s_%i.jpg'%(imgName, i))
     print('saving sub-image to %s'%writePath)

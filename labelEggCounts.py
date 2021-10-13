@@ -2,6 +2,7 @@ import argparse
 from button import Button
 import csv
 from enum import Enum, auto
+import json
 import os
 from operator import itemgetter
 from queue import LifoQueue
@@ -191,11 +192,11 @@ class EggCountLabeler:
                     currentImg = row[0].lower()
                     cts = self.clickLabelManager.chamberTypes
                     ctUnknown = currentImg not in cts
-                    getCtsFromFile = ctUnknown or cts[currentImg] != CT.large.name
+                    getCtsFromFile = ctUnknown
                     self.existingCounts[currentImg] = []
                     if not getCtsFromFile:
                         self.rowColCounts[currentImg] = [
-                            getattr(CT.large.value(), name)
+                            getattr(CT[cts[currentImg]].value(), name)
                             for name in ("numRows", "numCols")
                         ]
                 else:
@@ -776,8 +777,8 @@ class EggCountLabeler:
             row_end_idx = self.centerImg.shape[0]
         self.zoom_image = cv2.resize(
             self.centerImg[
-                row_start_idx : row_end_idx,
-                col_start_idx : col_end_idx,
+                row_start_idx:row_end_idx,
+                col_start_idx:col_end_idx,
             ],
             (0, 0),
             fx=self.zoom_factor,
@@ -1009,16 +1010,20 @@ class EggCountLabeler:
             + self.frontierSubImgIdx
         )
         abs_idxs = list(range(len(unofficialEggCounts)))
-        unofficialEggCounts = np.array([
-            i
-            for j, i in enumerate(unofficialEggCounts)
-            if j not in self.abs_idxs_ignored and j < cumulativeFrontierIdx
-        ])
-        eggCountsConcatTrimmed = np.array([
-            i
-            for j, i in enumerate(self.eggCountsConcat)
-            if j not in self.abs_idxs_ignored and j < cumulativeFrontierIdx
-        ])
+        unofficialEggCounts = np.array(
+            [
+                i
+                for j, i in enumerate(unofficialEggCounts)
+                if j not in self.abs_idxs_ignored and j < cumulativeFrontierIdx
+            ]
+        )
+        eggCountsConcatTrimmed = np.array(
+            [
+                i
+                for j, i in enumerate(self.eggCountsConcat)
+                if j not in self.abs_idxs_ignored and j < cumulativeFrontierIdx
+            ]
+        )
         abs_idxs_trimmed = [
             i
             for i in abs_idxs
@@ -1049,7 +1054,10 @@ class EggCountLabeler:
         attrNames = ["%ssFile" % fileType for fileType in ("count", "label")]
         fileExtensions = ("csv", "pickle")
         userSuffix = "_%s" % username
-        filePaths = [getattr(opts, attrName).split(".")[0] for attrName in attrNames]
+        filePaths = [
+            os.path.abspath(getattr(opts, attrName)).split(".")[0]
+            for attrName in attrNames
+        ]
         for i, f in enumerate(filePaths):
             setattr(
                 self,
@@ -1387,8 +1395,17 @@ class EggCountLabeler:
             == CT.large.name
         ):
             return self.rowNumFourCircle(idx, subImgIdx)
+        elif (
+            self.clickLabelManager.chamberTypes[self.lowerBasenames[idx]]
+            == CT.opto.name
+        ):
+            factor = 1
+        else:
+            factor = 2
         return int(
-            np.floor(subImgIdx / (2 * self.rowColCounts[self.lowerBasenames[idx]][1]))
+            np.floor(
+                subImgIdx / (factor * self.rowColCounts[self.lowerBasenames[idx]][1])
+            )
         )
 
     def rowNumFourCircle(self, idx, subImgIdx):
@@ -1418,7 +1435,14 @@ class EggCountLabeler:
             == CT.large.name
         ):
             return self.colNumFourCircle(idx)
-        return subImgIdx % int(2 * self.rowColCounts[self.lowerBasenames[idx]][1])
+        elif (
+            self.clickLabelManager.chamberTypes[self.lowerBasenames[idx]]
+            == CT.opto.name
+        ):
+            factor = 1
+        else:
+            factor = 2
+        return subImgIdx % int(factor * self.rowColCounts[self.lowerBasenames[idx]][1])
 
     def colNumFourCircle(self, idx):
         """Return column index of the current sub-image for a four-circle chamber
@@ -1579,6 +1603,12 @@ class EggCountLabeler:
         the GUI.
         """
         clickLabels = self.clickLabelManager.getClicks(
+            self.lowerBasenames[self.imgIdx],
+            self.rowNum(),
+            self.colNum(),
+            self.wellPosition,
+        )
+        keyTemp = self.clickLabelManager.subImageKey(
             self.lowerBasenames[self.imgIdx],
             self.rowNum(),
             self.colNum(),
