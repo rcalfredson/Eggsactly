@@ -1,3 +1,4 @@
+import inspect
 import os
 from pathlib import Path
 
@@ -110,7 +111,9 @@ class DownloadManager:
         sm = self.sessions[ts]["session_manager"]
         for path in sm.predictions:
             self.path_base = os.path.basename(path)
-            if any(type(el["count"]) != int for el in sm.predictions[path]):
+            print('predictions for path:', sm.predictions[path])
+            if inspect.isclass(sm.predictions[path][0]) and issubclass(sm.predictions[path][0], Exception):
+            # if any(type(el["count"]) != int for el in sm.predictions[path]):
                 img = self.prepareImageWithError(path)
             else:
                 img = self.prepareAnnotatedImage(sm, ts, path)

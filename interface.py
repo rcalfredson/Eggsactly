@@ -1,4 +1,5 @@
 from enum import Enum
+from glob import glob
 import os
 import shutil
 import time
@@ -128,6 +129,15 @@ def setup_imgs_download(data):
     socketIO.emit("zip-annots-ready", {"time": ts}, room=data["sid"])
 
 
+@socketIO.on("mask-list")
+def get_mask_list(data):
+    names = [
+        os.path.basename(mask.split(".json")[0])
+        for mask in glob("configs/masks/*.json")
+    ]
+    socketIO.emit("mask-list", {"names": names})
+
+
 @app.route("/annot-img/<ts>", methods=["GET"])
 def return_zipfile(ts):
     shutil.rmtree(downloadManager.sessions[ts]["folder"])
@@ -167,26 +177,118 @@ def manual_recount():
     return "OK"
 
 
+@app.route("/reset-session", methods=["POST"])
+def reset_session():
+    sessions[request.form["sid"]].clear_data()
+
+
 @app.route("/upload", methods=["POST"])
 def handle_upload():
+    # assume upload is used only the first time
+    # used to transfer the actual image data
+    # and to make an attempt to determine
+    # the chamber type.
+    # Any later requests related to an image
+    # that's already been identified
+    # will use a separate endpoint.
     pauser.set_resume_timer()
     sid = request.form["sid"]
-    sessions[sid].clear_data()
-    for dirName in ("uploads", "temp"):
-        remove_old_files(dirName)
-    socketIO.emit("clear-all", room=sid)
-    if len(request.files) == 0:
-        flash("No selected file")
-        return redirect(request.url)
-    process_imgs(sid, data_type=AllowedDataTypes.file)
-    pauser.set_resume_timer()
-    socketIO.emit("counting-done", {"is_retry": False}, room=sid)
+    for dir_name in ("uploads", "temp"):
+        remove_old_files(dir_name)
+    check_chamber_type_of_imgs(sid)
     return "OK"
+    # determine the chamber type of the image and send the
+    # information back to the client.
+    # is there a simpler way to do this than I have now?
+    # why is this difficult?
+    # write new code based on the old; don't try to
+    # refactor the old code, because the new behavior is
+    # too different.
+
+
+# @app.route("/upload", methods=["POST"])
+# def handle_upload():
+#     pauser.set_resume_timer()
+#     sid = request.form["sid"]
+#     sessions[sid].clear_data()
+#     for dirName in ("uploads", "temp"):
+#         remove_old_files(dirName)
+#     socketIO.emit("clear-all", room=sid)
+#     if len(request.files) == 0:
+#         flash("No selected file")
+#         return redirect(request.url)
+#     process_imgs(sid, data_type=AllowedDataTypes.file)
+#     pauser.set_resume_timer()
+#     socketIO.emit("counting-done", {"is_retry": False}, room=sid)
+#     return "OK"
 
 
 class AllowedDataTypes(Enum):
     file = 1
     json = 2
+
+
+def check_chamber_type_of_imgs(sid):
+    MAX_ATTEMPTS_PER_IMG = 1
+    file_list = request.files
+    n_files = len(request.files)
+    for i, file in enumerate(file_list):
+        attempts = 0
+        succeeded = False
+        while True:
+            try:
+                check_chamber_type_of_img(i, file, sid, n_files, attempts)
+                succeeded = True
+            except CUDAMemoryException:
+                attempts += 1
+                socketIO.emit(
+                    "counting-progress",
+                    {
+                        "data": "Ran out of system resources. Trying"
+                        " to reallocate and try again..."
+                    },
+                    room=sid,
+                )
+                pauser.end_high_impact_py_prog()
+            except ImageAnalysisException:
+                sessions[sid].report_counting_error(
+                    sessions[sid].imgPath, ImageAnalysisException
+                )
+                break
+            if succeeded:
+                break
+            elif attempts > MAX_ATTEMPTS_PER_IMG:
+                sessions[sid].report_counting_error(
+                    sessions[sid].imgPath, CUDAMemoryException
+                )
+
+
+def check_chamber_type_of_img(i, file, sid, n_files, attempts):
+    if file and allowed_file(file):
+        socketIO.emit("clear-display", room=sid)
+        socketIO.emit(
+            "counting-progress",
+            {"data": "Uploading image %i of %i" % (i + 1, n_files)},
+            room=sid,
+        )
+        filename = secure_filename(file)
+        filePath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        if attempts == 0:
+            request.files[file].save(filePath)
+            print("uploaded the image?")
+        # attempt to determine chamber type and bounding boxes,
+        # and send back to the client.
+        # it will start the viewer as soon as the first piece
+        # of data arrives, either of a failure to identify chamber type
+        # or the actual chamber type and bounding boxes.
+        socketIO.emit(
+            "counting-progress",
+            {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},
+            room=sid,
+        )
+        print("sessions:", sessions)
+        print("sid_suffix:", sid)
+        sessions[sid].check_chamber_type_and_find_bounding_boxes(filePath)
 
 
 def process_imgs(sid, data_type):

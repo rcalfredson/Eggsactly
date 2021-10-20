@@ -129,6 +129,8 @@ dmypy.json
 
 # counting-specific folders and files
 *backup/
+configs/masks/*
+!configs/masks/.gitkeep
 emptyTest/
 generated/
 imgs/

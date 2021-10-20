@@ -394,6 +394,15 @@ class CircleFinder:
         bboxes[-1] += reversed(subImgs[-1].shape[0:2])
         return bboxes
 
+    @staticmethod
+    def getSubImagesFromBBoxes(img, bboxes):
+        sub_imgs = []
+        for bbox in bboxes:
+            sub_imgs.append(
+                img[bbox[1]:bbox[1] + bbox[3], bbox[0]:bbox[0] + bbox[2]]
+            )
+        return sub_imgs
+
     def getSubImages(self, img, centers, avgDists, numRowsCols):
         """Determine sub-images for the image based on the chamber type and the
         locations of detected arena wells.

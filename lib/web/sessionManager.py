@@ -79,6 +79,15 @@ class SessionManager:
         self.predictions[imgPath].append(err_type)
         time.sleep(2)
 
+    def segment_image_via_bboxes(self, img, img_path, alignment_data):
+        pass
+        # rotate the image.
+        print('rotating image by thisamount:', alignment_data['rotationAngle'])
+        img = rotate_image(img, alignment_data['rotationAngle'])
+        self.bboxes = alignment_data['bboxes']
+        self.rotation_angle = alignment_data['rotationAngle']
+        self.subImgs = CircleFinder.getSubImagesFromBBoxes(img, self.bboxes)
+
     def segment_image_via_alignment_data(self, img, img_path, alignment_data):
         segmenter = ManualSegmenter(
             img, alignment_data["nodes"], alignment_data["type"]
@@ -117,6 +126,50 @@ class SessionManager:
         except RuntimeWarning:
             raise ImageAnalysisException
 
+    def check_chamber_type_and_find_bounding_boxes(self, img_path):
+        # this version won't ever use the alignment data.
+        imgBasename = os.path.basename(img_path)
+        self.imgBasename = imgBasename
+        img_path = os.path.normpath(img_path)
+        self.imgPath = img_path
+        self.predictions[img_path] = []
+        self.basenames[img_path] = imgBasename
+        self.emit_to_room(
+            "counting-progress", {"data": "Segmenting image %s" % imgBasename}
+        )
+        self.img = np.array(Image.open(img_path), dtype=np.float32)
+        img = self.img
+        self.segment_image_via_object_detection(img, img_path)
+        # self.emit_to_room(
+        #     "counting-progress",
+        #     {
+        #         "data": "Chamber type is %s and # bounding boxes is %i"
+        #         % (self.cf.ct, len(self.bboxes))
+        #     },
+        # )
+        # send the chamber type and bounding box data through which type of message?
+        # make a new data type.
+        # if chamber type can't be found, the code wouldn't reach this far
+        self.bboxes = [[int(el) for el in bbox] for bbox in self.bboxes]
+        print(
+            "data to emit:",
+            {
+                "rotationAngle": self.rotation_angle,
+                "filename": self.imgBasename,
+                "chamberType": self.cf.ct,
+                "bboxes": self.bboxes,
+            },
+        )
+        self.emit_to_room(
+            "chamber-analysis",
+            {
+                "rotationAngle": self.rotation_angle,
+                "filename": self.imgBasename,
+                "chamberType": self.cf.ct,
+                "bboxes": self.bboxes,
+            },
+        )
+
     def segment_img_and_count_eggs(self, img_path, alignment_data=None, index=None):
         imgBasename = os.path.basename(img_path)
         self.imgBasename = imgBasename
@@ -129,13 +182,20 @@ class SessionManager:
         )
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
+        print("alignment data:", alignment_data)
+        # need a third option here: start with the bounding boxes.
+        # in the existing code, when do the bounding boxes get calculated?
+        # they get calculated the same time as the sub images?
         if alignment_data is None:
             self.segment_image_via_object_detection(img, img_path)
         else:
             if "ignored" in alignment_data and alignment_data["ignored"]:
                 self.predictions[img_path].append(ImageAnalysisException)
                 return
+        if "nodes" in alignment_data:
             self.segment_image_via_alignment_data(img, img_path, alignment_data)
+        elif 'bboxes' in alignment_data:
+            self.segment_image_via_bboxes(img, img_path, alignment_data)
         self.emit_to_room(
             "counting-progress", {"data": "Counting eggs in image %s" % imgBasename}
         )
@@ -226,7 +286,8 @@ class SessionManager:
             writer.writerow(["Egg Counter, ALPHA version"])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
-                first_pred = self.predictions[imgPath][0]["count"]
+                print('predictions:', self.predictions)
+                first_pred = self.predictions[imgPath][0]
                 if inspect.isclass(first_pred) and issubclass(first_pred, Exception):
                     writer.writerows([[self.errorMessages[first_pred]], []])
                     continue
