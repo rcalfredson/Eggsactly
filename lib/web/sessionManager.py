@@ -80,7 +80,6 @@ class SessionManager:
         time.sleep(2)
 
     def segment_image_via_bboxes(self, img, img_path, alignment_data):
-        pass
         # rotate the image.
         print('rotating image by thisamount:', alignment_data['rotationAngle'])
         img = rotate_image(img, alignment_data['rotationAngle'])

@@ -31,6 +31,7 @@
             CUDAMemoryException: 'Error: system ran out of resources.',
         }
         const defaultFontSize = 17;
+        const gridlineStrokeWidth = 2;
         let sid;
         let input, inputs, inputDiv, inputLbl, inputReset, preview;
         let inputAmender;
@@ -53,9 +54,16 @@
         let currentRealignmentMarkers = { lines: {}, circles: {} }
         let shapeBeingDragged = false;
         let editMode;
-        let tempMaskBBoxes;
+        let tempMaskGridlines;
+        let gridXYMarkers;
+        const lockGridlinesText = 'Lock gridlines and select regions';
         let currentMaskBBox;
         let maskNames;
+        let maskNotationButtonGroup;
+        let gridlineOrientationButtonGroup;
+        let tempCursor;
+        let tempCursorCoordText;
+        let tempCursorUnderlay;
         let selectDOM;
         let zoom = 1.0;
         let idsWithEdits = new Set();
@@ -76,6 +84,56 @@
         let currentImgIndex = 0;
         let previousImgIndex;
         let backgroundRaster, pic;
+
+        class ButtonGroup {
+            constructor(
+                parentElement,
+                label,
+                button1,
+                button2,
+                onButtonChange
+            ) {
+                this.parent = parentElement;
+                this.label = document.createElement('span');
+                this.label.classList.add('label');
+                this.label.id = label.id;
+                this.label.style.alignContent = 'left;'
+                this.label.innerHTML = label.innerHTML;
+                this.button1 = document.createElement('button');
+                this.button1.id = button1.id;
+                this.button1.style.alignContent = 'right';
+                this.button1.innerHTML = button1.innerHTML;
+                this.button1.group = this;
+                this.button1.classList.add(
+                    'left-hand-button',
+                    'selected'
+                );
+                this.selected = this.button1.id;
+                this.button2 = document.createElement('button');
+                this.button2.id = button2.id;
+                this.button2.innerHTML = button2.innerHTML;
+                this.button2.group = this;
+                this.button2.classList.add('right-hand-button');
+                this.parent.appendChild(this.label);
+                this.parent.appendChild(this.button2);
+                this.parent.appendChild(this.button1);
+                this.button1.onclick = this.toggleButtons;
+                this.button2.onclick = this.toggleButtons;
+                this.onButtonChange = onButtonChange;
+            }
+
+            toggleButtons() {
+                this.group.selected = this.id;
+                if (this.id === this.group.button1.id) {
+                    this.group.button2.classList.remove('selected');
+                    this.classList.add('selected');
+                } else {
+                    this.group.button1.classList.remove('selected');
+                    this.classList.add('selected');
+                }
+                this.group.onButtonChange();
+            }
+        }
 
         class DraggableCircle {
             constructor(center, color, radius, eventHandlers, name = '') {
@@ -340,21 +398,7 @@
         });
         socket.on('mask-list', (msg) => {
             maskNames = msg.names;
-            console.log('list of names?', maskNames);
-            // need to wait til this list is loaded before
-            // displaying masks.
-            // add reset button.
-            let resetMasks = document.createElement('button');
-            resetMasks.id = 'reset-masks';
-            resetMasks.innerHTML = 'Reset';
-            let helpPane = document.getElementById('help-pane')
-            helpPane.appendChild(resetMasks
-            );
-            $('#help-pane').append(dividerString());
-            displayMaskList()
-            // add onchange handler for the mask list;
-            // if 
-
+            addMaskSelectionButtons();
         });
         socket.on('report-ready', () => {
             let el = document.getElementById('submit-error-report');
@@ -391,6 +435,7 @@
                 if (evt.key === 'Shift') {
                     shiftKeyDown = true;
                     updateBBoxOutlineForDeletion();
+                    setGridNotationCursorVisibility();
                     hideEggOutlines();
                 }
             });
@@ -398,6 +443,7 @@
                 if (evt.key === 'Shift') {
                     shiftKeyDown = false;
                     updateBBoxOutlineForDeletion();
+                    setGridNotationCursorVisibility();
                     showEggOutlines();
                 }
             });
@@ -619,31 +665,488 @@
                 indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
         }
 
-        function addEditingModeToggleButtons() {
-            let uiPane = document.getElementById('help-pane');
-            uiPane.style.height = '400px';
-            // create two buttons joined together?
-            let freehandButton = document.createElement('button');
-            freehandButton.classList.add('left-hand-button');
-            let drawButton = document.createElement('input');
-            drawButton.type = 'radio';
-            drawButton.id = 'toggle-draw';
-            drawButton.name = 'toggle-mask-edit-mode';
-            drawButton.checked = true;
-            uiPane.appendChild(drawButton);
-            let label = document.createElement('label')
-            label.setAttribute('for', 'toggle-draw')
-            label.textContent = 'Draw';
-            uiPane.appendChild(label)
-            let deleteButton = document.createElement('input');
-            deleteButton.type = 'radio';
-            deleteButton.id = 'toggle-delete';
-            deleteButton.name = 'toggle-mask-edit-mode';
-            uiPane.appendChild(deleteButton);
-            label = document.createElement('label')
-            label.setAttribute('for', 'toggle-delete')
-            label.textContent = 'Delete';
-            uiPane.appendChild(label)
+        function addMaskSelectionButtons() {
+            let resetMasks = document.createElement('button');
+            resetMasks.id = 'reset-masks';
+            resetMasks.innerHTML = 'Reset';
+            let helpPane = document.getElementById('help-pane')
+            helpPane.appendChild(resetMasks);
+            $('#help-pane').append(dividerString());
+            displayMaskList();
+        }
+
+        function toggleMaskNotationMode() {
+            $('#mode-specific-buttons').empty();
+            if (this.selected === 'grid-edit-button') {
+                chamberRealignmentData[currentImgIndex].customMode = 'grid';
+                addGridNotationUI();
+            } else {
+                chamberRealignmentData[currentImgIndex].customMode = 'freehand';
+                addFreehandNotationUI();
+            }
+        }
+
+        function addFreehandNotationUI() {
+
+        }
+
+        function addGridlineNotation(evt) {
+            if (!tempCursor || gridlinesLocked()) {
+                return;
+            }
+            if (horizSelected()) {
+                orientation = 'horiz';
+            } else {
+                orientation = 'vert';
+            }
+            let newGridLine = new Gridline(
+                tempCursor.data.lineBounds.from,
+                tempCursor.data.lineBounds.to,
+                orientation,
+                (event) => {
+                    deleteBoxesTouchingRemovedGridline(event.target);
+                    delete chamberRealignmentData[currentImgIndex].maskGridlines[event.target.owner.orientation][event.target.owner.id];
+                }
+            );
+            chamberRealignmentData[currentImgIndex].maskGridlines[orientation][newGridLine.linePath.id] = newGridLine;
+            bisectBoxesByAddedGridline(newGridLine.linePath);
+            tempCursor.remove();
+            tempCursor = null;
+        }
+
+        function horizSelected() {
+            if (!gridlineOrientationButtonGroup) {
+                return null;
+            }
+            return gridlineOrientationButtonGroup.selected.split('-')[0] === 'horiz'
+        }
+
+        function setGridNotationCursorVisibility() {
+            if (!tempCursor) {
+                return;
+            }
+            console
+            if (shiftKeyDown || gridlinesLocked()) {
+                tempCursor.remove();
+                tempCursor = null;
+            }
+        }
+
+        function addGridNotationCursor(evt) {
+            if (!maskNotationButtonGroup ||
+                maskNotationButtonGroup.selected !== 'grid-edit-button'
+            ) {
+                return;
+            }
+            setGridNotationCursorVisibility();
+            let isH = horizSelected();
+            let lineBounds;
+            let imgStartX = backgroundRaster.position.x -
+                backgroundRaster.bounds.width / 2;
+            let imgStartY = backgroundRaster.position.y - backgroundRaster.bounds.height / 2;
+            if (isH) {
+                lineBounds = {
+                    from: [imgStartX, evt.point.y],
+                    to: [backgroundRaster.position.x + backgroundRaster.bounds.width / 2, evt.point.y]
+                };
+            } else {
+                lineBounds = {
+                    from: [evt.point.x, imgStartY],
+                    to: [
+                        evt.point.x, backgroundRaster.position.y +
+                        backgroundRaster.bounds.height / 2
+                    ]
+                }
+            }
+            if (!backgroundRaster.contains(evt.point)) return;
+            let cursorPosOffset = new paper.Point(evt.point.x - 3, evt.point.y - 7);
+            if (!tempCursorCoordText) {
+                tempCursorCoordText = new paper.PointText(new paper.Point(
+                    evt.point.x + 5, evt.point.y - 30
+                ));
+            }
+            let cursorInImgRefPt = evt.point.subtract(new paper.Point(imgStartX, imgStartY))
+            if (isH) {
+                tempCursorCoordText.content = `Y: ${cursorInImgRefPt.y}`;
+            } else {
+                tempCursorCoordText.content = `X: ${cursorInImgRefPt.x}`;
+            }
+            tempCursorCoordText.position = cursorPosOffset;
+            if (!tempCursorCoordText.isInside(backgroundRaster.bounds)) {
+                tempCursorCoordText.position.y += 15;
+                tempCursorCoordText.position.x -= 15;
+            }
+            if (!tempCursorUnderlay) {
+                tempCursorUnderlay = new paper.Shape.Rectangle(tempCursorCoordText.bounds.topLeft, tempCursorCoordText.bounds.bottomRight);
+                tempCursorUnderlay.fillColor = 'white';
+                tempCursorUnderlay.opacity = 0.3;
+                tempCursorUnderlay.insertBelow(tempCursorCoordText);
+            } else {
+                tempCursorUnderlay.position = tempCursorCoordText.position;
+                tempCursorUnderlay.size = new paper.Size(tempCursorCoordText.bounds.width,
+                    tempCursorCoordText.bounds.height);
+            }
+            if (!tempCursor) {
+                if (shiftKeyDown || gridlinesLocked()) return;
+                tempCursor = paper.Path.Line({ ...lineBounds, ...{ strokeColor: 'black' } });
+            } else {
+                tempCursor.segments[0].point = new paper.Point(...lineBounds.from)
+                tempCursor.segments[1].point = new paper.Point(...lineBounds.to);
+            }
+            tempCursor.data.lineBounds = lineBounds;
+        }
+
+        function addGridNotationUI() {
+            let parentDiv = document.getElementById('mode-specific-buttons');
+            parentDiv.classList.add('mask-button-set');
+
+            let orientationLabel = {
+                id: 'line-orientation-label',
+                innerHTML: 'Gridline orientation'
+            };
+            let horizontalLineButton = {
+                id: 'horiz-gridline-button',
+                innerHTML: 'Horiz.'
+            };
+            let verticalLineButton = {
+                id: 'vert-gridline-button',
+                innerHTML: 'Vert.'
+            };
+
+            gridlineOrientationButtonGroup = new ButtonGroup(
+                parentDiv,
+                orientationLabel,
+                horizontalLineButton,
+                verticalLineButton,
+                () => { }
+            )
+
+            let lockGridlinesDiv = document.createElement('div');
+            lockGridlinesDiv.classList.add('mask-button-set');
+            document.getElementById('help-pane').appendChild(lockGridlinesDiv);
+
+            let lockGridlinesButton = document.createElement('button');
+            lockGridlinesButton.id = 'lock-gridlines-button';
+            lockGridlinesButton.innerHTML = lockGridlinesText;
+            lockGridlinesDiv.appendChild(lockGridlinesButton);
+            lockGridlinesButton.onclick = lockOrUnlockGridlines;
+        }
+
+        function gridlinesLocked() {
+            return document.getElementById('lock-gridlines-button').innerHTML !== lockGridlinesText;
+        }
+
+        function lockOrUnlockGridlines() {
+            let lockButton = document.getElementById('lock-gridlines-button');
+            if (gridlinesLocked()) {
+                lockButton.innerHTML = lockGridlinesText;
+            } else {
+                lockButton.innerHTML = 'Unlock gridlines';
+            }
+        }
+
+        class Gridline {
+            constructor(
+                startPoint,
+                endPoint,
+                orientation,
+                doOnMouseDown
+            ) {
+                this.startPoint = startPoint;
+                this.endPoint = endPoint;
+                this.orientation = orientation;
+                this.doOnMouseDown = doOnMouseDown;
+                this.restoreLinePath();
+                this.id = this.linePath.id;
+            }
+            setEventHandlers() {
+                this.linePath.onMouseEnter = event => {
+                    if (shiftKeyDown) {
+                        event.target.strokeColor = 'red';
+                    }
+                };
+                this.linePath.onMouseDown = event => {
+                    if (!shiftKeyDown) return;
+                    event.target.remove();
+                    this.doOnMouseDown(event);
+                }
+                this.linePath.onMouseLeave = event => {
+                    event.target.strokeColor = 'black';
+                }
+            }
+            restoreLinePath() {
+                this.linePath = paper.Path.Line({
+                    ...{ from: this.startPoint, to: this.endPoint },
+                    ...{
+                        strokeColor: 'black',
+                        strokeWidth: gridlineStrokeWidth
+                    }
+                });
+                this.linePath.owner = this;
+                this.setEventHandlers();
+            }
+        }
+
+        class GridlineBox {
+            constructor(startPoint, endPoint,
+                opts = {
+                    ptsToOffset: {
+                        start: [true, true],
+                        end: [true, true]
+                    }
+                },
+                doOnToggle = updateRetryAnalysisButtonAppearance) {
+                this.opacityVals = {
+                    hidden: 0,
+                    hover: 0.25,
+                    selected: 0.5
+                }
+                this.startPoint = startPoint;
+                this.endPoint = endPoint;
+                this.doOnToggle = doOnToggle;
+                this.offsetByKerf(opts.ptsToOffset);
+                this.selected = false;
+                this.restoreRectPath();
+                this.id = this.rectPath.id;
+            }
+
+            toggleSelected(box = this) {
+                this.selected = !this.selected;
+                if (this.selected) {
+                    this.rectPath.opacity = this.opacityVals.selected;
+                } else {
+                    this.rectPath.opacity = this.opacityVals.hover;
+                }
+                this.doOnToggle();
+            }
+            offsetByKerf(ptsToOffset) {
+                let ptNames = { start: 'startPoint', end: 'endPoint' };
+                Object.keys(ptsToOffset).forEach(key => {
+                    ptsToOffset[key].forEach((pt, j) => {
+                        if (pt) {
+                            this[ptNames[key]][j] += (key === 'start' ? 1 : -1)
+                                * gridlineStrokeWidth / 2;
+                        }
+                    })
+                })
+            }
+            setEventHandlers() {
+                this.rectPath.onMouseEnter = (event) => {
+                    if (event.target.data.owner.selected || !gridlinesLocked()) return;
+                    event.target.opacity = this.opacityVals.hover;
+                }
+                this.rectPath.onMouseLeave = (event) => {
+                    if (event.target.data.owner.selected) return;
+                    event.target.opacity = this.opacityVals.hidden;
+                }
+                this.rectPath.onMouseDown = (event) => {
+                    if (!gridlinesLocked()) return;
+                    event.target.data.owner.toggleSelected();
+                }
+            }
+            restoreRectPath() {
+                this.rectPath = new paper.Path.Rectangle(
+                    new paper.Point(...this.startPoint),
+                    new paper.Point(...this.endPoint)
+                );
+                this.rectPath.opacity = this.opacityVals[
+                    this.selected ? 'selected' : 'hidden'];
+                this.rectPath.fillColor = 'green';
+                this.rectPath.data.owner = this;
+                this.setEventHandlers();
+            }
+        }
+
+        function updateGridlineXYPositions() {
+            let keys = [['x', 'vert'], ['y', 'horiz']];
+            gridXYMarkers = {};
+            keys.forEach(keyPair => {
+                gridXYMarkers[keyPair[0]] = Object.keys(
+                    chamberRealignmentData[currentImgIndex].maskGridlines[keyPair[1]]).map(
+                        key => chamberRealignmentData[currentImgIndex].maskGridlines[keyPair[1]][key].linePath.position[keyPair[0]]
+                    ).sort(function (a, b) {
+                        return a - b;
+                    })
+            });
+        }
+
+        function convertGridBoxSelectionsToBBoxes(key) {
+            chamberRealignmentData[key].bboxes = [];
+            Object.keys(chamberRealignmentData[key].gridlineBBoxes).filter(k => {
+                return chamberRealignmentData[key].gridlineBBoxes[k].selected
+            }).forEach(k => {
+                let box = chamberRealignmentData[key].gridlineBBoxes[k];
+                chamberRealignmentData[key].bboxes.push([
+                    (box.startPoint[0] - leftPadding) / scalingFactor,
+                    (box.startPoint[1] - upperPadding) / scalingFactor,
+                    (box.endPoint[0] - box.startPoint[0]) / scalingFactor,
+                    (box.endPoint[1] - box.startPoint[1]) / scalingFactor
+                ].map(el => Math.round(el)));
+                console.log('just added:', chamberRealignmentData[key].bboxes);
+            })
+        }
+
+        function deleteBoxesTouchingRemovedGridline(gridline) {
+            let boxes = chamberRealignmentData[currentImgIndex].gridlineBBoxes
+            Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach(key => {
+                let box = chamberRealignmentData[currentImgIndex].gridlineBBoxes[key];
+                let intersects = false, coord, offset;
+                if (gridline.owner.orientation === 'vert') {
+                    coord = 'x';
+                    offset = 'width'
+                } else {
+                    coord = 'y';
+                    offset = 'height'
+                }
+                if (gridline.position[coord] === box.rectPath.bounds[coord] - 1 ||
+                    gridline.position[coord] === box.rectPath.bounds[coord]
+                    + box.rectPath.bounds[offset] + 1) {
+                    intersects = true;
+                }
+                if (!intersects) {
+                    return;
+                }
+                box.rectPath.remove();
+                delete chamberRealignmentData[currentImgIndex].gridlineBBoxes[box.id];
+            });
+            updateGridlineXYPositions();
+            if (gridline.owner.orientation === 'horiz') {
+                dim1 = 'y';
+                dim2 = 'x';
+            } else {
+                dim1 = 'x'
+                dim2 = 'y';
+            }
+            if (
+                gridline.position[dim1] === gridXYMarkers[dim1][0] ||
+                gridline.position[dim1] === gridXYMarkers[dim1][
+                gridXYMarkers[dim1].length - 1
+                ]
+            ) return;
+            let gridIndex = gridXYMarkers[dim1].indexOf(gridline.position[dim1]);
+            let bounds = [gridXYMarkers[dim1][gridIndex - 1],
+            gridXYMarkers[dim1][gridIndex + 1]];
+            for (let j = 0; j < gridXYMarkers[dim2].length - 1; j++) {
+                let args = [
+                    [gridXYMarkers[dim2][j], bounds[0]],
+                    [gridXYMarkers[dim2][j + 1], bounds[1]]
+                ]
+
+                if (dim1 === 'x') {
+                    args = args.map(el => el.reverse());
+                }
+
+                let newGridlineBox = new GridlineBox(...args);
+                chamberRealignmentData[currentImgIndex].gridlineBBoxes[newGridlineBox.id] = newGridlineBox;
+            }
+        }
+
+        function bisectBoxesByAddedGridline(gridline) {
+            let foundBisection = false;
+            if (!chamberRealignmentData[currentImgIndex].gridlineBBoxes) return;
+            Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach(key => {
+                let box = chamberRealignmentData[currentImgIndex].gridlineBBoxes[key];
+                if (!box.rectPath.intersects(gridline)) {
+                    return;
+                }
+                foundBisection = true;
+                let startPoints = [], endPoints = [];
+                let ptsToOffset = [{
+                    start: [false, false],
+                },
+                {
+                    end: [false, false]
+                }];
+                startPoints.push([box.startPoint[0], box.startPoint[1]]);
+                endPoints.push([box.endPoint[0], box.endPoint[1]])
+                if (gridline.owner.orientation === 'horiz') {
+                    endPoints.unshift([box.endPoint[0], gridline.position.y]);
+                    ptsToOffset[0].end = [false, true];
+                    startPoints.push([box.startPoint[0], gridline.position.y]);
+                    ptsToOffset[1].start = [false, true];
+                } else {
+                    endPoints.unshift([gridline.position.x, box.endPoint[1]]);
+                    ptsToOffset[0].end = [true, false];
+                    startPoints.push([gridline.position.x, box.startPoint[1]]);
+                    ptsToOffset[1].start = [true, false];
+                }
+                let origBoxWasSelected = box.selected;
+                box.rectPath.remove();
+                startPoints.forEach((startPoint, i) => {
+                    let newShape = new GridlineBox(startPoint, endPoints[i],
+                        { ptsToOffset: ptsToOffset[i] });
+                    if (origBoxWasSelected) {
+                        newShape.toggleSelected();
+                    }
+                    newShape.rectPath.insertBelow(gridline);
+                    chamberRealignmentData[currentImgIndex].gridlineBBoxes[newShape.id] = newShape;
+
+                });
+                delete chamberRealignmentData[currentImgIndex].gridlineBBoxes[box.rectPath.id];
+            });
+            if (foundBisection) return;
+            updateGridlineXYPositions();
+            let newGridlineBox, dim1, dim2;
+
+            if (gridline.owner.orientation === 'horiz') {
+                dim1 = 'y';
+                dim2 = 'x';
+            } else {
+                dim1 = 'x'
+                dim2 = 'y';
+            }
+            let bounds;
+            if (gridXYMarkers[dim1].length < 2) return;
+
+            if (gridline.position[dim1] === gridXYMarkers[dim1][0]) {
+                bounds = [gridXYMarkers[dim1][0], gridXYMarkers[dim1][1]];
+            } else {
+                bounds = [
+                    gridXYMarkers[dim1][gridXYMarkers[dim1].length - 2],
+                    gridXYMarkers[dim1][gridXYMarkers[dim1].length - 1]
+                ];
+            }
+            for (let j = 0; j < gridXYMarkers[dim2].length - 1; j++) {
+                let args = [
+                    [gridXYMarkers[dim2][j], bounds[0]],
+                    [gridXYMarkers[dim2][j + 1], bounds[1]]
+                ]
+
+                if (dim1 === 'x') {
+                    args = args.map(el => el.reverse());
+                }
+                newGridlineBox = new GridlineBox(...args);
+                chamberRealignmentData[currentImgIndex].gridlineBBoxes[newGridlineBox.id] = newGridlineBox;
+            }
+        }
+
+        function addNotationModeToggleButtons() {
+            let uiPane = document.getElementById('mask-annotation-mode-buttons');
+            uiPane.classList.add('mask-button-set');
+            document.getElementById('help-pane').style.height = '400px';
+
+            let notationModeLabel = {
+                id: 'notation-mode-label',
+                innerHTML: 'Notation mode'
+            };
+
+            let gridEditButton = {
+                id: 'grid-edit-button',
+                innerHTML: 'Grid'
+            };
+
+            let freehandEditButton = {
+                id: 'freehand-edit-button',
+                innerHTML: 'Freehand'
+            };
+
+            maskNotationButtonGroup = new ButtonGroup(
+                uiPane,
+                notationModeLabel,
+                gridEditButton,
+                freehandEditButton,
+                toggleMaskNotationMode
+            );
         }
 
         function setUpMaskCreationInterface() {
@@ -651,17 +1154,18 @@
                 $('#viewer').append('<div id=help-pane></div>');
             }
             $('#help-pane').empty();
-            
+
             $('#help-pane').append('<p>Drag to draw bounding boxes around egg-laying regions (hold shift to pan)')
-            // addMaskEditingToggleButtons();
+            $('#help-pane').append('<div id=mask-annotation-mode-buttons></div')
+            addNotationModeToggleButtons();
+            $('#help-pane').append('<div id=mode-specific-buttons></div>');
+            maskNotationButtonGroup.onButtonChange();
             Object.keys(eggLayingRegions[currentImgIndex]).forEach(reg => {
                 if (eggLayingRegions[currentImgIndex][reg].outline) {
                     eggLayingRegions[currentImgIndex][reg].outline.remove();
                     eggLayingRegions[currentImgIndex][reg].fill.remove();
                 }
             });
-            // get list of masks from the server
-            console.log('emitted mask list request.')
             socket.emit('mask-list', { sid });
         }
 
@@ -686,6 +1190,16 @@
                         editMode = 'mask';
                         setUpMaskCreationInterface();
                         tempMaskBBoxes = {};
+                        tempMaskGridlines = { horiz: {}, vert: {} };
+                        chamberRealignmentData[currentImgIndex] = {
+                            file_name: chamberRealignmentData[currentImgIndex].file_name,
+                            rotationAngle: 0,
+                            type: evt.target.value,
+                            maskBBoxes: {},
+                            gridlineBBoxes: {},
+                            maskGridlines: { horiz: {}, vert: {} },
+                            customMode: 'grid'
+                        }
                         return;
                     }
                     if (evt.target.value == chamberTypes[orderedImgNames[currentImgIndex]]) {
@@ -733,14 +1247,29 @@
                             ` ${untriaged.length > 1 ? `${untriaged.slice(0, -1).join(', ')
                                 } and ${untriaged[untriaged.length - 1]}` : untriaged[0]}.`;
                         setTimeout(() => {
-                            document.getElementById('mode-marker').innerHTML = ''
-                            //     setModeMarker();
+                            document.getElementById('mode-marker').innerHTML = '';
                         }, 3000);
                         return;
                     }
                     transformAlignmentGuidelinePoints();
+                    let keysToKeep = [
+                        'ignored',
+                        'bboxes',
+                        'nodes',
+                        'rotationAngle',
+                        'type',
+                        'file_name'
+                    ]
+                    let reducedChamberData = {};
+                    Object.keys(chamberRealignmentData).forEach(imgKey => {
+                        reducedChamberData[imgKey] = {}
+                        keysToKeep.forEach(k => {
+                            reducedChamberData[imgKey][k] = chamberRealignmentData[imgKey][k];
+                        })
+                    });
+                    console.log('data being sent?', reducedChamberData);
                     let dataToSend = {
-                        chamberData: chamberRealignmentData, sid
+                        chamberData: reducedChamberData, sid
                     };
                     $.ajax({
                         url: '/manual-recount',
@@ -761,7 +1290,12 @@
                 if (chamberRealignmentData[k].ignored) {
                     return;
                 }
-                if (!chamberRealignmentData[k].nodes) {
+                if (chamberRealignmentData[k].type === 'custom') {
+                    convertGridBoxSelectionsToBBoxes(k);
+                    return;
+                }
+                if (!chamberRealignmentData[k].nodes &&
+                    !chamberRealignmentData[k].bboxes) {
                     chamberRealignmentData[k].bboxes = [];
                     chamberRealignmentData[k].rotationAngle = rotationAngles[orderedImgNames[k]]
                     annotations[orderedImgNames[k]].forEach(region => {
@@ -979,6 +1513,10 @@
         }
 
         var updateRealignmentGuide = function () {
+            if (document.getElementById('chamber-type-select').value === 'custom') {
+                setUpMaskCreationInterface();
+                return;
+            }
             $('#help-pane').empty();
             let noChamberTypeSelected = ['null', ''].includes(chamberRealignmentData[currentImgIndex].type);
             let chamberTypeDetected = !!chamberTypes[orderedImgNames[currentImgIndex]];
@@ -1012,6 +1550,17 @@
         }
 
         var drawChamberAlignmentMarkers = function () {
+            if (document.getElementById('chamber-type-select').value === 'custom') {
+                Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach(key => {
+                    chamberRealignmentData[currentImgIndex].gridlineBBoxes[key].restoreRectPath(key);
+                });
+                Object.keys(chamberRealignmentData[currentImgIndex].maskGridlines).forEach(key => {
+                    Object.keys(chamberRealignmentData[currentImgIndex].maskGridlines[key]).forEach(lineId => {
+                        chamberRealignmentData[currentImgIndex].maskGridlines[key][lineId].restoreLinePath(lineId);
+                    });
+                });
+                return;
+            }
             if (!chamberRealignmentData[currentImgIndex].nodes) {
                 chamberRealignmentData[currentImgIndex].nodes = {
                     end1: [leftPadding + 0.9 * backgroundRaster.bounds.width, upperPadding + 80],
@@ -1166,7 +1715,7 @@
                     + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.bounds.width);
                 leftPadding = 0.5 * (canvasWidth - backgroundRaster.bounds.width)
                     + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.bounds.height);
-                if ('error' in annotations[orderedImgNames[currentImgIndex]]) { //|| (chamberRealignmentData[currentImgIndex] && !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type))) {
+                if ('error' in annotations[orderedImgNames[currentImgIndex]]) {
                     let pointText = new paper.PointText(new paper.Point(paper.view.center.x,
                         paper.view.center.y));
                     if (annotations[orderedImgNames[currentImgIndex]].error) {
@@ -1601,6 +2150,18 @@
             setPointerHandlers();
             setDragHandler();
         }
+
+        function checkForAnnotatedGridlineImages(index, untriaged) {
+            if (chamberRealignmentData[index].type !== 'custom' || chamberRealignmentData[index].customMode !== 'grid') {
+                return untriaged;
+            }
+            if (!chamberRealignmentData[index].gridlineBBoxes ||
+                !Object.keys(chamberRealignmentData[index].gridlineBBoxes).some(el => { return chamberRealignmentData[index].gridlineBBoxes[el].selected })) {
+                untriaged.push(index + 1);
+            }
+            return untriaged;
+        }
+
         var indicesOfUntriagedImages = function () {
             let untriaged = []
             for (let index = 0; index < orderedImgNames.length; index++) {
@@ -1609,6 +2170,9 @@
                 }
                 if (!chamberRealignmentData[index]) {
                     untriaged.push(index + 1)
+                }
+                if (checkForAnnotatedGridlineImages(index, untriaged)) {
+                    continue;
                 }
                 else if (!(chamberRealignmentData[index].ignored ||
                     !['', 'null'].includes(chamberRealignmentData[index].type))) {
@@ -1738,7 +2302,9 @@
 
         function updateBBoxOutlineForDeletion() {
             if (!currentMaskBBox) return;
-            let myBox = tempMaskBBoxes[currentMaskBBox];
+            let myBox = chamberRealignmentData[
+                currentImgIndex
+            ].maskBBoxes[currentMaskBBox];
             if (shiftKeyDown) {
                 myBox.strokeColor = 'red';
                 myBox.data.state = 'delete';
@@ -1748,14 +2314,15 @@
         }
 
         function clearAllBBoxes() {
-            Object.keys(tempMaskBBoxes).forEach(maskId => {
-                
+            Object.keys(chamberRealignmentData).forEach(maskId => {
+
             });
         }
 
         function createNewMaskBBox(evt) {
             if (currentMaskBBox) {
-                adjustBBox(evt, tempMaskBBoxes[currentMaskBBox]);
+                adjustBBox(evt, chamberRealignmentData[
+                    currentImgIndex].maskBBoxes[currentMaskBBox]);
                 return;
             }
             let maskBounds = {
@@ -1777,8 +2344,7 @@
             )
             innerRect.data.parent = newRect.id;
             innerRect.onClick = (e) => {
-                console.log('finished an onclick event');
-                let myBox = tempMaskBBoxes[innerRect.data.parent];
+                let myBox = chamberRealignmentData[currentImgIndex].maskBBoxes[innerRect.data.parent];
                 if (myBox.data.state === 'delete') {
                     if (lastCanvasMoveTime - lastMouseDownTime > 0) {
                         return;
@@ -1793,7 +2359,7 @@
                 }
             }
             innerRect.onMouseMove = () => {
-                let myBox = tempMaskBBoxes[innerRect.data.parent];
+                let myBox = chamberRealignmentData[currentImgIndex].maskBBoxes[innerRect.data.parent];
                 if (myBox.data.state === 'resizing'
                     || pointerDown) {
                     return;
@@ -1813,7 +2379,7 @@
                     return;
                 }
                 currentMaskBBox = null;
-                tempMaskBBoxes[innerRect.data.parent].strokeColor = colors.grey;
+                [innerRect.data.parent].strokeColor = colors.grey;
             }
             currentMaskBBox = newRect.id;
             newRect.data.state = null;
@@ -1845,7 +2411,7 @@
                         circle.scale(2);
                     }
                     circle.fillColor = 'black';
-                    tempMaskBBoxes[circle.data.parent].data.state = 'resizing';
+                    [circle.data.parent].data.state = 'resizing';
                     currentMaskBBox = circle.data.parent;
                 };
                 circle.onMouseLeave = () => {
@@ -1856,7 +2422,7 @@
                     if (pointerDown) {
                         return;
                     }
-                    tempMaskBBoxes[circle.data.parent].data.state = null;
+                    chamberRealignmentData[currentImgIndex].maskBBoxes[circle.data.parent].data.state = null;
                     currentMaskBBox = null;
                 }
             });
@@ -1865,18 +2431,22 @@
             newRect.data.bounds = newRect.bounds.clone();
             newRect.data.isNew = true;
             newRect.data.scaleBase = evt.point.subtract(newRect.bounds.center);
-            tempMaskBBoxes[newRect.id] = newRect;
+            chamberRealignmentData[currentImgIndex].maskBBoxes[newRect.id] = newRect;
         }
 
         var setDragHandler = () => {
             var toolPan = new paper.Tool();
+            toolPan.onMouseMove = function (evt) {
+                addGridNotationCursor(evt);
+            }
+            toolPan.onMouseDown = function (evt) {
+                addGridlineNotation(evt);
+            }
             toolPan.onMouseDrag = function (evt) {
 
-                if (editMode === 'mask') {
+                if (editMode === 'mask' &&
+                    maskNotationButtonGroup.selected === 'freehand-edit-button') {
                     createNewMaskBBox(evt);
-                    // when should the early return take effect?
-                    // can't be used if panning is needed.
-                    // return early unless the shift key is down?
                     if (!shiftKeyDown) return;
                 }
 

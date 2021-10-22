@@ -60,7 +60,11 @@ form label:hover, form button:hover:enabled, #updates button:hover, form input:h
   color: white;
 }
 
-form label:active, form button:active:enabled, #updates button:active, form input:active {
+form label:active,
+form button:active:enabled,
+#updates button:active,
+#updates button.selected,
+form input:active  {
   background-color: #0D3F8F;
   color: white;
 }
@@ -179,6 +183,7 @@ form p {
   opacity: 0;
 }
 
+
 form label, form button, #updates button, form input {
   background-color: #7F9CCB;
   padding: 5px 10px;
@@ -186,6 +191,36 @@ form label, form button, #updates button, form input {
   border: 1px ridge black;
   font-size: 0.8rem;
   height: auto;
+}
+
+.mask-button-set {
+  height: 38px;
+  position: relative;
+}
+.mask-button-set span {
+  position: absolute;
+  top: 7px;
+}
+
+#updates .left-hand-button {
+  border-radius: 5px 0 0 5px;
+  margin-bottom: 4px;
+  margin-left: auto;
+  margin-right: -1px;
+  float: right;
+}
+
+#updates .right-hand-button {
+  border-radius: 0 5px 5px 0;
+  margin-bottom: 4px;
+  margin-left: auto;
+  margin-right: 0px;
+  float: right;
+}
+
+#updates .label {
+  font-size: 12px;
+  margin-right: 12px;
 }
 
 form ol {
