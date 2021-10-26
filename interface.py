@@ -109,7 +109,6 @@ def send_csv(filename):
 
 @socketIO.on("save-custom-mask")
 def save_custom_mask(data):
-    # fairly simple from here: just save it as a json file...
     with open(os.path.join("configs", "masks", f"{data['maskName']}.json"), "w") as f:
         json.dump(data, f)
     print("sending this:", {"currentMask": data["maskName"]})

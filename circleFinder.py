@@ -395,11 +395,15 @@ class CircleFinder:
         return bboxes
 
     @staticmethod
-    def getSubImagesFromBBoxes(img, bboxes):
+    def getSubImagesFromBBoxes(img, bboxes, ignore_indices=None):
         sub_imgs = []
-        for bbox in bboxes:
+        for i, bbox in enumerate(bboxes):
+            print('i:', i)
+            if ignore_indices and ignore_indices[i]:
+                sub_imgs.append(None)
+                continue
             sub_imgs.append(
-                img[bbox[1]:bbox[1] + bbox[3], bbox[0]:bbox[0] + bbox[2]]
+                img[bbox[1] : bbox[1] + bbox[3], bbox[0] : bbox[0] + bbox[2]]
             )
         return sub_imgs
 

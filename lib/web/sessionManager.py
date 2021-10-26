@@ -80,12 +80,46 @@ class SessionManager:
         time.sleep(2)
 
     def segment_image_via_bboxes(self, img, img_path, alignment_data):
-        # rotate the image.
-        print("rotating image by thisamount:", alignment_data["rotationAngle"])
         img = rotate_image(img, alignment_data["rotationAngle"])
         self.bboxes = alignment_data["bboxes"]
+        bbox_translation = [-el for el in alignment_data["imageTranslation"]]
+        alignment_data["regionsToIgnore"] = []
+        translated_bboxes = []
+        for bbox in self.bboxes:
+            new_bbox = [
+                bbox[0] + bbox_translation[0],
+                bbox[1] + bbox_translation[1],
+                bbox[2],
+                bbox[3],
+            ]
+            x_coords = [new_bbox[0], new_bbox[0] + bbox[2]]
+            y_coords = [new_bbox[1], new_bbox[1] + bbox[3]]
+            found_oob_box = False
+            for i in range(2):  # X and Y dimensions
+                bounds_along_dim = [new_bbox[i], new_bbox[i] + bbox[i + 2]]
+                if not found_oob_box and (
+                    all([c < 0 for c in bounds_along_dim])
+                    or all(
+                        [c > img.shape[1 if i == 0 else 0] for c in bounds_along_dim]
+                    )
+                ):
+                    found_oob_box = True
+                    alignment_data["regionsToIgnore"].append(True)
+            if not found_oob_box:
+                if x_coords[0] < 0:
+                    new_bbox[0] = 0
+                    new_bbox[2] += x_coords[0]
+                if y_coords[0] < 0:
+                    new_bbox[1] = 0
+                    new_bbox[2] += y_coords[0]
+                alignment_data["regionsToIgnore"].append(False)
+            translated_bboxes.append(list(map(round, new_bbox)))
+
         self.rotation_angle = alignment_data["rotationAngle"]
-        self.subImgs = CircleFinder.getSubImagesFromBBoxes(img, self.bboxes)
+        self.bboxes = translated_bboxes
+        self.subImgs = CircleFinder.getSubImagesFromBBoxes(
+            img, translated_bboxes, alignment_data["regionsToIgnore"]
+        )
 
     def segment_image_via_alignment_data(self, img, img_path, alignment_data):
         segmenter = ManualSegmenter(
@@ -139,16 +173,6 @@ class SessionManager:
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
         self.segment_image_via_object_detection(img, img_path)
-        # self.emit_to_room(
-        #     "counting-progress",
-        #     {
-        #         "data": "Chamber type is %s and # bounding boxes is %i"
-        #         % (self.cf.ct, len(self.bboxes))
-        #     },
-        # )
-        # send the chamber type and bounding box data through which type of message?
-        # make a new data type.
-        # if chamber type can't be found, the code wouldn't reach this far
         self.bboxes = [[int(el) for el in bbox] for bbox in self.bboxes]
         print(
             "data to emit:",
@@ -309,14 +333,12 @@ class SessionManager:
                     for i, row in enumerate(row_col_layout):
                         num_entries_added = 0
                         row_entries = []
-                        print('row:', row)
                         for col in range(row[-1] + 1):
                             if col in row:
                                 row_entries.append(ordered_counts[i][num_entries_added])
                                 num_entries_added += 1
                             else:
-                                row_entries.append('')
-                            print('row entries:', row_entries)
+                                row_entries.append("")
                         writer.writerow(row_entries)
                 else:
                     CT[self.chamberTypes[imgPath]].value().writeLineFormatted(

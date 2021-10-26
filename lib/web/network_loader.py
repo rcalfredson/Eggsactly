@@ -20,6 +20,8 @@ class NetworkLoader:
         self.network.load_state_dict(torch.load(self.model_path))
 
     def predict_instances(self, image):
+        if image is None:
+            return {"count": 0, "outlines": []}
         if self.net_arch == "fcrn":
             image = torch.from_numpy(
                 (1 / 255) * np.expand_dims(np.moveaxis(image, 2, 0), 0)

@@ -58,6 +58,9 @@
         let tempMaskGridlines;
         let gridXYMarkers;
         const lockGridlinesText = 'Lock gridlines and select regions';
+        const lockMaskText = 'Lock mask and reposition image';
+        const freehandMaskEditInstructions = 'Drag to draw bounding boxes around egg-laying regions (hold shift to pan)';
+        const imageTransformInstructions = 'Transforming image: drag to pan; shift + drag to rotate; scroll to zoom';
         let currentMaskBBox;
         let maskNames;
         let maskNotationButtonGroup;
@@ -818,10 +821,12 @@
                 let newBBox = new GridlineBox(
                     toCanvasCoords(maskData.gridlineBBoxes[k].startPoint),
                     toCanvasCoords(maskData.gridlineBBoxes[k].endPoint),
-                    {ptsToOffset:{
-                        start: [false, false],
-                        end: [false, false]
-                    }}
+                    {
+                        ptsToOffset: {
+                            start: [false, false],
+                            end: [false, false]
+                        }
+                    }
                 )
                 newBBox.id = k;
                 if (maskData.gridlineBBoxes[k].selected) {
@@ -919,6 +924,56 @@
                 chamberRealignmentData[currentImgIndex].customMode = 'freehand';
                 addFreehandNotationUI();
             }
+            addLockMaskButton();
+            $('#help-pane').append('<hr>');
+        }
+
+        function toggleDisabledInHTMLCollection(collection, setToDisabled, idsToSkip = []) {
+            for (let item of collection) {
+                if (idsToSkip.includes(item.id)) continue;
+                if (setToDisabled) {
+                    item.setAttribute('disabled', true);
+                } else {
+                    item.removeAttribute('disabled');
+                }
+            }
+        }
+
+        function panImageOnly(evt) {
+            backgroundRaster.position = backgroundRaster.position.add(evt.delta);
+            chamberRealignmentData[currentImgIndex].imageTranslation[0] += evt.delta.x;
+            chamberRealignmentData[currentImgIndex].imageTranslation[1] += evt.delta.y;
+        }
+
+        function maskLocked() {
+            return document.getElementById('lock-mask').innerHTML !== lockMaskText;
+        }
+
+        function toggleDisabledAttrOfMaskEditingButtons(setToDisabled) {
+            let uiPane = document.getElementById('help-pane');
+            toggleDisabledInHTMLCollection(uiPane.getElementsByTagName('button'), setToDisabled, ['lock-mask']);
+            toggleDisabledInHTMLCollection(uiPane.getElementsByTagName('select'),
+                setToDisabled);
+            toggleDisabledInHTMLCollection(uiPane.getElementsByTagName('input'), setToDisabled);
+        }
+
+        function lockMaskOnClick(event) {
+            let enteringLock = event.target.innerHTML === lockMaskText;
+            event.target.innerHTML = enteringLock ? 'Unlock mask' : lockMaskText;
+            toggleDisabledAttrOfMaskEditingButtons(enteringLock);
+            document.getElementById('mask-edit-instructions').innerHTML = enteringLock ? imageTransformInstructions : freehandMaskEditInstructions;
+            setGridNotationCursorVisibility();
+        }
+
+        function addLockMaskButton() {
+            let parentDiv = document.createElement('div');
+            parentDiv.classList.add('mask-button-set');
+            document.getElementById('help-pane').appendChild(parentDiv);
+            let lockMaskButton = document.createElement('button');
+            lockMaskButton.id = 'lock-mask';
+            lockMaskButton.innerHTML = lockMaskText;
+            parentDiv.appendChild(lockMaskButton);
+            lockMaskButton.onclick = lockMaskOnClick;
         }
 
         function addFreehandNotationUI() {
@@ -932,7 +987,7 @@
         }
 
         function addGridlineNotation(evt) {
-            if (!tempCursor || gridlinesLocked()) {
+            if (!tempCursor || gridlinesLocked() || maskLocked()) {
                 return;
             }
             markMaskAsEdited();
@@ -964,9 +1019,13 @@
             if (!tempCursor) {
                 return;
             }
-            if (shiftKeyDown || gridlinesLocked()) {
+            if (shiftKeyDown || gridlinesLocked() || maskLocked()) {
                 tempCursor.remove();
                 tempCursor = null;
+                tempCursorCoordText.remove();
+                tempCursorCoordText = null;
+                tempCursorUnderlay.remove();
+                tempCursorUnderlay = null;
             }
         }
 
@@ -977,6 +1036,7 @@
             ) {
                 return;
             }
+            if (maskLocked()) return;
             setGridNotationCursorVisibility();
             let isH = horizSelected();
             let lineBounds;
@@ -1069,7 +1129,6 @@
             lockGridlinesButton.innerHTML = lockGridlinesText;
             lockGridlinesDiv.appendChild(lockGridlinesButton);
             lockGridlinesButton.onclick = lockOrUnlockGridlines;
-            $('#help-pane').append('<hr>');
         }
 
         function gridlinesLocked() {
@@ -1430,7 +1489,7 @@
             }
             $('#help-pane').empty();
 
-            $('#help-pane').append('<p>Drag to draw bounding boxes around egg-laying regions (hold shift to pan)')
+            $('#help-pane').append(`<p id=mask-edit-instructions>${freehandMaskEditInstructions}`)
             $('#help-pane').append('<div id=mask-annotation-mode-buttons></div')
             addNotationModeToggleButtons();
             $('#help-pane').append('<div id=mode-specific-buttons></div>');
@@ -1496,6 +1555,7 @@
                         chamberRealignmentData[currentImgIndex] = {
                             file_name: chamberRealignmentData[currentImgIndex].file_name,
                             rotationAngle: 0,
+                            imageTranslation: [0, 0],
                             type: evt.target.value,
                             maskBBoxes: {},
                             gridlineBBoxes: {},
@@ -1559,6 +1619,7 @@
                         'bboxes',
                         'nodes',
                         'rotationAngle',
+                        'imageTranslation',
                         'type',
                         'file_name'
                     ]
@@ -1596,6 +1657,11 @@
             Object.keys(chamberRealignmentData).forEach(k => {
                 if (chamberRealignmentData[k].ignored) {
                     return;
+                }
+                if (chamberRealignmentData[k].imageTranslation) {
+                    chamberRealignmentData[k].imageTranslation.forEach((el, i) => {
+                        chamberRealignmentData[k].imageTranslation[i] = el / scalingFactor;
+                    });
                 }
                 if (chamberRealignmentData[k].type === 'custom') {
                     convertGridBoxSelectionsToBBoxes(k);
@@ -2038,6 +2104,14 @@
                                 new paper.Point(bbox[0] + bbox[2] + leftPadding, bbox[1] + bbox[3] + upperPadding));
                             rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
                             rectPath.strokeColor = colors.grey;
+                            if (backgroundRaster.intersects(rectPath)) {
+                                let tempRasterRect = new paper.Path.Rectangle(backgroundRaster.bounds)
+                                tempRasterRect.opacity = 0;
+                                let newRectPath = rectPath.intersect(tempRasterRect);
+                                rectPath.remove();
+                                tempRasterRect.remove();
+                                rectPath = newRectPath;
+                            }
                             let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
                             innerRect.fillColor = 'black';
                             innerRect.opacity = 0;
@@ -2725,7 +2799,6 @@
                 addGridlineNotation(evt);
             }
             toolPan.onMouseDrag = function (evt) {
-
                 if (editMode === 'mask' &&
                     maskNotationButtonGroup.selected === 'freehand-edit-button') {
                     createNewMaskBBox(evt);
@@ -2735,6 +2808,10 @@
                 if (inputAmender || shapeBeingDragged) {
                     return;
                 }
+                if (maskLocked()) {
+                    panImageOnly(evt);
+                    return;
+                }
                 var timeMove = new Date().getTime();
                 if (timeMove > timeDownUp) {
                     if (dragStart) {
@@ -2742,7 +2819,7 @@
                             evt.downPoint.y - evt.point.y);
                         let new_center = paper.view.center.add(offset);
                         paper.view.setCenter(new_center);
-                        lastCanvasMoveTime = new Date().getTime()
+                        lastCanvasMoveTime = new Date().getTime();
                     }
                 } else {
                     timeDownUp = null;

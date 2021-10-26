@@ -206,9 +206,9 @@ form label, form button, #updates button, form input {
   top: 7px;
 }
 
-/* #mask-list {
-  font-size: 8px;
-} */
+#mask-edit-instructions {
+  margin-top: 0;
+}
 
 #mask-name-warning-message {
   color: rgb(155, 18, 29);
