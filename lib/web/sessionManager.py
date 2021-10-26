@@ -81,10 +81,10 @@ class SessionManager:
 
     def segment_image_via_bboxes(self, img, img_path, alignment_data):
         # rotate the image.
-        print('rotating image by thisamount:', alignment_data['rotationAngle'])
-        img = rotate_image(img, alignment_data['rotationAngle'])
-        self.bboxes = alignment_data['bboxes']
-        self.rotation_angle = alignment_data['rotationAngle']
+        print("rotating image by thisamount:", alignment_data["rotationAngle"])
+        img = rotate_image(img, alignment_data["rotationAngle"])
+        self.bboxes = alignment_data["bboxes"]
+        self.rotation_angle = alignment_data["rotationAngle"]
         self.subImgs = CircleFinder.getSubImagesFromBBoxes(img, self.bboxes)
 
     def segment_image_via_alignment_data(self, img, img_path, alignment_data):
@@ -193,7 +193,7 @@ class SessionManager:
                 return
         if "nodes" in alignment_data:
             self.segment_image_via_alignment_data(img, img_path, alignment_data)
-        elif 'bboxes' in alignment_data:
+        elif "bboxes" in alignment_data:
             self.segment_image_via_bboxes(img, img_path, alignment_data)
         self.emit_to_room(
             "counting-progress", {"data": "Counting eggs in image %s" % imgBasename}
@@ -276,7 +276,7 @@ class SessionManager:
                 )
         self.emit_to_room("report-ready", {})
 
-    def saveCSV(self, edited_counts):
+    def saveCSV(self, edited_counts, row_col_layout, ordered_counts):
         resultsPath = "temp/results_ALPHA_%s.csv" % datetime.today().strftime(
             "%Y-%m-%d_%H-%M-%S"
         )
@@ -285,7 +285,7 @@ class SessionManager:
             writer.writerow(["Egg Counter, ALPHA version"])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
-                print('predictions:', self.predictions)
+                print("predictions:", self.predictions)
                 first_pred = self.predictions[imgPath][0]
                 if inspect.isclass(first_pred) and issubclass(first_pred, Exception):
                     writer.writerows([[self.errorMessages[first_pred]], []])
@@ -300,8 +300,27 @@ class SessionManager:
                         updated_counts[int(region_index)] = int(
                             edited_counts[base_path][region_index]
                         )
-                CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
-                    [updated_counts], 0, writer
+                print(
+                    "right before writing the line, what are my counts?",
+                    [updated_counts],
                 )
+                # wouldn't have to use the rowColLayout until the end?
+                if row_col_layout:
+                    for i, row in enumerate(row_col_layout):
+                        num_entries_added = 0
+                        row_entries = []
+                        print('row:', row)
+                        for col in range(row[-1] + 1):
+                            if col in row:
+                                row_entries.append(ordered_counts[i][num_entries_added])
+                                num_entries_added += 1
+                            else:
+                                row_entries.append('')
+                            print('row entries:', row_entries)
+                        writer.writerow(row_entries)
+                else:
+                    CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
+                        [updated_counts], 0, writer
+                    )
                 writer.writerow([])
         self.emit_to_room("counting-csv", {"data": os.path.basename(resultsPath)})

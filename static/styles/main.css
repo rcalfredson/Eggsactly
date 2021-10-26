@@ -115,6 +115,10 @@ form p {
   white-space: nowrap;
 }
 
+#updates #download-csv {
+  margin-top: 20px;
+}
+
 
 #download-imgs {
   width: 220px;
@@ -200,6 +204,15 @@ form label, form button, #updates button, form input {
 .mask-button-set span {
   position: absolute;
   top: 7px;
+}
+
+/* #mask-list {
+  font-size: 8px;
+} */
+
+#mask-name-warning-message {
+  color: rgb(155, 18, 29);
+  font-size: 10px;
 }
 
 #updates .left-hand-button {

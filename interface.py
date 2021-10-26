@@ -1,5 +1,6 @@
 from enum import Enum
 from glob import glob
+import json
 import os
 import shutil
 import time
@@ -106,9 +107,31 @@ def send_csv(filename):
     return send_file(fileToDownload, as_attachment=True)
 
 
+@socketIO.on("save-custom-mask")
+def save_custom_mask(data):
+    # fairly simple from here: just save it as a json file...
+    with open(os.path.join("configs", "masks", f"{data['maskName']}.json"), "w") as f:
+        json.dump(data, f)
+    print("sending this:", {"currentMask": data["maskName"]})
+    socketIO.emit(
+        "mask-list-update",
+        {"names": get_mask_list(data, emit=False), "currentMask": data["maskName"]},
+    )
+
+
+@socketIO.on("load-custom-mask")
+def load_custom_mask(data):
+    with open(os.path.join("configs", "masks", f"{data['maskName']}.json")) as f:
+        socketIO.emit("loaded-custom-mask", json.load(f), room=data["sid"])
+
+
 @socketIO.on("prepare-csv")
 def prepare_csv(data):
-    sessions[data["sid"]].saveCSV(data["editedCounts"])
+    print("edited counts?", data["editedCounts"])
+    print("data?", data)
+    sessions[data["sid"]].saveCSV(
+        data["editedCounts"], data["rowColLayout"], data["orderedCounts"]
+    )
 
 
 @socketIO.on("submit-error-report")
@@ -130,12 +153,15 @@ def setup_imgs_download(data):
 
 
 @socketIO.on("mask-list")
-def get_mask_list(data):
+def get_mask_list(data, emit=True):
     names = [
         os.path.basename(mask.split(".json")[0])
         for mask in glob("configs/masks/*.json")
     ]
-    socketIO.emit("mask-list", {"names": names})
+    if emit:
+        socketIO.emit("mask-list", {"names": names})
+    else:
+        return names
 
 
 @app.route("/annot-img/<ts>", methods=["GET"])

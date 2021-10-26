@@ -47,7 +47,8 @@
         let idsByOrigImgName = {};
         let lastPongTime;
         let numFailedPings = 0;
-        let beforeCounting = false;
+        let countingState;
+        let countingStates = { pre: 'pre', mid: 'mid', post: 'post' };
         let hasErrors;
         let numErrors = 0;
         let chamberRealignmentData = {};
@@ -350,18 +351,18 @@
                 annotations[msg.filename].push({ bbox: bbox })
             });
             chamberTypes[msg.filename] = msg.chamberType;
-            beforeCounting = true;
+            countingState = countingStates.pre;
             setupOrRedrawCanvas();
         });
         socket.on('counting-error', (msg) => {
             $('#updates-by-image').append(`<p style="color: red">${msg.data}</p>`);
             orderedImgNames.push(msg.filename);
-            beforeCounting = true;
+            countingState = countingStates.pre;
             annotations[msg.filename] = { 'error': msg.error_type };
             setupOrRedrawCanvas();
         });
         socket.on('counting-done', (msg) => {
-            beforeCounting = false;
+            countingState = countingStates.post;
             clearAllUpdates();
             setupCanvas(false);
         });
@@ -396,10 +397,29 @@
         socket.on('clear-display', () => {
             $('#updates-by-image').empty();
         });
+        socket.on('loaded-custom-mask', (msg) => {
+            loadMaskOnImage(msg.maskData);
+            document.getElementById('mask-name').value = msg.maskName;
+            document.getElementById('reset-masks').setAttribute('disabled', true);
+            document.getElementById('save-mask').setAttribute('disabled', true);
+        });
         socket.on('mask-list', (msg) => {
             maskNames = msg.names;
             addMaskSelectionButtons();
         });
+        socket.on('mask-list-update', msg => {
+            let maskList = document.getElementById('mask-list')
+            removeOptions(maskList);
+            if (msg.names.length > 0) {
+                maskList.removeAttribute('disabled');
+                addDropdownElement(maskList, 'Select existing mask', false)
+                msg.names.forEach(name => {
+                    addDropdownElement(maskList, name);
+                })
+                console.log('mask name:', msg.currentMask);
+                maskList.value = msg.currentMask;
+            }
+        })
         socket.on('report-ready', () => {
             let el = document.getElementById('submit-error-report');
             el.removeAttribute('disabled');
@@ -586,7 +606,6 @@
                         updateImageDisplay();
                         redrawCanvas();
                         delete filesToUpload[imgKey];
-                        // which structures are affected by the deletion?
                     }
                     if (validFileType(filesToUpload[file])) {
                         para.textContent = `File name ${file}, file size ${returnFileSize(filesToUpload[file].size)}.`;
@@ -621,7 +640,6 @@
         }
 
         var setCurrentImgName = function () {
-            // setModeMarker();
             document.getElementById('current-img').innerText =
                 `Viewing image ${currentImgIndex + 1} of ${orderedImgNames.length}` +
                 `: ${orderedImgNames[currentImgIndex]}`// (Shift to hide egg outlines; shift + scroll to zoom)`;
@@ -643,6 +661,63 @@
             }, 400);
         }
 
+        function imageUsesGridBoxes() {
+            return chamberRealignmentData[currentImgIndex].type === 'custom' &&
+                chamberRealignmentData[currentImgIndex].customMode === 'grid';
+        }
+
+        function collectRowColCountLayout() {
+            if (!imageUsesGridBoxes()) {
+                return [null, null];
+            }
+            updateGridlineXYPositions();
+            let rowColLayout = [];
+            let orderedCounts = [];
+            let posToColNumber = {}, posToRowNumber = {}, unusedColIndices = [];
+            for (let index = 0; index < gridXYMarkers.x.length - 1; index++) {
+                posToColNumber[gridXYMarkers.x[index]] = index;
+                unusedColIndices.push(index);
+            }
+            for (let index = 0; index < gridXYMarkers.y.length - 1; index++) {
+                posToRowNumber[gridXYMarkers.y[index]] = index;
+                rowColLayout.push([]);
+                orderedCounts.push([]);
+            }
+            let numBoxesAdded = 0;
+            Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach((k, i) => {
+                if (!chamberRealignmentData[currentImgIndex].gridlineBBoxes[k].selected) {
+                    return;
+                }
+                let box = chamberRealignmentData[currentImgIndex].gridlineBBoxes[k];
+                let colNumber = posToColNumber[box.startPoint[0] - box.kerfAmount];
+                rowColLayout[posToRowNumber[box.startPoint[1] - box.kerfAmount]].push(
+                    colNumber);
+                orderedCounts[posToRowNumber[box.startPoint[1] - box.kerfAmount]].push(
+                    // where is the count for this box?
+                    annotations[orderedImgNames[currentImgIndex]][numBoxesAdded].count
+                )
+                numBoxesAdded += 1;
+                const index = unusedColIndices.indexOf(colNumber);
+                if (index > -1) {
+                    unusedColIndices.splice(index, 1);
+                }
+            });
+            rowColLayout = rowColLayout.filter(el => el.length !== 0);
+            orderedCounts = orderedCounts.filter(el => el.length !== 0);
+            rowColLayout.forEach((list, i) => {
+                let unusedColCopy = unusedColIndices.slice();
+                list.forEach((el, j) => {
+                    for (let k = 0; k < unusedColCopy.length; k++) {
+                        if (rowColLayout[i][j] > unusedColCopy[k]) {
+                            rowColLayout[i][j] -= 1;
+                            unusedColCopy = unusedColCopy.map(el => el - 1);
+                        }
+                    }
+                })
+            });
+            return [rowColLayout, orderedCounts];
+        }
+
         var collectEditedCounts = function () {
             let editedCounts = {}
             orderedImgNames.forEach((name, i) => {
@@ -660,19 +735,183 @@
             return editedCounts;
         }
 
+        function removeOptions(selectElement) {
+            var i, L = selectElement.options.length - 1;
+            for (i = L; i >= 0; i--) {
+                selectElement.remove(i);
+            }
+        }
+
         var updateRetryAnalysisButtonAppearance = function () {
             document.getElementById('retry-analysis-button').style.color =
                 indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
         }
 
         function addMaskSelectionButtons() {
+            displayMaskList();
+            let newButtonGroup = document.createElement('div');
+            newButtonGroup.classList.add('mask-button-set');
+            newButtonGroup.id = 'mask-resetter-and-loader';
             let resetMasks = document.createElement('button');
             resetMasks.id = 'reset-masks';
-            resetMasks.innerHTML = 'Reset';
-            let helpPane = document.getElementById('help-pane')
-            helpPane.appendChild(resetMasks);
-            $('#help-pane').append(dividerString());
-            displayMaskList();
+            resetMasks.innerHTML = 'Revert to last saved version';
+            resetMasks.setAttribute('disabled', true);
+            resetMasks.onclick = requestSavedMaskData;
+            let helpPane = document.getElementById('help-pane');
+            newButtonGroup.appendChild(resetMasks);
+            helpPane.appendChild(newButtonGroup);
+            $('#mask-resetter-and-loader').append(dividerString());
+            displayMaskNamingSavingUI();
+        }
+
+        function loadMaskOnImage(maskData) {
+            let crd = chamberRealignmentData;
+            let orientations = ['horiz', 'vert'];
+
+            // remove boxes
+            ['maskBBoxes', 'gridlineBBoxes'].forEach(boxType => {
+                Object.keys(crd[currentImgIndex][boxType]).forEach(k => {
+                    let box = crd[currentImgIndex][boxType][k];
+                    if (boxType === 'gridlineBBoxes') box = box.rectPath;
+                    box.remove();
+                });
+                crd[currentImgIndex][boxType] = {};
+            });
+
+            // remove gridlines
+            orientations.forEach(lineType => {
+                Object.keys(crd[currentImgIndex].maskGridlines[lineType]).forEach(k => {
+                    crd[currentImgIndex].maskGridlines[lineType][k].linePath.remove();
+                });
+                crd[currentImgIndex].maskGridlines[lineType] = {};
+            });
+
+            // add gridlines
+            orientations.forEach(ort => {
+                Object.keys(maskData.maskGridlines[ort]).forEach(k => {
+                    let ptsToTransform;
+                    if (ort === 'horiz') {
+                        ptsToTransform = [
+                            maskData.maskGridlines[ort][k].startPoint,
+                            [backgroundRaster.width,
+                            maskData.maskGridlines[ort][k].endPoint[1]]];
+                    } else {
+                        ptsToTransform = [
+                            maskData.maskGridlines[ort][k].startPoint,
+                            [maskData.maskGridlines[ort][k].endPoint[0],
+                            backgroundRaster.height]
+                        ];
+                    }
+                    let newGridline = new Gridline(
+                        toCanvasCoords(ptsToTransform[0]),
+                        toCanvasCoords(ptsToTransform[1]),
+                        ort, gridlineDoOnMouseDown
+                    );
+
+                    newGridline.id = k;
+                    crd[currentImgIndex].maskGridlines[ort][
+                        k
+                    ] = newGridline;
+                });
+            });
+
+            // add grid boxes
+
+            Object.keys(maskData.gridlineBBoxes).forEach(k => {
+                // re-use all four points in this case?
+                let newBBox = new GridlineBox(
+                    toCanvasCoords(maskData.gridlineBBoxes[k].startPoint),
+                    toCanvasCoords(maskData.gridlineBBoxes[k].endPoint),
+                    {ptsToOffset:{
+                        start: [false, false],
+                        end: [false, false]
+                    }}
+                )
+                newBBox.id = k;
+                if (maskData.gridlineBBoxes[k].selected) {
+                    newBBox.toggleSelected();
+                }
+                crd[currentImgIndex].gridlineBBoxes[k] = newBBox;
+            })
+        }
+
+        function addGridlinesToSaveData(key, dataOut) {
+            if (!dataOut[key]) {
+                dataOut[key] = { maskGridlines: { horiz: {}, vert: {} } };
+            } else {
+                dataOut[key][maskGridlines] = { horiz: {}, vert: {} };
+            }
+            Object.keys(dataOut[key].maskGridlines).forEach(lineType => {
+                Object.keys(chamberRealignmentData[key].maskGridlines[lineType]).forEach(lineKey => {
+                    dataOut[key].maskGridlines[lineType][lineKey] =
+                        chamberRealignmentData[key].maskGridlines[lineType][lineKey].reduced;
+                })
+            })
+            return dataOut;
+        }
+
+        function addGridlineBoxesToSaveData(key, dataOut) {
+            if (!dataOut[key]) dataOut[key] = { gridlineBBoxes: {} };
+            else dataOut[key].gridlineBBoxes = {};
+            Object.keys(chamberRealignmentData[key].gridlineBBoxes).forEach(boxKey => {
+                dataOut[key].gridlineBBoxes[boxKey] = chamberRealignmentData[key].gridlineBBoxes[boxKey].reduced;
+            });
+            return dataOut;
+        }
+
+        function saveCustomMask() {
+            let reducedData = {};
+            reducedData = addGridlinesToSaveData(currentImgIndex, reducedData);
+            reducedData = addGridlineBoxesToSaveData(currentImgIndex, reducedData);
+            socket.emit('save-custom-mask', {
+                maskData: reducedData[currentImgIndex],
+                sid,
+                maskName: document.getElementById('mask-name').value
+            });
+        }
+
+        function markMaskAsEdited() {
+            document.getElementById('save-mask').removeAttribute('disabled');
+            document.getElementById('reset-masks').removeAttribute('disabled');
+        }
+
+        function displayMaskNamingSavingUI() {
+            let helpPane = document.getElementById('help-pane');
+            let newButtonGroup = document.createElement('div');
+            newButtonGroup.classList.add('mask-button-set');
+            newButtonGroup.id = 'mask-namer-and-saver';
+            let maskNamingField = document.createElement('input');
+            maskNamingField.setAttribute('id', 'mask-name');
+            maskNamingField.placeholder = 'Mask name';
+            newButtonGroup.appendChild(maskNamingField);
+            helpPane.append(newButtonGroup);
+            $('#mask-namer-and-saver').append(dividerString());
+            let maskSaveButton = document.createElement('button');
+            maskSaveButton.id = 'save-mask';
+            maskSaveButton.setAttribute('name', 'save-mask');
+            maskSaveButton.setAttribute('disabled', true);
+            maskSaveButton.innerHTML = 'Save';
+            newButtonGroup.appendChild(maskSaveButton);
+            maskSaveButton.onclick = saveCustomMask;
+            $('#mask-name').on('input', onMaskNameChange);
+            let warningMessage = document.createElement('span');
+            warningMessage.id = 'mask-name-warning-message';
+            helpPane.appendChild(warningMessage);
+        }
+
+        function onMaskNameChange() {
+            let maskSaveButton = document.getElementById('save-mask');
+            if (this.value.length === 0) {
+                maskSaveButton.setAttribute('disabled', true);
+            } else {
+                maskSaveButton.removeAttribute('disabled');
+            }
+            let maskNameWarning = document.getElementById('mask-name-warning-message');
+            if (maskNames.includes(this.value)) {
+                maskNameWarning.innerText = 'Warning: mask name already in use. Saving will overwrite existing data.'
+            } else {
+                maskNameWarning.innerText = '';
+            }
         }
 
         function toggleMaskNotationMode() {
@@ -690,10 +929,17 @@
 
         }
 
+        function gridlineDoOnMouseDown(evt) {
+            deleteBoxesTouchingRemovedGridline(evt.target);
+            markMaskAsEdited();
+            delete chamberRealignmentData[currentImgIndex].maskGridlines[evt.target.owner.orientation][evt.target.owner.id];
+        }
+
         function addGridlineNotation(evt) {
             if (!tempCursor || gridlinesLocked()) {
                 return;
             }
+            markMaskAsEdited();
             if (horizSelected()) {
                 orientation = 'horiz';
             } else {
@@ -703,10 +949,7 @@
                 tempCursor.data.lineBounds.from,
                 tempCursor.data.lineBounds.to,
                 orientation,
-                (event) => {
-                    deleteBoxesTouchingRemovedGridline(event.target);
-                    delete chamberRealignmentData[currentImgIndex].maskGridlines[event.target.owner.orientation][event.target.owner.id];
-                }
+                gridlineDoOnMouseDown
             );
             chamberRealignmentData[currentImgIndex].maskGridlines[orientation][newGridLine.linePath.id] = newGridLine;
             bisectBoxesByAddedGridline(newGridLine.linePath);
@@ -725,7 +968,6 @@
             if (!tempCursor) {
                 return;
             }
-            console
             if (shiftKeyDown || gridlinesLocked()) {
                 tempCursor.remove();
                 tempCursor = null;
@@ -733,6 +975,7 @@
         }
 
         function addGridNotationCursor(evt) {
+            if (countingState !== countingStates.pre) return;
             if (!maskNotationButtonGroup ||
                 maskNotationButtonGroup.selected !== 'grid-edit-button'
             ) {
@@ -830,9 +1073,11 @@
             lockGridlinesButton.innerHTML = lockGridlinesText;
             lockGridlinesDiv.appendChild(lockGridlinesButton);
             lockGridlinesButton.onclick = lockOrUnlockGridlines;
+            $('#help-pane').append('<hr>');
         }
 
         function gridlinesLocked() {
+            if (countingState !== countingStates.pre) return false;
             return document.getElementById('lock-gridlines-button').innerHTML !== lockGridlinesText;
         }
 
@@ -843,6 +1088,21 @@
             } else {
                 lockButton.innerHTML = 'Unlock gridlines';
             }
+        }
+
+        function toImageCoords(ptInCanvasCoords) {
+            return [ptInCanvasCoords[0] - leftPadding,
+            ptInCanvasCoords[1] - upperPadding].map(el => {
+                return el / scalingFactor;
+            })
+        }
+
+        function toCanvasCoords(ptInImageCoords) {
+            let newCoords = ptInImageCoords.map(el => el * scalingFactor);
+            return [
+                newCoords[0] + leftPadding,
+                newCoords[1] + upperPadding
+            ];
         }
 
         class Gridline {
@@ -885,6 +1145,14 @@
                 this.linePath.owner = this;
                 this.setEventHandlers();
             }
+            get reduced() {
+                return {
+                    startPoint: toImageCoords(this.startPoint),
+                    endPoint: toImageCoords(this.endPoint),
+                    orientation: this.orientation,
+                    id: this.id
+                }
+            }
         }
 
         class GridlineBox {
@@ -901,16 +1169,19 @@
                     hover: 0.25,
                     selected: 0.5
                 }
+                this.kerfAmount = gridlineStrokeWidth / 2;
                 this.startPoint = startPoint;
                 this.endPoint = endPoint;
                 this.doOnToggle = doOnToggle;
+                this.opts = opts;
                 this.offsetByKerf(opts.ptsToOffset);
                 this.selected = false;
                 this.restoreRectPath();
                 this.id = this.rectPath.id;
             }
 
-            toggleSelected(box = this) {
+            toggleSelected() {
+                markMaskAsEdited();
                 this.selected = !this.selected;
                 if (this.selected) {
                     this.rectPath.opacity = this.opacityVals.selected;
@@ -925,7 +1196,7 @@
                     ptsToOffset[key].forEach((pt, j) => {
                         if (pt) {
                             this[ptNames[key]][j] += (key === 'start' ? 1 : -1)
-                                * gridlineStrokeWidth / 2;
+                                * this.kerfAmount;
                         }
                     })
                 })
@@ -955,6 +1226,15 @@
                 this.rectPath.data.owner = this;
                 this.setEventHandlers();
             }
+            get reduced() {
+                return {
+                    startPoint: toImageCoords(this.startPoint),
+                    endPoint: toImageCoords(this.endPoint),
+                    opts: this.opts,
+                    selected: this.selected,
+                    id: this.id
+                }
+            }
         }
 
         function updateGridlineXYPositions() {
@@ -971,6 +1251,9 @@
         }
 
         function convertGridBoxSelectionsToBBoxes(key) {
+            // this is where they'd have to be placed in row-dominant left-right
+            // order. Is the code the same as what's used in function collectRowCol?
+            // actually, can order them in the same pass.
             chamberRealignmentData[key].bboxes = [];
             Object.keys(chamberRealignmentData[key].gridlineBBoxes).filter(k => {
                 return chamberRealignmentData[key].gridlineBBoxes[k].selected
@@ -983,7 +1266,7 @@
                     (box.endPoint[1] - box.startPoint[1]) / scalingFactor
                 ].map(el => Math.round(el)));
                 console.log('just added:', chamberRealignmentData[key].bboxes);
-            })
+            });
         }
 
         function deleteBoxesTouchingRemovedGridline(gridline) {
@@ -1159,6 +1442,8 @@
             $('#help-pane').append('<div id=mask-annotation-mode-buttons></div')
             addNotationModeToggleButtons();
             $('#help-pane').append('<div id=mode-specific-buttons></div>');
+            // remove the existing placeholder masks, and add a save button.
+
             maskNotationButtonGroup.onButtonChange();
             Object.keys(eggLayingRegions[currentImgIndex]).forEach(reg => {
                 if (eggLayingRegions[currentImgIndex][reg].outline) {
@@ -1169,22 +1454,58 @@
             socket.emit('mask-list', { sid });
         }
 
+        function addDropdownElement(dropdownEl, optionName, withPrefix = true) {
+            console.log('adding dropdown element to this:', dropdownEl);
+            let dropdownName = document.createElement('option');
+            let displayedOptionName;
+            if (withPrefix && optionName.length > 25) {
+                displayedOptionName = `${optionName.slice(0, 23)}...`
+            } else {
+                displayedOptionName = optionName;
+            }
+            dropdownName.innerHTML = `${withPrefix ? 'Loaded mask: ' : ''}${displayedOptionName}`;
+            dropdownName.value = optionName;
+            dropdownEl.append(dropdownName);
+        }
+
+        function requestSavedMaskData() {
+            console.log('going to load mask for', this.value);
+            socket.emit('load-custom-mask', {
+                sid,
+                maskName: document.getElementById('mask-list').value
+            });
+        }
+
         function displayMaskList() {
-            let helpPane = document.getElementById('help-pane');
+            console.log('displaying mask list?')
+            let buttonGroup = document.createElement('div');
+            buttonGroup.classList.add('mask-button-set');
+            buttonGroup.id = 'mask-selector'
             let dropdownMaskList = document.createElement('select');
+            dropdownMaskList.setAttribute('disabled', true);
 
             dropdownMaskList.setAttribute('id', 'mask-list');
-            ['Select existing mask'].concat(maskNames).forEach(name => {
-                let dropdownName = document.createElement('option');
-                dropdownName.innerHTML = name;
-                dropdownName.value = name;
-                dropdownMaskList.appendChild(dropdownName);
-            });
-            helpPane.appendChild(dropdownMaskList);
+            addDropdownElement(dropdownMaskList, 'Select existing mask', false)
+            if (maskNames.length > 0) {
+                dropdownMaskList.removeAttribute('disabled');
+                maskNames.forEach(name => {
+                    addDropdownElement(dropdownMaskList, name);
+                });
+            }
+            buttonGroup.appendChild(dropdownMaskList);
+            // dropdownMaskList.onclick = (evt) => {
+            //     console.log('clicked the list?');
+            //     console.log(evt.target);
+            //     console.log(evt.target.value)
+            //     evt.target.value = 'Select existing mask';
+            //     console.log(evt.target.value);
+            // };
+            dropdownMaskList.onchange = requestSavedMaskData;
+            document.getElementById('help-pane').appendChild(buttonGroup);
         }
 
         var setupErrorAnnotationButtonHandlers = function () {
-            if (beforeCounting) {
+            if (countingState === countingStates.pre) {
                 document.getElementById('chamber-type-select').onchange = (evt) => {
                     if (evt.target.value == 'custom') {
                         editMode = 'mask';
@@ -1216,10 +1537,10 @@
                     redrawCanvas();
                 };
             }
-            if (numErrors == 0 || !beforeCounting) {
+            if (numErrors == 0 || countingState !== countingStates.pre) {
                 return;
             }
-            if (beforeCounting) {
+            if (countingState === countingStates.pre) {
                 document.getElementById('ignore-img').onclick = () => {
                     let chamberTypeButton = document.getElementById('chamber-type-select');
                     let chamberButtonDisabled = chamberTypeButton.hasAttribute('disabled');
@@ -1260,17 +1581,11 @@
                         'type',
                         'file_name'
                     ]
-                    let reducedChamberData = {};
-                    Object.keys(chamberRealignmentData).forEach(imgKey => {
-                        reducedChamberData[imgKey] = {}
-                        keysToKeep.forEach(k => {
-                            reducedChamberData[imgKey][k] = chamberRealignmentData[imgKey][k];
-                        })
-                    });
-                    console.log('data being sent?', reducedChamberData);
                     let dataToSend = {
-                        chamberData: reducedChamberData, sid
+                        chamberData: reducePropsInInnerObjects(chamberRealignmentData, keysToKeep),
+                        sid
                     };
+                    countingState = countingStates.mid;
                     $.ajax({
                         url: '/manual-recount',
                         type: "POST",
@@ -1283,6 +1598,17 @@
                     clearAllUpdates();
                 }
             }
+        }
+
+        function reducePropsInInnerObjects(objectofObjects, keysToKeep) {
+            let reducedObj = {};
+            Object.keys(objectofObjects).forEach(objKey => {
+                reducedObj[objKey] = {}
+                keysToKeep.forEach(k => {
+                    reducedObj[objKey][k] = objectofObjects[objKey][k];
+                })
+            });
+            return reducedObj;
         }
 
         function transformAlignmentGuidelinePoints() {
@@ -1317,10 +1643,13 @@
             document.getElementById('download-csv').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
                 displayLoadingMessage(evt.target);
+                let rowsColsCounts = collectRowColCountLayout()
                 socket.emit('prepare-csv', {
                     time: Date.now(),
                     sid: sid,
-                    editedCounts: collectEditedCounts()
+                    editedCounts: collectEditedCounts(),
+                    rowColLayout: rowsColsCounts[0],
+                    orderedCounts: rowsColsCounts[1]
                 });
             }
         }
@@ -1364,7 +1693,7 @@
         }
 
         var setButtonHandlers = function () {
-            if (!beforeCounting) {
+            if (countingState !== countingStates.pre) {
                 setupCsvDownloadButton();
                 setupImgDownloadButton();
                 setupErrorReportButton();
@@ -1382,11 +1711,6 @@
             }
             document.getElementById('prev-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex - 1;
-                // if (numErrors > 0) {
-                //     while (!hasErrors[newImgIdx] && newImgIdx >= 0) {
-                //         newImgIdx -= 1;
-                //     }
-                // }
                 if (newImgIdx >= 0) {
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
@@ -1404,11 +1728,6 @@
             }
             document.getElementById('next-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex + 1;
-                // if (numErrors > 0) {
-                //     while (!hasErrors[newImgIdx] && newImgIdx <= orderedImgNames.length - 1) {
-                //         newImgIdx += 1;
-                //     }
-                // }
                 if (newImgIdx <= orderedImgNames.length) {
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
@@ -1438,13 +1757,7 @@
         }
 
         var setChamberTypeSelector = function () {
-            // should the handling here be different depending on
-            // whether errors were detected or not? I don't think so.
-            // chamber realignment data is a dictionary whose keys
-            // are image indices. Would it be easier to use keys
-            // based on the ordered image name? Yes, but change that after.
-            // For now, just check both variables.
-            if (!beforeCounting) {
+            if (countingState !== countingStates.pre) {
                 return;
             }
             if (chamberRealignmentData[currentImgIndex] && !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type) > 0) {
@@ -1464,7 +1777,7 @@
         }
 
         var setIgnoreSelector = function () {
-            if (numErrors === 0 || !beforeCounting) {
+            if (numErrors === 0 || countingState !== countingStates.pre) {
                 return;
             }
             let chamberTypeButton = document.getElementById('chamber-type-select')
@@ -1624,13 +1937,6 @@
         }
 
         function initializeNavButtons() {
-            // if (numErrors > 0) {
-            //     currentImgIndex = hasErrors.findIndex(el => el === true);
-            //     document.getElementById('prev-img').setAttribute('disabled', true);
-            //     if (numErrors === 1) {
-            //         document.getElementById('next-img').setAttribute('disabled', true);
-            //     }
-            // } else {
             currentImgIndex = 0;
             document.getElementById('prev-img').setAttribute('disabled', true);
             if (orderedImgNames.length > 1) {
@@ -1638,7 +1944,6 @@
             } else {
                 document.getElementById('next-img').setAttribute('disabled', true);
             }
-            // }
         }
 
         var redrawCanvas = function (opts = {}) {
@@ -1647,7 +1952,7 @@
                 return 'error' in annotations[k];
             });
             numErrors = hasErrors.filter(Boolean).length;
-            if (numErrors > 0 && beforeCounting) {
+            if (numErrors > 0 && countingState === countingStates.pre) {
                 if (origNumErrors === 0) {
                     setupNavButtons();
 
@@ -1672,10 +1977,10 @@
             if (opts.startAtBeginning === true) {
                 initializeNavButtons();
             }
-            if (!beforeCounting && !document.getElementById('download-csv')) {
+            if (countingState !== countingStates.pre && !document.getElementById('download-csv')) {
                 $('#updates').prepend('<div><button type=button id=download-csv>Download results</button></div>');
             }
-            setButtonHandlers(beforeCounting);
+            setButtonHandlers();
 
             setCurrentImgName()
             setChamberTypeSelector();
@@ -1755,7 +2060,7 @@
                             let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
                             innerRect.fillColor = 'black';
                             innerRect.opacity = 0;
-                            if (!beforeCounting) {
+                            if (countingState !== countingStates.pre) {
                                 addHoverHandler(innerRect, currentImgIndex);
                                 let x = annotation.x * scalingFactor + leftPadding;
                                 let y = annotation.y * scalingFactor + upperPadding;
@@ -1835,7 +2140,7 @@
                             }
                             delete eggLayingRegions[currentImgIndex][origFill.id];
 
-                            if (!beforeCounting) {
+                            if (countingState !== countingStates.pre) {
                                 if (reg.beenEdited()) {
                                     drawTextForEditedCount(reg, reg.text.content);
                                 } else {
@@ -2037,7 +2342,7 @@
             },
             { id: 'retry-analysis-button', text: 'Count eggs' }
             ];
-            if (!beforeCounting) {
+            if (countingState !== countingStates.pre) {
                 return allButtons.slice(2, 2);
             }
             return allButtons;
@@ -2050,28 +2355,24 @@
             userSelectOptions.push({ value: '{{user}}', text: 'User: {{user}}' })
             {% endfor %}
             let allButtons = [
-                { id: 'download-imgs', text: 'Download annotated images', hidden: beforeCounting },
+                { id: 'download-imgs', text: 'Download annotated images', hidden: countingState === countingStates.pre },
                 {
                     id: 'submit-error-report', text: 'Submit error report for all images',
                     hidden: true
                 },
                 {
                     id: 'user-select', text: 'User: not set',
-                    selectOptions: userSelectOptions, hidden: beforeCounting
+                    selectOptions: userSelectOptions, hidden: countingState === countingStates.pre
                 }
             ];
-            if (beforeCounting) {
+            if (countingState === countingStates.pre) {
                 return allButtons.slice(1);
             }
             return allButtons;
         }
 
         var getContextSpecificButtons = function () {
-            // if (numErrors > 0) {
-
             return errorAnnotationButtons().concat(analyzedImagesButtons());
-            // }
-            // return analyzedImagesButtons();
         }
 
         var displayImageAnalysisErrorMessage = function () {
@@ -2152,7 +2453,7 @@
         }
 
         function checkForAnnotatedGridlineImages(index, untriaged) {
-            if (chamberRealignmentData[index].type !== 'custom' || chamberRealignmentData[index].customMode !== 'grid') {
+            if (!imageUsesGridBoxes()) {
                 return untriaged;
             }
             if (!chamberRealignmentData[index].gridlineBBoxes ||
@@ -2221,7 +2522,7 @@
         }
 
         function setEggOutlineOpacity(opacity) {
-            if (beforeCounting) {
+            if (countingState === countingStates.pre) {
                 return;
             }
             Object.keys(eggLayingRegions[currentImgIndex]).forEach(region => {
