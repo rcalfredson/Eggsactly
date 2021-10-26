@@ -415,8 +415,7 @@
                 addDropdownElement(maskList, 'Select existing mask', false)
                 msg.names.forEach(name => {
                     addDropdownElement(maskList, name);
-                })
-                console.log('mask name:', msg.currentMask);
+                });
                 maskList.value = msg.currentMask;
             }
         })
@@ -693,7 +692,6 @@
                 rowColLayout[posToRowNumber[box.startPoint[1] - box.kerfAmount]].push(
                     colNumber);
                 orderedCounts[posToRowNumber[box.startPoint[1] - box.kerfAmount]].push(
-                    // where is the count for this box?
                     annotations[orderedImgNames[currentImgIndex]][numBoxesAdded].count
                 )
                 numBoxesAdded += 1;
@@ -816,9 +814,7 @@
             });
 
             // add grid boxes
-
             Object.keys(maskData.gridlineBBoxes).forEach(k => {
-                // re-use all four points in this case?
                 let newBBox = new GridlineBox(
                     toCanvasCoords(maskData.gridlineBBoxes[k].startPoint),
                     toCanvasCoords(maskData.gridlineBBoxes[k].endPoint),
@@ -1251,9 +1247,6 @@
         }
 
         function convertGridBoxSelectionsToBBoxes(key) {
-            // this is where they'd have to be placed in row-dominant left-right
-            // order. Is the code the same as what's used in function collectRowCol?
-            // actually, can order them in the same pass.
             chamberRealignmentData[key].bboxes = [];
             Object.keys(chamberRealignmentData[key].gridlineBBoxes).filter(k => {
                 return chamberRealignmentData[key].gridlineBBoxes[k].selected
@@ -1265,7 +1258,6 @@
                     (box.endPoint[0] - box.startPoint[0]) / scalingFactor,
                     (box.endPoint[1] - box.startPoint[1]) / scalingFactor
                 ].map(el => Math.round(el)));
-                console.log('just added:', chamberRealignmentData[key].bboxes);
             });
         }
 
@@ -1442,7 +1434,6 @@
             $('#help-pane').append('<div id=mask-annotation-mode-buttons></div')
             addNotationModeToggleButtons();
             $('#help-pane').append('<div id=mode-specific-buttons></div>');
-            // remove the existing placeholder masks, and add a save button.
 
             maskNotationButtonGroup.onButtonChange();
             Object.keys(eggLayingRegions[currentImgIndex]).forEach(reg => {
@@ -1455,7 +1446,6 @@
         }
 
         function addDropdownElement(dropdownEl, optionName, withPrefix = true) {
-            console.log('adding dropdown element to this:', dropdownEl);
             let dropdownName = document.createElement('option');
             let displayedOptionName;
             if (withPrefix && optionName.length > 25) {
@@ -1469,7 +1459,6 @@
         }
 
         function requestSavedMaskData() {
-            console.log('going to load mask for', this.value);
             socket.emit('load-custom-mask', {
                 sid,
                 maskName: document.getElementById('mask-list').value
@@ -1477,7 +1466,6 @@
         }
 
         function displayMaskList() {
-            console.log('displaying mask list?')
             let buttonGroup = document.createElement('div');
             buttonGroup.classList.add('mask-button-set');
             buttonGroup.id = 'mask-selector'
@@ -1493,13 +1481,6 @@
                 });
             }
             buttonGroup.appendChild(dropdownMaskList);
-            // dropdownMaskList.onclick = (evt) => {
-            //     console.log('clicked the list?');
-            //     console.log(evt.target);
-            //     console.log(evt.target.value)
-            //     evt.target.value = 'Select existing mask';
-            //     console.log(evt.target.value);
-            // };
             dropdownMaskList.onchange = requestSavedMaskData;
             document.getElementById('help-pane').appendChild(buttonGroup);
         }
