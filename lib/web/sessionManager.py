@@ -18,7 +18,7 @@ from PIL import Image
 import torch
 
 from chamber import CT
-from circleFinder import CircleFinder, rotate_image
+from circleFinder import CircleFinder, rotate_around_point_highperf, rotate_image
 from detectors.fcrn import model
 from lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 
@@ -80,12 +80,17 @@ class SessionManager:
         time.sleep(2)
 
     def segment_image_via_bboxes(self, img, img_path, alignment_data):
+        # base_img = np.array(img)
+        img = cv2.resize(
+            img, (0, 0), fx=alignment_data["scaling"], fy=alignment_data["scaling"]
+        )
         img = rotate_image(img, alignment_data["rotationAngle"])
         self.bboxes = alignment_data["bboxes"]
         bbox_translation = [-el for el in alignment_data["imageTranslation"]]
         alignment_data["regionsToIgnore"] = []
         translated_bboxes = []
-        for bbox in self.bboxes:
+        print("bboxes before translation:", self.bboxes)
+        for i, bbox in enumerate(self.bboxes):
             new_bbox = [
                 bbox[0] + bbox_translation[0],
                 bbox[1] + bbox_translation[1],
@@ -94,25 +99,13 @@ class SessionManager:
             ]
             x_coords = [new_bbox[0], new_bbox[0] + bbox[2]]
             y_coords = [new_bbox[1], new_bbox[1] + bbox[3]]
-            found_oob_box = False
-            for i in range(2):  # X and Y dimensions
-                bounds_along_dim = [new_bbox[i], new_bbox[i] + bbox[i + 2]]
-                if not found_oob_box and (
-                    all([c < 0 for c in bounds_along_dim])
-                    or all(
-                        [c > img.shape[1 if i == 0 else 0] for c in bounds_along_dim]
-                    )
-                ):
-                    found_oob_box = True
-                    alignment_data["regionsToIgnore"].append(True)
-            if not found_oob_box:
-                if x_coords[0] < 0:
-                    new_bbox[0] = 0
-                    new_bbox[2] += x_coords[0]
-                if y_coords[0] < 0:
-                    new_bbox[1] = 0
-                    new_bbox[2] += y_coords[0]
-                alignment_data["regionsToIgnore"].append(False)
+            if new_bbox[0] < 0:
+                new_bbox[2] += new_bbox[0]
+                new_bbox[0] = 0
+            if y_coords[0] < 0:
+                new_bbox[2] += new_bbox[1]
+                new_bbox[1] = 0
+            print("new bbox:", new_bbox)
             translated_bboxes.append(list(map(round, new_bbox)))
 
         self.rotation_angle = alignment_data["rotationAngle"]
@@ -120,6 +113,10 @@ class SessionManager:
         self.subImgs = CircleFinder.getSubImagesFromBBoxes(
             img, translated_bboxes, alignment_data["regionsToIgnore"]
         )
+        # for sub_img in self.subImgs:
+        #     cv2.imshow("debug sub-img", sub_img.astype(np.uint8))
+        #     print("scaling factor:", alignment_data["scaling"])
+        #     cv2.waitKey(0)
 
     def segment_image_via_alignment_data(self, img, img_path, alignment_data):
         segmenter = ManualSegmenter(
@@ -173,7 +170,7 @@ class SessionManager:
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
         self.segment_image_via_object_detection(img, img_path)
-        self.bboxes = [[int(el) for el in bbox] for bbox in self.bboxes]
+        # self.bboxes = [[el for el in bbox] for bbox in self.bboxes]
         print(
             "data to emit:",
             {
@@ -206,9 +203,6 @@ class SessionManager:
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
         print("alignment data:", alignment_data)
-        # need a third option here: start with the bounding boxes.
-        # in the existing code, when do the bounding boxes get calculated?
-        # they get calculated the same time as the sub images?
         if alignment_data is None:
             self.segment_image_via_object_detection(img, img_path)
         else:
@@ -235,12 +229,17 @@ class SessionManager:
                 self.network_loader.predict_instances(subImg)
             )
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
-        self.bboxes = [[int(el) for el in bbox] for bbox in self.bboxes]
-        self.sendAnnotationsToClient(index)
+        # self.bboxes = [[el for el in bbox] for bbox in self.bboxes]
+        self.sendAnnotationsToClient(index, alignment_data)
 
-    def sendAnnotationsToClient(self, index):
+    def sendAnnotationsToClient(self, index, alignment_data):
         resultsData = []
         bboxes = self.bboxes
+        do_rotate = (
+            type(alignment_data) is dict
+            and alignment_data["type"] == "custom"
+            and alignment_data["rotationAngle"] != 0
+        )
         for i, prediction in enumerate(self.predictions[self.imgPath]):
             if self.chamberTypes[self.imgPath] == CT.large.name:
                 iMod = i % 4
@@ -259,8 +258,21 @@ class SessionManager:
                 x = bboxes[i][0] + 0.5 * bboxes[i][2]
                 y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
             else:
-                x = bboxes[i][0] + (1.40 if i % 2 == 0 else -0.32) * bboxes[i][2]
-                y = bboxes[i][1] + 0.55 * bboxes[i][3]
+                x = bboxes[i][0]
+                y = bboxes[i][1]
+                if not do_rotate:
+                    x -= 40
+                    y += bboxes[i][3]
+            if do_rotate:
+                img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))
+                x, y = rotate_around_point_highperf(
+                    (x, y), -alignment_data["rotationAngle"], img_center
+                )
+                x -= 40 + (0 if prediction["count"] < 10 else 75)
+                in_lower_eighth = (
+                    bboxes[i][1] + bboxes[i][3] > 7 * self.img.shape[0] / 8
+                )
+                y += -40 if in_lower_eighth else bboxes[i][3] + 40
             resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
         counting_data = {
             "data": json.dumps(resultsData, separators=(",", ":")),

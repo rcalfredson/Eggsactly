@@ -209,43 +209,12 @@ def reset_session():
 
 @app.route("/upload", methods=["POST"])
 def handle_upload():
-    # assume upload is used only the first time
-    # used to transfer the actual image data
-    # and to make an attempt to determine
-    # the chamber type.
-    # Any later requests related to an image
-    # that's already been identified
-    # will use a separate endpoint.
     pauser.set_resume_timer()
     sid = request.form["sid"]
     for dir_name in ("uploads", "temp"):
         remove_old_files(dir_name)
     check_chamber_type_of_imgs(sid)
     return "OK"
-    # determine the chamber type of the image and send the
-    # information back to the client.
-    # is there a simpler way to do this than I have now?
-    # why is this difficult?
-    # write new code based on the old; don't try to
-    # refactor the old code, because the new behavior is
-    # too different.
-
-
-# @app.route("/upload", methods=["POST"])
-# def handle_upload():
-#     pauser.set_resume_timer()
-#     sid = request.form["sid"]
-#     sessions[sid].clear_data()
-#     for dirName in ("uploads", "temp"):
-#         remove_old_files(dirName)
-#     socketIO.emit("clear-all", room=sid)
-#     if len(request.files) == 0:
-#         flash("No selected file")
-#         return redirect(request.url)
-#     process_imgs(sid, data_type=AllowedDataTypes.file)
-#     pauser.set_resume_timer()
-#     socketIO.emit("counting-done", {"is_retry": False}, room=sid)
-#     return "OK"
 
 
 class AllowedDataTypes(Enum):
