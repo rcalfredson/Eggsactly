@@ -750,7 +750,7 @@
             }
         }
 
-        var updateRetryAnalysisButtonAppearance = function () {
+        function updateRetryAnalysisButtonAppearance() {
             document.getElementById('retry-analysis-button').style.color =
                 indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
         }
@@ -840,7 +840,8 @@
                     newBBox.toggleSelected();
                 }
                 crd[currentImgIndex].gridlineBBoxes[k] = newBBox;
-            })
+            });
+            updateRetryAnalysisButtonAppearance();
         }
 
         function addGridlinesToSaveData(key, dataOut) {
@@ -958,18 +959,27 @@
 
         function zoomImageOnly(evt) {
             let diffInScaling = 0.01 * (evt.deltaY > 0 ? 1 : -1)
+            let oldScaling = chamberRealignmentData[currentImgIndex].scaling;
             chamberRealignmentData[currentImgIndex].scaling += diffInScaling;
-            backgroundRaster.scale(1 + diffInScaling);
+            backgroundRaster.scale(chamberRealignmentData[currentImgIndex].scaling / oldScaling);
             console.log('overall scaling level:', chamberRealignmentData[currentImgIndex].scaling);
             calcPadding();
         }
 
-        function calcPadding(rotationAngle = 0) {
-            let sf = scalingFactor * chamberRealignmentData[currentImgIndex].scaling;
-            upperPadding = 0.5 * (canvasHeight - backgroundRaster.height * sf)
-                + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.width * sf);
-            leftPadding = 0.5 * (canvasWidth - backgroundRaster.width * sf)
-                + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.height * sf);
+        function calcPadding(rotationAngle = 0, opts =
+            {
+                sf:
+                    scalingFactor * (chamberRealignmentData[currentImgIndex].scaling || 1), save: true
+            }) {
+            let uPadTemp = 0.5 * (canvasHeight - backgroundRaster.height * opts.sf)
+                + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.width * opts.sf);
+            let lPadTemp = 0.5 * (canvasWidth - backgroundRaster.width * opts.sf)
+                + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.height * opts.sf);
+            if (opts.save !== true) {
+                return { upper: uPadTemp, left: lPadTemp };
+            }
+            upperPadding = uPadTemp;
+            leftPadding = lPadTemp;
         }
 
         function rotateImageOnly(evt) {
@@ -989,10 +999,9 @@
             [backgroundRaster, imageCenterMarker].forEach(path => {
                 path.position = path.position.add(evt.delta);
             })
-            chamberRealignmentData[currentImgIndex].imageTranslation[0] += evt.delta.x
-                / chamberRealignmentData[currentImgIndex].scaling;
-            chamberRealignmentData[currentImgIndex].imageTranslation[1] += evt.delta.y
-                / chamberRealignmentData[currentImgIndex].scaling;
+
+            chamberRealignmentData[currentImgIndex].imageTranslation[0] += evt.delta.x;
+            chamberRealignmentData[currentImgIndex].imageTranslation[1] += evt.delta.y;
             calcPadding();
         }
 
@@ -1224,17 +1233,21 @@
         }
 
         function toImageCoords(ptInCanvasCoords) {
-            return [ptInCanvasCoords[0] - leftPadding,
-            ptInCanvasCoords[1] - upperPadding].map(el => {
+            let pad = calcPadding(0, {
+                sf: scalingFactor, save: false,
+            })
+            return [ptInCanvasCoords[0] - pad.left,
+            ptInCanvasCoords[1] - pad.upper].map(el => {
                 return el / scalingFactor;
             })
         }
 
         function toCanvasCoords(ptInImageCoords) {
+            let pad = calcPadding(0, { sf: scalingFactor, save: false })
             let newCoords = ptInImageCoords.map(el => el * scalingFactor);
             return [
-                newCoords[0] + leftPadding,
-                newCoords[1] + upperPadding
+                newCoords[0] + pad.left,
+                newCoords[1] + pad.upper
             ];
         }
 
