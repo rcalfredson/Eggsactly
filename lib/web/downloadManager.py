@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageFont, ImageDraw
 
-from circleFinder import rotate_image
+from circleFinder import rotate_image, rotate_around_point_highperf
 from lib.image import drawing
 from util import putText, textStyle
 
@@ -36,7 +36,7 @@ class DownloadManager:
 
     def prepareAnnotatedImage(self, sm, ts, path):
         self.loadFont(80)
-        img = rotate_image(cv2.imread(path), sm.rotation_angle)
+        img = cv2.imread(path)
         check_counts = self.path_base in self.sessions[ts]["edited_counts"]
         if check_counts:
             been_edited = [
@@ -45,22 +45,56 @@ class DownloadManager:
             ]
         else:
             been_edited = [False] * len(sm.annotations[path])
+        zoom = sm.alignment_data[path].get("scaling", 1)
+        ht, wd = img.shape[:2]
+        center = (wd / 2, ht / 2)
+        rot = sm.alignment_data[path]["rotationAngle"]
         for i, annotation in enumerate(sm.annotations[path]):
             color = (3, 44, 252) if been_edited[i] else (25, 25, 25)
-            img = drawing.rounded_rectangle(
-                img,
-                (annotation["bbox"][0], annotation["bbox"][1]),
-                (
-                    annotation["bbox"][1] + annotation["bbox"][3],
+            box_coords = [  # UL, UR, BL, BR
+                [annotation["bbox"][0], annotation["bbox"][1]],
+                [
                     annotation["bbox"][0] + annotation["bbox"][2],
-                ),
-                color=color,
-            )
+                    annotation["bbox"][1],
+                ],
+                [
+                    annotation["bbox"][0],
+                    annotation["bbox"][1] + annotation["bbox"][3],
+                ],
+                [
+                    annotation["bbox"][0] + annotation["bbox"][2],
+                    annotation["bbox"][1] + annotation["bbox"][3],
+                ],
+            ]
+
+            for j, pt in enumerate(box_coords):
+                for k, el in enumerate(pt):
+                    box_coords[j][k] = (1 / zoom) * el
+                box_coords[j] = rotate_around_point_highperf(
+                    box_coords[j], -rot, center
+                )
+                box_coords[j] = [round(el) for el in box_coords[j]]
+            xs = [el[0] for el in box_coords]
+            ys = [el[1] for el in box_coords]
+            aabb = [[min(xs), min(ys)], [max(xs), max(ys)]]
+
+            # draw rotated rectangle
+            rect = cv2.minAreaRect(np.float32(box_coords))
+            box = cv2.boxPoints(rect)
+            box = np.int0(box)
+            cv2.drawContours(img, [box], 0, (0, 191, 255), 2)
+
             for outline in sm.predictions[path][i]["outlines"]:
                 outline = [list(reversed(el)) for el in outline]
                 outline = [
-                    [el[0] + annotation["bbox"][0], el[1] + annotation["bbox"][1]]
+                    [
+                        (1 / zoom) * (el[0] + annotation["bbox"][0]),
+                        (1 / zoom) * (el[1] + annotation["bbox"][1]),
+                    ]
                     for el in outline
+                ]
+                outline = [
+                    rotate_around_point_highperf(el, -rot, center) for el in outline
                 ]
                 drawing.draw_line(img, [outline], color=(255, 255, 255))
         img = Image.fromarray(img)
@@ -71,11 +105,14 @@ class DownloadManager:
                 y_offset = {"orig_w_edit": -40, "edited": 40, "orig": 0}[edit_status]
                 color = (3, 44, 252, 0) if edit_status == "edited" else (0, 0, 0, 0)
                 w, h = draw.textsize(msg)
+                text_position = [
+                    (1 / zoom) * (annotation["x"] - 3 * w),
+                    (1 / zoom) * (annotation["y"] - 6 * h - y_offset),
+                ]
+                text_position = tuple(map(round, text_position))
+
                 draw.text(
-                    (
-                        int(annotation["x"] - 3 * w),
-                        int(annotation["y"] - 6 * h - y_offset),
-                    ),
+                    text_position,
                     msg,
                     font=self.font,
                     fill=color,
@@ -111,9 +148,9 @@ class DownloadManager:
         sm = self.sessions[ts]["session_manager"]
         for path in sm.predictions:
             self.path_base = os.path.basename(path)
-            print('predictions for path:', sm.predictions[path])
-            if inspect.isclass(sm.predictions[path][0]) and issubclass(sm.predictions[path][0], Exception):
-            # if any(type(el["count"]) != int for el in sm.predictions[path]):
+            if inspect.isclass(sm.predictions[path][0]) and issubclass(
+                sm.predictions[path][0], Exception
+            ):
                 img = self.prepareImageWithError(path)
             else:
                 img = self.prepareAnnotatedImage(sm, ts, path)

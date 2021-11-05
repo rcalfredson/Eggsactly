@@ -44,6 +44,7 @@
         let orderedImgNames = [];
         let eggLayingRegions = [];
         let rotationAngles = {};
+        let unscaledImgBounds = {}
         let idsByOrigImgName = {};
         let lastPongTime;
         let numFailedPings = 0;
@@ -60,9 +61,15 @@
         const lockGridlinesText = 'Lock gridlines and select regions';
         const lockMaskText = 'Lock mask and reposition image';
         const freehandMaskEditInstructions = 'Drag to draw bounding boxes around egg-laying regions (hold shift to pan)';
+        const gridMaskEditInstructions = 'Click to add gridlines; shift + click to delete. Lock gridlines to select egg-laying regions.';
+        const maskEditInstructions = {
+            grid: gridMaskEditInstructions,
+            freehand: freehandMaskEditInstructions
+        };
         const imageTransformInstructions = 'Transforming image: drag to pan; shift + drag to rotate; scroll to zoom';
         let currentMaskBBox;
         let maskNames;
+        let lastSelectedMask;
         let maskNotationButtonGroup;
         let gridlineOrientationButtonGroup;
         let imageCenterMarker;
@@ -82,6 +89,8 @@
             canvasHeight = Math.min(800, window.innerHeight);
         let upperPadding, leftPadding;
         let scalingFactor;
+        let zoomScaleImgToMask;
+        let combinedScale;
         let pointerDown = false;
         let shiftKeyDown = false;
         let dragStart = false;
@@ -288,6 +297,7 @@
             delete annotations[orderedImgNames[index]];
             delete eggLayingRegions[index];
             delete rotationAngles[orderedImgNames[index]];
+            delete unscaledImgBounds[orderedImgNames[index]]
             delete chamberRealignmentData[index]
             orderedImgNames.splice(index, 1);
             if (currentImgIndex >= index) {
@@ -357,6 +367,10 @@
             });
             chamberTypes[msg.filename] = msg.chamberType;
             countingState = countingStates.pre;
+            chamberRealignmentData[orderedImgNames.length - 1] = {
+                file_name: orderedImgNames[orderedImgNames.length - 1],
+                rotationAngle: msg.rotationAngle
+            };
             setupOrRedrawCanvas();
         });
         socket.on('counting-error', (msg) => {
@@ -405,6 +419,7 @@
         socket.on('loaded-custom-mask', (msg) => {
             loadMaskOnImage(msg.maskData);
             document.getElementById('mask-name').value = msg.maskName;
+            chamberRealignmentData[currentImgIndex].maskName = msg.maskName;
             document.getElementById('reset-masks').setAttribute('disabled', true);
             document.getElementById('save-mask').setAttribute('disabled', true);
         });
@@ -423,6 +438,14 @@
                 });
                 maskList.value = msg.currentMask;
             }
+            let maskMsgBox = document.getElementById('mask-name-message-box');
+            maskMsgBox.style.color = 'green';
+            maskMsgBox.innerText = 'Mask saved!'
+            setTimeout(() => {
+                let maskMsgBox = document.getElementById('mask-name-message-box');
+                maskMsgBox.style.color = 'rgb(155, 18, 29)';
+                maskMsgBox.innerText = '';
+            }, 3000);
         })
         socket.on('report-ready', () => {
             let el = document.getElementById('submit-error-report');
@@ -606,10 +629,10 @@
                         if (idsByOrigImgName[filesToUpload[imgKey].name].length === 0) {
                             delete idsByOrigImgName[filesToUpload[imgKey].name];
                         }
+                        delete filesToUpload[imgKey];
                         deleteEntriesForImage(index);
                         updateImageDisplay();
                         redrawCanvas();
-                        delete filesToUpload[imgKey];
                     }
                     if (validFileType(filesToUpload[file])) {
                         para.textContent = `File name ${file}, file size ${returnFileSize(filesToUpload[file].size)}.`;
@@ -646,7 +669,8 @@
         var setCurrentImgName = function () {
             document.getElementById('current-img').innerText =
                 `Viewing image ${currentImgIndex + 1} of ${orderedImgNames.length}` +
-                `: ${orderedImgNames[currentImgIndex]}`// (Shift to hide egg outlines; shift + scroll to zoom)`;
+                `: ${orderedImgNames[currentImgIndex]}` +
+                (countingState !== countingStates.pre ? ' (Shift to hide egg outlines; shift + scroll to zoom) ' : '');
         }
 
         var appendToFilename = function (filename, addition) {
@@ -665,65 +689,72 @@
             }, 400);
         }
 
-        function imageUsesCustomMasks() {
-            return chamberRealignmentData[currentImgIndex] &&
-                chamberRealignmentData[currentImgIndex].type === 'custom';
+        function imageUsesCustomMasks(index = currentImgIndex) {
+            return chamberRealignmentData[index] &&
+                chamberRealignmentData[index].type === 'custom';
         }
 
-        function imageUsesGridBoxes() {
-            return chamberRealignmentData[currentImgIndex].type === 'custom' &&
-                chamberRealignmentData[currentImgIndex].customMode === 'grid';
+        function imageUsesGridBoxes(index = currentImgIndex) {
+            return chamberRealignmentData[index].type === 'custom' &&
+                chamberRealignmentData[index].customMode === 'grid';
         }
 
         function collectRowColCountLayout() {
-            if (!imageUsesGridBoxes()) {
-                return [null, null];
-            }
-            updateGridlineXYPositions();
-            let rowColLayout = [];
-            let orderedCounts = [];
-            let posToColNumber = {}, posToRowNumber = {}, unusedColIndices = [];
-            for (let index = 0; index < gridXYMarkers.x.length - 1; index++) {
-                posToColNumber[gridXYMarkers.x[index]] = index;
-                unusedColIndices.push(index);
-            }
-            for (let index = 0; index < gridXYMarkers.y.length - 1; index++) {
-                posToRowNumber[gridXYMarkers.y[index]] = index;
-                rowColLayout.push([]);
-                orderedCounts.push([]);
-            }
-            let numBoxesAdded = 0;
-            Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach((k, i) => {
-                if (!chamberRealignmentData[currentImgIndex].gridlineBBoxes[k].selected) {
+            let results = { rowsCols: [], orderedCounts: [] };
+            orderedImgNames.forEach((name, i) => {
+                if (!imageUsesGridBoxes(i)) {
+                    results.rowsCols.push(null);
+                    results.orderedCounts.push(null);
                     return;
                 }
-                let box = chamberRealignmentData[currentImgIndex].gridlineBBoxes[k];
-                let colNumber = posToColNumber[box.startPoint[0] - box.kerfAmount];
-                rowColLayout[posToRowNumber[box.startPoint[1] - box.kerfAmount]].push(
-                    colNumber);
-                orderedCounts[posToRowNumber[box.startPoint[1] - box.kerfAmount]].push(
-                    annotations[orderedImgNames[currentImgIndex]][numBoxesAdded].count
-                )
-                numBoxesAdded += 1;
-                const index = unusedColIndices.indexOf(colNumber);
-                if (index > -1) {
-                    unusedColIndices.splice(index, 1);
+                updateGridlineXYPositions(i);
+                let rowColLayout = [];
+                let orderedCounts = [];
+                let posToColNumber = {}, posToRowNumber = {}, unusedColIndices = [];
+                for (let index = 0; index < gridXYMarkers.x.length - 1; index++) {
+                    posToColNumber[Math.round(gridXYMarkers.x[index])] = index;
+                    unusedColIndices.push(index);
                 }
-            });
-            rowColLayout = rowColLayout.filter(el => el.length !== 0);
-            orderedCounts = orderedCounts.filter(el => el.length !== 0);
-            rowColLayout.forEach((list, i) => {
-                let unusedColCopy = unusedColIndices.slice();
-                list.forEach((el, j) => {
-                    for (let k = 0; k < unusedColCopy.length; k++) {
-                        if (rowColLayout[i][j] > unusedColCopy[k]) {
-                            rowColLayout[i][j] -= 1;
-                            unusedColCopy = unusedColCopy.map(el => el - 1);
-                        }
+                for (let index = 0; index < gridXYMarkers.y.length - 1; index++) {
+                    posToRowNumber[Math.round(gridXYMarkers.y[index])] = index;
+                    rowColLayout.push([]);
+                    orderedCounts.push([]);
+                }
+                let numBoxesAdded = 0;
+                Object.keys(chamberRealignmentData[i].gridlineBBoxes).forEach((key, j) => {
+                    if (!chamberRealignmentData[i].gridlineBBoxes[key].selected) {
+                        return;
                     }
-                })
+                    let box = chamberRealignmentData[i].gridlineBBoxes[key];
+                    let colNumber = posToColNumber[Math.round(box.startPoint[0] - box.kerfAmount)];
+                    rowColLayout[posToRowNumber[Math.round(box.startPoint[1] - box.kerfAmount)]].push(
+                        colNumber);
+                    orderedCounts[posToRowNumber[Math.round(box.startPoint[1] - box.kerfAmount)]].push(
+                        annotations[orderedImgNames[i]][numBoxesAdded].count
+                    )
+                    numBoxesAdded += 1;
+                    const index = unusedColIndices.indexOf(colNumber);
+                    if (index > -1) {
+                        unusedColIndices.splice(index, 1);
+                    }
+                });
+                rowColLayout = rowColLayout.filter(el => el.length !== 0);
+                orderedCounts = orderedCounts.filter(el => el.length !== 0);
+                rowColLayout.forEach((list, j) => {
+                    let unusedColCopy = unusedColIndices.slice();
+                    list.forEach((el, k) => {
+                        for (let k_p = 0; k_p < unusedColCopy.length; k_p++) {
+                            if (rowColLayout[j][k] > unusedColCopy[k_p]) {
+                                rowColLayout[j][k] -= 1;
+                                unusedColCopy = unusedColCopy.map(el => el - 1);
+                            }
+                        }
+                    })
+                });
+                results.rowsCols.push(rowColLayout);
+                results.orderedCounts.push(orderedCounts);
             });
-            return [rowColLayout, orderedCounts];
+            return results;
         }
 
         var collectEditedCounts = function () {
@@ -775,7 +806,6 @@
         function loadMaskOnImage(maskData) {
             let crd = chamberRealignmentData;
             let orientations = ['horiz', 'vert'];
-
             // remove boxes
             ['maskBBoxes', 'gridlineBBoxes'].forEach(boxType => {
                 Object.keys(crd[currentImgIndex][boxType]).forEach(k => {
@@ -904,7 +934,7 @@
             maskSaveButton.onclick = saveCustomMask;
             $('#mask-name').on('input', onMaskNameChange);
             let warningMessage = document.createElement('span');
-            warningMessage.id = 'mask-name-warning-message';
+            warningMessage.id = 'mask-name-message-box';
             helpPane.appendChild(warningMessage);
         }
 
@@ -915,16 +945,17 @@
             } else {
                 maskSaveButton.removeAttribute('disabled');
             }
-            let maskNameWarning = document.getElementById('mask-name-warning-message');
+            let maskNameMessage = document.getElementById('mask-name-message-box');
             if (maskNames.includes(this.value)) {
-                maskNameWarning.innerText = 'Warning: mask name already in use. Saving will overwrite existing data.'
+                maskNameMessage.innerText = 'Warning: mask name already in use. Saving will overwrite existing data.';
             } else {
-                maskNameWarning.innerText = '';
+                maskNameMessage.innerText = '';
             }
         }
 
         function toggleMaskNotationMode() {
             $('#mode-specific-buttons').empty();
+            $('#lock-gridlines.div').empty();
             if (this.selected === 'grid-edit-button') {
                 chamberRealignmentData[currentImgIndex].customMode = 'grid';
                 addGridNotationUI();
@@ -932,8 +963,8 @@
                 chamberRealignmentData[currentImgIndex].customMode = 'freehand';
                 addFreehandNotationUI();
             }
-            addLockMaskButton();
-            $('#help-pane').append('<hr>');
+            document.getElementById('mask-edit-instructions').innerHTML =
+                maskEditInstructions[chamberRealignmentData[currentImgIndex].customMode];
         }
 
         function toggleDisabledInHTMLCollection(collection, setToDisabled, idsToSkip = []) {
@@ -962,36 +993,45 @@
             let oldScaling = chamberRealignmentData[currentImgIndex].scaling;
             chamberRealignmentData[currentImgIndex].scaling += diffInScaling;
             backgroundRaster.scale(chamberRealignmentData[currentImgIndex].scaling / oldScaling);
-            console.log('overall scaling level:', chamberRealignmentData[currentImgIndex].scaling);
             calcPadding();
         }
 
-        function calcPadding(rotationAngle = 0, opts =
-            {
-                sf:
-                    scalingFactor * (chamberRealignmentData[currentImgIndex].scaling || 1), save: true
-            }) {
-            let uPadTemp = 0.5 * (canvasHeight - backgroundRaster.height * opts.sf)
-                + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.width * opts.sf);
-            let lPadTemp = 0.5 * (canvasWidth - backgroundRaster.width * opts.sf)
-                + Math.abs(0.5 * Math.tan(rotationAngle) * backgroundRaster.height * opts.sf);
+        function calcPadding(rotationAngle = 0, index = currentImgIndex, opts = {
+            save: true
+        }) {
+            if (!opts.sf) {
+                opts.sf = scalingFactor * (chamberRealignmentData[index] && chamberRealignmentData[index].scaling ? chamberRealignmentData[index].scaling : 1)
+            }
+            let wd = unscaledImgBounds[orderedImgNames[index]].width;
+            let ht = unscaledImgBounds[orderedImgNames[index]].height;
+            let uPadTemp = 0.5 * (canvasHeight - ht * opts.sf)
+                + Math.abs(0.5 * Math.tan(rotationAngle) * wd * opts.sf);
+            let lPadTemp = 0.5 * (canvasWidth - wd * opts.sf)
+                + Math.abs(0.5 * Math.tan(rotationAngle) * ht * opts.sf);
             if (opts.save !== true) {
                 return { upper: uPadTemp, left: lPadTemp };
             }
             upperPadding = uPadTemp;
             leftPadding = lPadTemp;
+            chamberRealignmentData[index].padding = {
+                upper: uPadTemp,
+                left: lPadTemp
+            };
         }
 
         function rotateImageOnly(evt) {
+            const maxDegreesRotation = 20;
             // v1: the original vector
             let v1 = evt.point.subtract(evt.delta).subtract(backgroundRaster.position);
             // v2: the current vector
             let v2 = evt.point.subtract(backgroundRaster.position);
             let rotAngle = Math.atan2(v1.x * v2.y - v1.y * v2.x,
                 v1.x * v2.x + v2.y * v2.y);
+            let potentialRotationAngle = chamberRealignmentData[currentImgIndex].rotationAngle - rotAngle;
+            if (Math.abs(180 * potentialRotationAngle / Math.PI) > maxDegreesRotation) return;
             backgroundRaster.rotate(180 * rotAngle / Math.PI);
             chamberRealignmentData[currentImgIndex].rotationAngle -= rotAngle;
-            console.log('rotation angle in degrees:', 180 * chamberRealignmentData[currentImgIndex].rotationAngle / Math.PI);
+            rotationAngles[orderedImgNames[currentImgIndex]] = chamberRealignmentData[currentImgIndex].rotationAngle;
             calcPadding();
         }
 
@@ -1013,9 +1053,11 @@
             let reg = eggLayingRegions[currentImgIndex][id];
             reg.outline.rotate(angle, center);
             reg.fill.rotate(angle, center);
-            reg.eggShapes.forEach(shape => {
-                shape.rotate(angle, center);
-            });
+            if (reg.eggShapes) {
+                reg.eggShapes.forEach(shape => {
+                    shape.rotate(angle, center);
+                });
+            }
         }
 
         function maskLocked() {
@@ -1043,9 +1085,11 @@
 
         function lockMaskOnClick(event) {
             let enteringLock = event.target.innerHTML === lockMaskText;
+            let unlockedText = maskEditInstructions[
+                chamberRealignmentData[currentImgIndex].customMode];
             event.target.innerHTML = enteringLock ? 'Unlock mask' : lockMaskText;
             toggleDisabledAttrOfMaskEditingButtons(enteringLock);
-            document.getElementById('mask-edit-instructions').innerHTML = enteringLock ? imageTransformInstructions : freehandMaskEditInstructions;
+            document.getElementById('mask-edit-instructions').innerHTML = enteringLock ? imageTransformInstructions : unlockedText;
             setGridNotationCursorVisibility();
             toggleBackgroundImageMarker();
         }
@@ -1116,8 +1160,8 @@
 
         function addGridNotationCursor(evt) {
             if (countingState !== countingStates.pre) return;
-            if (!maskNotationButtonGroup ||
-                maskNotationButtonGroup.selected !== 'grid-edit-button'
+            if (!document.getElementById('help-pane') || !document.getElementById('grid-edit-button')) return;
+            if (maskNotationButtonGroup.selected !== 'grid-edit-button'
             ) {
                 return;
             }
@@ -1183,8 +1227,10 @@
         }
 
         function addGridNotationUI() {
-            let parentDiv = document.getElementById('mode-specific-buttons');
+            let parentDiv = document.createElement('div');
             parentDiv.classList.add('mask-button-set');
+            parentDiv.id = 'mode-switch-button-group';
+            document.getElementById('mode-specific-buttons').appendChild(parentDiv)
 
             let orientationLabel = {
                 id: 'line-orientation-label',
@@ -1209,7 +1255,8 @@
 
             let lockGridlinesDiv = document.createElement('div');
             lockGridlinesDiv.classList.add('mask-button-set');
-            document.getElementById('help-pane').appendChild(lockGridlinesDiv);
+            lockGridlinesDiv.id = 'lock-gridlines-div';
+            document.getElementById('mode-specific-buttons').appendChild(lockGridlinesDiv);
 
             let lockGridlinesButton = document.createElement('button');
             lockGridlinesButton.id = 'lock-gridlines-button';
@@ -1219,7 +1266,8 @@
         }
 
         function gridlinesLocked() {
-            if (countingState !== countingStates.pre) return false;
+            if (countingState !== countingStates.pre ||
+                !document.getElementById('lock-gridlines-button')) return false;
             return document.getElementById('lock-gridlines-button').innerHTML !== lockGridlinesText;
         }
 
@@ -1233,7 +1281,7 @@
         }
 
         function toImageCoords(ptInCanvasCoords) {
-            let pad = calcPadding(0, {
+            let pad = calcPadding(0, currentImgIndex, {
                 sf: scalingFactor, save: false,
             })
             return [ptInCanvasCoords[0] - pad.left,
@@ -1243,7 +1291,7 @@
         }
 
         function toCanvasCoords(ptInImageCoords) {
-            let pad = calcPadding(0, { sf: scalingFactor, save: false })
+            let pad = calcPadding(0, currentImgIndex, { sf: scalingFactor, save: false })
             let newCoords = ptInImageCoords.map(el => el * scalingFactor);
             return [
                 newCoords[0] + pad.left,
@@ -1267,12 +1315,13 @@
             }
             setEventHandlers() {
                 this.linePath.onMouseEnter = event => {
+                    if (maskLocked()) return;
                     if (shiftKeyDown) {
                         event.target.strokeColor = 'red';
                     }
                 };
                 this.linePath.onMouseDown = event => {
-                    if (!shiftKeyDown) return;
+                    if (!shiftKeyDown || maskLocked()) return;
                     event.target.remove();
                     this.doOnMouseDown(event);
                 }
@@ -1383,13 +1432,13 @@
             }
         }
 
-        function updateGridlineXYPositions() {
+        function updateGridlineXYPositions(index = currentImgIndex) {
             let keys = [['x', 'vert'], ['y', 'horiz']];
             gridXYMarkers = {};
             keys.forEach(keyPair => {
                 gridXYMarkers[keyPair[0]] = Object.keys(
-                    chamberRealignmentData[currentImgIndex].maskGridlines[keyPair[1]]).map(
-                        key => chamberRealignmentData[currentImgIndex].maskGridlines[keyPair[1]][key].linePath.position[keyPair[0]]
+                    chamberRealignmentData[index].maskGridlines[keyPair[1]]).map(
+                        key => chamberRealignmentData[index].maskGridlines[keyPair[1]][key].linePath.position[keyPair[0]]
                     ).sort(function (a, b) {
                         return a - b;
                     })
@@ -1417,8 +1466,8 @@
                     !box.rectPath.isInside(backgroundRaster.bounds));
 
                 chamberRealignmentData[key].bboxes.push([
-                    (box.startPoint[0] - leftPadding) / scalingFactor,
-                    (box.startPoint[1] - upperPadding) / scalingFactor,
+                    (box.startPoint[0] - chamberRealignmentData[key].padding.left) / scalingFactor,
+                    (box.startPoint[1] - chamberRealignmentData[key].padding.upper) / scalingFactor,
                     (box.endPoint[0] - box.startPoint[0]) / scalingFactor,
                     (box.endPoint[1] - box.startPoint[1]) / scalingFactor
                 ]);
@@ -1594,7 +1643,10 @@
             }
             $('#help-pane').empty();
 
-            $('#help-pane').append(`<p id=mask-edit-instructions>${freehandMaskEditInstructions}`)
+            $('#help-pane').append('<p id=mask-edit-instructions>' +
+                maskEditInstructions[
+                chamberRealignmentData[currentImgIndex].customMode
+                ])
             $('#help-pane').append('<div id=mask-annotation-mode-buttons></div')
             addNotationModeToggleButtons();
             $('#help-pane').append('<div id=mode-specific-buttons></div>');
@@ -1607,6 +1659,8 @@
                 }
             });
             socket.emit('mask-list', { sid });
+            addLockMaskButton();
+            $('#help-pane').append('<hr>');
         }
 
         function addDropdownElement(dropdownEl, optionName, withPrefix = true) {
@@ -1637,7 +1691,7 @@
             dropdownMaskList.setAttribute('disabled', true);
 
             dropdownMaskList.setAttribute('id', 'mask-list');
-            addDropdownElement(dropdownMaskList, 'Select existing mask', false)
+            addDropdownElement(dropdownMaskList, 'Select existing mask', false);
             if (maskNames.length > 0) {
                 dropdownMaskList.removeAttribute('disabled');
                 maskNames.forEach(name => {
@@ -1645,8 +1699,12 @@
                 });
             }
             buttonGroup.appendChild(dropdownMaskList);
+            let chosenMask = chamberRealignmentData[currentImgIndex].maskName;
             dropdownMaskList.onchange = requestSavedMaskData;
             document.getElementById('help-pane').appendChild(buttonGroup);
+            if (maskNames.includes(chamberRealignmentData[currentImgIndex].maskName)) {
+                document.getElementById('mask-list').value = chosenMask;
+            }
         }
 
         var setupErrorAnnotationButtonHandlers = function () {
@@ -1654,7 +1712,6 @@
                 document.getElementById('chamber-type-select').onchange = (evt) => {
                     if (evt.target.value == 'custom') {
                         editMode = 'mask';
-                        setUpMaskCreationInterface();
                         tempMaskBBoxes = {};
                         tempMaskGridlines = { horiz: {}, vert: {} };
                         chamberRealignmentData[currentImgIndex] = {
@@ -1669,6 +1726,7 @@
                             maskGridlines: { horiz: {}, vert: {} },
                             customMode: 'grid'
                         }
+                        setUpMaskCreationInterface();
                         return;
                     }
                     if (evt.target.value == chamberTypes[orderedImgNames[currentImgIndex]]) {
@@ -1707,47 +1765,51 @@
                     updateIgnoreButtonText();
                     updateRetryAnalysisButtonAppearance();
                 };
-                document.getElementById('retry-analysis-button').onclick = () => {
-                    let untriaged = indicesOfUntriagedImages();
-                    if (untriaged.length > 0) {
-                        document.getElementById('mode-marker').innerHTML = 'Images can only be submitted if' +
-                            ' each one has either been assigned a chamber type or marked as ignored.' +
-                            ' <br>The images at the following indices still need attention:' +
-                            ` ${untriaged.length > 1 ? `${untriaged.slice(0, -1).join(', ')
-                                } and ${untriaged[untriaged.length - 1]}` : untriaged[0]}.`;
-                        setTimeout(() => {
-                            document.getElementById('mode-marker').innerHTML = '';
-                        }, 3000);
-                        return;
-                    }
-                    transformAlignmentGuidelinePoints();
-                    let keysToKeep = [
-                        'ignored',
-                        'bboxes',
-                        'regionsToIgnore',
-                        'nodes',
-                        'rotationAngle',
-                        'imageTranslation',
-                        'scaling',
-                        'type',
-                        'file_name'
-                    ]
-                    let dataToSend = {
-                        chamberData: reducePropsInInnerObjects(chamberRealignmentData, keysToKeep),
-                        sid
-                    };
-                    countingState = countingStates.mid;
-                    $.ajax({
-                        url: '/manual-recount',
-                        type: "POST",
-                        data: JSON.stringify(dataToSend),
-                        contentType: "application/json",
-                        success: function (data) {
-                            console.log('Success!');
-                        }
-                    });
-                    clearAllUpdates();
+            }
+        }
+
+        function setupCountEggsButton() {
+            document.getElementById('retry-analysis-button').onclick = () => {
+                let untriaged = indicesOfUntriagedImages();
+                if (untriaged.length > 0) {
+                    document.getElementById('mode-marker').innerHTML = 'Images can only be submitted if' +
+                        ' each one has either been assigned a chamber type or marked as ignored.' +
+                        ' <br>The images at the following indices still need attention:' +
+                        ` ${untriaged.length > 1 ? `${untriaged.slice(0, -1).join(', ')
+                            } and ${untriaged[untriaged.length - 1]}` : untriaged[0]}.`;
+                    setTimeout(() => {
+                        document.getElementById('mode-marker').innerHTML = '';
+                    }, 3000);
+                    return;
                 }
+                transformAlignmentGuidelinePoints();
+                let keysToKeep = [
+                    'ignored',
+                    'bboxes',
+                    'regionsToIgnore',
+                    'nodes',
+                    'rotationAngle',
+                    'imageTranslation',
+                    'scaling',
+                    'type',
+                    'file_name'
+                ];
+                let dataToSend = {
+                    chamberData: reducePropsInInnerObjects(chamberRealignmentData, keysToKeep),
+                    sid
+                };
+                console.log('copy of the data sent to the server:', dataToSend);
+                countingState = countingStates.mid;
+                $.ajax({
+                    url: '/manual-recount',
+                    type: "POST",
+                    data: JSON.stringify(dataToSend),
+                    contentType: "application/json",
+                    success: function (data) {
+                        console.log('Success!');
+                    }
+                });
+                clearAllUpdates();
             }
         }
 
@@ -1764,11 +1826,22 @@
             return reducedObj;
         }
 
+        function calcScalingFactor(rotationAngle = 0, index = currentImgIndex) {
+            let wd = unscaledImgBounds[orderedImgNames[index]].width;
+            let ht = unscaledImgBounds[orderedImgNames[index]].height;
+            scalingFactor = Math.min(canvasHeight / (Math.abs(wd * Math.sin(rotationAngle)) + Math.abs(ht * Math.cos(rotationAngle))),
+                canvasWidth / (Math.abs(wd * Math.cos(rotationAngle)) +
+                    Math.abs(ht * Math.sin(rotationAngle))));
+        }
+
         function transformAlignmentGuidelinePoints() {
             Object.keys(chamberRealignmentData).forEach(k => {
                 if (chamberRealignmentData[k].ignored) {
                     return;
                 }
+                calcScalingFactor(imageUsesCustomMasks(k) ? 0 : rotationAngles[orderedImgNames[k]], k);
+                calcPadding(imageUsesCustomMasks(k) ? 0 : rotationAngles[orderedImgNames[k]], k);
+
                 if (chamberRealignmentData[k].imageTranslation) {
                     chamberRealignmentData[k].imageTranslation.forEach((el, i) => {
                         chamberRealignmentData[k].imageTranslation[i] = el / scalingFactor;
@@ -1780,6 +1853,9 @@
                 }
                 if (!chamberRealignmentData[k].nodes &&
                     !chamberRealignmentData[k].bboxes) {
+                    chamberRealignmentData[k].type = chamberTypes[
+                        orderedImgNames[k]
+                    ]
                     chamberRealignmentData[k].bboxes = [];
                     chamberRealignmentData[k].rotationAngle = rotationAngles[orderedImgNames[k]]
                     annotations[orderedImgNames[k]].forEach(region => {
@@ -1793,8 +1869,9 @@
                         (pt[0] - leftPadding) / scalingFactor,
                         (pt[1] - upperPadding) / scalingFactor
                     ];
-                })
+                });
             });
+
         }
 
         function setupCsvDownloadButton() {
@@ -1806,8 +1883,8 @@
                     time: Date.now(),
                     sid: sid,
                     editedCounts: collectEditedCounts(),
-                    rowColLayout: rowsColsCounts[0],
-                    orderedCounts: rowsColsCounts[1]
+                    rowColLayout: rowsColsCounts.rowsCols,
+                    orderedCounts: rowsColsCounts.orderedCounts
                 });
             }
         }
@@ -1861,6 +1938,9 @@
                 window.localStorage.setItem('user', evt.target.value);
             }
             setupErrorAnnotationButtonHandlers();
+            if (countingState === countingStates.pre) {
+                setupCountEggsButton();
+            }
 
             if (orderedImgNames.length === 1) {
                 document.getElementById('prev-img').setAttribute('disabled', true);
@@ -1870,6 +1950,7 @@
             document.getElementById('prev-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex - 1;
                 if (newImgIdx >= 0) {
+                    shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
                     setChamberTypeSelector();
@@ -1887,6 +1968,7 @@
             document.getElementById('next-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex + 1;
                 if (newImgIdx <= orderedImgNames.length) {
+                    shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
                     setChamberTypeSelector();
@@ -1918,9 +2000,13 @@
             if (countingState !== countingStates.pre) {
                 return;
             }
-            if (chamberRealignmentData[currentImgIndex] && !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type) > 0) {
+            if (chamberRealignmentData[currentImgIndex] &&
+                !['', 'null', undefined].includes(
+                    chamberRealignmentData[currentImgIndex].type)) {
                 document.getElementById('chamber-type-select').value = chamberRealignmentData[currentImgIndex].type;
-            } else if (chamberTypes[orderedImgNames[currentImgIndex]] && !['', 'null'].includes(chamberTypes[orderedImgNames[currentImgIndex]]) > 0) {
+            } else if (chamberTypes[orderedImgNames[currentImgIndex]]
+                && !['', 'null', undefined].includes(
+                    chamberTypes[orderedImgNames[currentImgIndex]])) {
                 document.getElementById('chamber-type-select').value = chamberTypes[orderedImgNames[currentImgIndex]];
             } else {
                 document.getElementById('chamber-type-select').value = 'null';
@@ -1984,16 +2070,18 @@
         }
 
         var updateRealignmentGuide = function () {
-            if (document.getElementById('chamber-type-select').value === 'custom') {
+            if (chamberRealignmentData[currentImgIndex] &&
+                chamberRealignmentData[currentImgIndex].type === 'custom'
+            ) {
                 setUpMaskCreationInterface();
                 return;
             }
             $('#help-pane').empty();
-            let noChamberTypeSelected = ['null', ''].includes(chamberRealignmentData[currentImgIndex].type);
+            let noChamberTypeSelected = ['null', '', undefined].includes(
+                chamberRealignmentData[currentImgIndex].type);
             let chamberTypeDetected = !!chamberTypes[orderedImgNames[currentImgIndex]];
             let imageIgnored = document.getElementById('chamber-type-select').hasAttribute('disabled');
             if (noChamberTypeSelected || imageIgnored) {
-
                 setHelpPaneTextIfNoMarkers({ noChamberTypeSelected, imageIgnored, chamberTypeDetected })
                 return;
             }
@@ -2104,7 +2192,66 @@
             }
         }
 
-        var redrawCanvas = function (opts = {}) {
+        function drawEggOutlines(annotation, anchorBBox) {
+            let eggOutlines = [];
+
+            let mappedOutlines = annotation.outlines.map(
+                outline => {
+                    return outline.map(pt => {
+                        return [anchorBBox[0] + pt[1] * combinedScale,
+                        anchorBBox[1] + pt[0] * combinedScale]
+                    })
+                }
+            )
+            mappedOutlines.forEach(outline => {
+                eggOutlines.push(new paper.Path({
+                    segments: outline,
+                    strokeColor: 'white',
+                    closed: true,
+                    strokeWidth: 0.20,
+                    opacity: 0.8
+                }));
+            });
+            return eggOutlines;
+        }
+
+        function drawRegionOutline(annotation) {
+            let bbox = annotation.bbox;
+            combinedScale = scalingFactor * (1 / zoomScaleImgToMask);
+            let rescaledBBox = [];
+            rescaledBBox.push((1 / zoomScaleImgToMask) * (
+                bbox[0] - zoomScaleImgToMask * backgroundRaster.width / 2) +
+                zoomScaleImgToMask * backgroundRaster.width / 2);
+            rescaledBBox.push((1 / zoomScaleImgToMask) * (
+                bbox[1] - zoomScaleImgToMask * backgroundRaster.height / 2) +
+                zoomScaleImgToMask * backgroundRaster.height / 2);
+            rescaledBBox[0] = rescaledBBox[0] * scalingFactor + leftPadding;
+            rescaledBBox[1] = rescaledBBox[1] * scalingFactor + upperPadding;
+            rescaledBBox.push(bbox[2] * combinedScale);
+            rescaledBBox.push(bbox[3] * combinedScale);
+            let rectangle = new paper.Rectangle(
+                new paper.Point(rescaledBBox[0], rescaledBBox[1]),
+                new paper.Point(rescaledBBox[0] + rescaledBBox[2],
+                    rescaledBBox[1] + rescaledBBox[3]));
+            let rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+            rectPath.strokeColor = colors.grey;
+            if (backgroundRaster.intersects(rectPath)) {
+                setUpTempRasterRect();
+                let newRectPath = rectPath.intersect(tempRasterRect);
+                rectPath.remove();
+                tearDownTempRasterRect();
+                rectPath = newRectPath;
+            }
+            let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
+            innerRect.fillColor = 'black';
+            innerRect.opacity = 0;
+            if (countingState !== countingStates.pre) {
+                addHoverHandler(innerRect, currentImgIndex);
+            }
+            return { outline: rectPath, fill: innerRect, bbox: rescaledBBox }
+        }
+
+        function redrawCanvas(opts = {}) {
             let origNumErrors = numErrors;
             hasErrors = Object.keys(annotations).map((k) => {
                 return 'error' in annotations[k];
@@ -2117,10 +2264,12 @@
                     document.getElementById('updates-by-image').innerHTML = '';
                     chamberRealignmentData = {};
                     displayImageAnalysisErrorMessage();
-                    $('#viewer').append('<div id=help-pane></div>');
                     document.getElementById('retry-analysis-button').style.color = colors.lightGrey;
 
                     resetCurrentRealignmentMarkers();
+                }
+                if (!document.getElementById('help-pane')) {
+                    $('#viewer').append('<div id=help-pane></div>');
                 }
                 if (!chamberRealignmentData[currentImgIndex]) {
                     chamberRealignmentData[currentImgIndex] = {
@@ -2165,18 +2314,32 @@
             backgroundRaster = new paper.Raster('pic');
             pic = document.getElementById('pic');
             backgroundRaster.onLoad = () => {
-                if (imageUsesCustomMasks()) {
+                if (imageUsesCustomMasks() && countingState !== countingStates.pre) {
                     rotationAngle = 0;
-                } else if (rotationAngle) {
-                    backgroundRaster.rotate(-rotationAngle * 180 / Math.PI)
                 }
-                backgroundRaster.fitBounds(paper.view.viewSize);
-                scalingFactor = Math.min(canvasHeight / (Math.abs(pic.width * Math.sin(rotationAngle)) +
-                    Math.abs(pic.height * Math.cos(rotationAngle))),
-                    canvasWidth / (Math.abs(pic.width * Math.cos(rotationAngle)) +
-                        Math.abs(pic.height * Math.sin(rotationAngle))));
+
+                if (imageUsesCustomMasks() && countingState === countingStates.pre) {
+                    backgroundRaster.fitBounds(paper.view.viewSize);
+                    backgroundRaster.position.x += chamberRealignmentData[
+                        currentImgIndex].imageTranslation[0];
+                    backgroundRaster.position.y += chamberRealignmentData[
+                        currentImgIndex].imageTranslation[1];
+                    backgroundRaster.scale(chamberRealignmentData[currentImgIndex].scaling);
+                    if (rotationAngle) {
+                        backgroundRaster.rotate(-rotationAngle * 180 / Math.PI)
+                    }
+                }
+
+                if (!imageUsesCustomMasks() || countingState !== countingStates.pre) {
+                    backgroundRaster.fitBounds(paper.view.viewSize);
+                }
+                unscaledImgBounds[orderedImgNames[currentImgIndex]] = {
+                    width: backgroundRaster.width,
+                    height: backgroundRaster.height
+                }
+                calcScalingFactor(0);
                 document.getElementById('pic').remove();
-                calcPadding(rotationAngle);
+                calcPadding(0);
                 if ('error' in annotations[orderedImgNames[currentImgIndex]]) {
                     let pointText = new paper.PointText(new paper.Point(paper.view.center.x,
                         paper.view.center.y));
@@ -2207,60 +2370,30 @@
                             } else {
                                 countToShow = '';
                             }
-                            let bbox = annotation.bbox;
-                            let zoomF = 1 / chamberRealignmentData[currentImgIndex].scaling;
-                            let combinedScale = scalingFactor * zoomF;
-                            let scale = chamberRealignmentData[currentImgIndex].scaling;
-                            bbox[0] = zoomF * (bbox[0] - scale * backgroundRaster.width / 2) + scale * backgroundRaster.width / 2;
-                            bbox[1] = zoomF * (bbox[1] - scale * backgroundRaster.height / 2) + scale * backgroundRaster.height / 2;
-                            bbox[0] = bbox[0] * scalingFactor + leftPadding;
-                            bbox[1] = bbox[1] * scalingFactor + upperPadding;
-                            bbox[2] *= combinedScale;
-                            bbox[3] *= combinedScale;
-                            let rectangle = new paper.Rectangle(
-                                new paper.Point(bbox[0], bbox[1]),
-                                new paper.Point(bbox[0] + bbox[2], bbox[1] + bbox[3]));
-                            rectPath = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                            rectPath.strokeColor = colors.grey;
-                            if (backgroundRaster.intersects(rectPath)) {
-                                setUpTempRasterRect();
-                                let newRectPath = rectPath.intersect(tempRasterRect);
-                                rectPath.remove();
-                                tearDownTempRasterRect();
-                                rectPath = newRectPath;
-                            }
-                            let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                            innerRect.fillColor = 'black';
-                            innerRect.opacity = 0;
+                            zoomScaleImgToMask = (chamberRealignmentData[currentImgIndex] &&
+                                chamberRealignmentData[currentImgIndex].scaling) ?
+                                chamberRealignmentData[currentImgIndex].scaling : 1;
+                            let drawnRectangles = drawRegionOutline(annotation);
+                            let rectPath = drawnRectangles.outline;
+                            let innerRect = drawnRectangles.fill;
                             if (countingState !== countingStates.pre) {
-                                addHoverHandler(innerRect, currentImgIndex);
-                                let x = annotation.x * scalingFactor + leftPadding;
-                                let y = annotation.y * scalingFactor + upperPadding;
-
+                                let x = (1 / zoomScaleImgToMask) *
+                                    (annotation.x - zoomScaleImgToMask * backgroundRaster.width / 2) +
+                                    zoomScaleImgToMask * backgroundRaster.width / 2;
+                                let y = (1 / zoomScaleImgToMask) *
+                                    (annotation.y - zoomScaleImgToMask * backgroundRaster.height / 2) +
+                                    zoomScaleImgToMask * backgroundRaster.height / 2;
+                                x = x * scalingFactor + leftPadding;
+                                y = y * scalingFactor + upperPadding;
                                 let textOrigin = new paper.Point(x, y)
                                 pointText = new paper.PointText(new paper.Point(x, y));
                                 pointText.justification = 'center';
                                 pointText.fillColor = 'black';
                                 pointText.content = annotation.count;
-                                annotation.outlines = annotation.outlines.map(
-                                    outline => {
-                                        return outline.map(pt => {
-                                            return [bbox[0] + pt[1] * combinedScale,
-                                            bbox[1] + pt[0] * combinedScale]
-                                        })
-                                    }
-                                )
                                 pointText.fontSize = defaultFontSize;
-                                eggOutlines = [];
-                                annotation.outlines.forEach(outline => {
-                                    eggOutlines.push(new paper.Path({
-                                        segments: outline,
-                                        strokeColor: 'white',
-                                        closed: true,
-                                        strokeWidth: 0.20,
-                                        opacity: 0.8
-                                    }));
-                                });
+
+                                eggOutlines = drawEggOutlines(annotation,
+                                    drawnRectangles.bbox);
                             }
                             eggLayingRegions[currentImgIndex][innerRect.id] = {
                                 outline: rectPath,
@@ -2276,7 +2409,8 @@
                                     return this.originalCount !== this.text.content;
                                 }
                             };
-                            if (imageUsesCustomMasks()) {
+                            if (chamberRealignmentData[currentImgIndex] &&
+                                chamberRealignmentData[currentImgIndex].rotationAngle) {
                                 rotateBoxesAndOutlinesForCustomMask(innerRect.id)
                             }
                         });
@@ -2284,21 +2418,36 @@
                         Object.keys(eggLayingRegions[currentImgIndex]).forEach((region, i) => {
                             // recreate the text
                             let reg = eggLayingRegions[currentImgIndex][region];
+                            zoomScaleImgToMask = (chamberRealignmentData[currentImgIndex] &&
+                                chamberRealignmentData[currentImgIndex].scaling) ?
+                                chamberRealignmentData[currentImgIndex].scaling : 1;
                             // recreate the outline
                             let origOutline = reg.outline;
-                            let rectangle = new paper.Rectangle(
-                                new paper.Point(origOutline.bounds.x, origOutline.bounds.y),
-                                new paper.Point(origOutline.bounds.x + origOutline.bounds.width,
-                                    origOutline.bounds.y + origOutline.bounds.height)
-                            );
-                            reg.outline = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                            reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
+                            let annotation = annotations[orderedImgNames[currentImgIndex]][i];
+                            let drawnRectangles = drawRegionOutline(annotation);
                             // recreate the inner fill
                             let origFill = reg.fill;
-                            reg.fill = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
-                            reg.fill.fillColor = 'black';
-                            reg.fill.opacity = 0;
+                            reg.outline = drawnRectangles.outline;
+                            reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
+                            reg.fill = drawnRectangles.fill;
 
+
+                            if (countingState !== countingStates.pre) {
+                                if (reg.beenEdited()) {
+                                    drawTextForEditedCount(reg, reg.text.content);
+                                } else {
+                                    let origText = reg.text;
+                                    reg.text = new paper.PointText(new paper.Point(origText.point.x,
+                                        origText.point.y));
+                                    reg.text.content = origText.content;
+                                    reg.text.justification = 'center';
+                                    reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
+                                    reg.text.fontSize = origText.fontSize;
+                                }
+                                let origEggShapes = reg.eggShapes;
+                                reg.eggShapes = drawEggOutlines(annotation, drawnRectangles.bbox);
+                                addHoverHandler(reg.fill, currentImgIndex);
+                            }
                             eggLayingRegions[currentImgIndex][reg.fill.id] = {
                                 outline: reg.outline,
                                 fill: reg.fill,
@@ -2314,29 +2463,9 @@
                                 }
                             }
                             delete eggLayingRegions[currentImgIndex][origFill.id];
-
-                            if (countingState !== countingStates.pre) {
-                                if (reg.beenEdited()) {
-                                    drawTextForEditedCount(reg, reg.text.content);
-                                } else {
-                                    let origText = reg.text;
-                                    reg.text = new paper.PointText(new paper.Point(origText.point.x,
-                                        origText.point.y));
-                                    reg.text.content = origText.content;
-                                    reg.text.justification = 'center';
-                                    reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
-                                    reg.text.fontSize = origText.fontSize;
-                                }
-                                let origEggShapes = reg.eggShapes;
-                                reg.eggShapes = origEggShapes.map(shape => {
-                                    let newPath = new paper.Path(shape.segments);
-                                    newPath.strokeColor = 'white';
-                                    newPath.closed = true;
-                                    newPath.strokeWidth = 0.20;
-                                    newPath.opacity = 0.8;
-                                    return newPath;
-                                });
-                                addHoverHandler(reg.fill, currentImgIndex);
+                            if (chamberRealignmentData[currentImgIndex] &&
+                                chamberRealignmentData[currentImgIndex].rotationAngle) {
+                                rotateBoxesAndOutlinesForCustomMask(reg.fill.id)
                             }
                         });
                     }
@@ -2605,7 +2734,7 @@
             });
         }
 
-        var setupCanvas = function () {
+        function setupCanvas() {
             setupNavButtons();
 
             if (window.localStorage.getItem('user')) {
@@ -2646,6 +2775,7 @@
                 }
                 if (!chamberRealignmentData[index]) {
                     untriaged.push(index + 1)
+                    continue;
                 }
                 if (checkForAnnotatedGridlineImages(index, untriaged)) {
                     continue;

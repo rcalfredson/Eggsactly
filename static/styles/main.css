@@ -210,7 +210,7 @@ form label, form button, #updates button, form input {
   margin-top: 0;
 }
 
-#mask-name-warning-message {
+#mask-name-message-box {
   color: rgb(155, 18, 29);
   font-size: 10px;
 }

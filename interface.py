@@ -111,7 +111,6 @@ def send_csv(filename):
 def save_custom_mask(data):
     with open(os.path.join("configs", "masks", f"{data['maskName']}.json"), "w") as f:
         json.dump(data, f)
-    print("sending this:", {"currentMask": data["maskName"]})
     socketIO.emit(
         "mask-list-update",
         {"names": get_mask_list(data, emit=False), "currentMask": data["maskName"]},
@@ -126,8 +125,6 @@ def load_custom_mask(data):
 
 @socketIO.on("prepare-csv")
 def prepare_csv(data):
-    print("edited counts?", data["editedCounts"])
-    print("data?", data)
     sessions[data["sid"]].saveCSV(
         data["editedCounts"], data["rowColLayout"], data["orderedCounts"]
     )
@@ -269,19 +266,11 @@ def check_chamber_type_of_img(i, file, sid, n_files, attempts):
         filePath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         if attempts == 0:
             request.files[file].save(filePath)
-            print("uploaded the image?")
-        # attempt to determine chamber type and bounding boxes,
-        # and send back to the client.
-        # it will start the viewer as soon as the first piece
-        # of data arrives, either of a failure to identify chamber type
-        # or the actual chamber type and bounding boxes.
         socketIO.emit(
             "counting-progress",
             {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},
             room=sid,
         )
-        print("sessions:", sessions)
-        print("sid_suffix:", sid)
         sessions[sid].check_chamber_type_and_find_bounding_boxes(filePath)
 
 

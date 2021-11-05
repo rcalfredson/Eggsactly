@@ -36,6 +36,7 @@ class SessionManager:
         self.predictions = {}
         self.basenames = {}
         self.annotations = {}
+        self.alignment_data = {}
         self.socketIO = socketIO
         self.room = room
         self.network_loader = network_loader
@@ -44,6 +45,7 @@ class SessionManager:
             ImageAnalysisException: "Image could not be analyzed.",
             CUDAMemoryException: "Error: system ran out of resources",
         }
+        self.textLabelHeight = 96
 
     def clear_data(self):
         self.chamberTypes = {}
@@ -80,16 +82,19 @@ class SessionManager:
         time.sleep(2)
 
     def segment_image_via_bboxes(self, img, img_path, alignment_data):
-        # base_img = np.array(img)
         img = cv2.resize(
-            img, (0, 0), fx=alignment_data["scaling"], fy=alignment_data["scaling"]
+            img,
+            (0, 0),
+            fx=alignment_data.get("scaling", 1),
+            fy=alignment_data.get("scaling", 1),
         )
         img = rotate_image(img, alignment_data["rotationAngle"])
         self.bboxes = alignment_data["bboxes"]
-        bbox_translation = [-el for el in alignment_data["imageTranslation"]]
+        bbox_translation = [
+            -el for el in alignment_data.get("imageTranslation", [0, 0])
+        ]
         alignment_data["regionsToIgnore"] = []
         translated_bboxes = []
-        print("bboxes before translation:", self.bboxes)
         for i, bbox in enumerate(self.bboxes):
             new_bbox = [
                 bbox[0] + bbox_translation[0],
@@ -105,7 +110,6 @@ class SessionManager:
             if y_coords[0] < 0:
                 new_bbox[2] += new_bbox[1]
                 new_bbox[1] = 0
-            print("new bbox:", new_bbox)
             translated_bboxes.append(list(map(round, new_bbox)))
 
         self.rotation_angle = alignment_data["rotationAngle"]
@@ -115,7 +119,8 @@ class SessionManager:
         )
         # for sub_img in self.subImgs:
         #     cv2.imshow("debug sub-img", sub_img.astype(np.uint8))
-        #     print("scaling factor:", alignment_data["scaling"])
+        #     print("scaling factor:", alignment_data.get("scaling", 1))
+        #     print('sub-image?', sub_img.astype(np.uint8))
         #     cv2.waitKey(0)
 
     def segment_image_via_alignment_data(self, img, img_path, alignment_data):
@@ -157,7 +162,6 @@ class SessionManager:
             raise ImageAnalysisException
 
     def check_chamber_type_and_find_bounding_boxes(self, img_path):
-        # this version won't ever use the alignment data.
         imgBasename = os.path.basename(img_path)
         self.imgBasename = imgBasename
         img_path = os.path.normpath(img_path)
@@ -170,16 +174,7 @@ class SessionManager:
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
         self.segment_image_via_object_detection(img, img_path)
-        # self.bboxes = [[el for el in bbox] for bbox in self.bboxes]
-        print(
-            "data to emit:",
-            {
-                "rotationAngle": self.rotation_angle,
-                "filename": self.imgBasename,
-                "chamberType": self.cf.ct,
-                "bboxes": self.bboxes,
-            },
-        )
+        self.bboxes = [[round(el) for el in bbox] for bbox in self.bboxes]
         self.emit_to_room(
             "chamber-analysis",
             {
@@ -200,12 +195,13 @@ class SessionManager:
         self.emit_to_room(
             "counting-progress", {"data": "Segmenting image %s" % imgBasename}
         )
+        print("alignment data:", alignment_data)
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
-        print("alignment data:", alignment_data)
         if alignment_data is None:
             self.segment_image_via_object_detection(img, img_path)
         else:
+            self.alignment_data[img_path] = alignment_data
             if "ignored" in alignment_data and alignment_data["ignored"]:
                 self.predictions[img_path].append(ImageAnalysisException)
                 return
@@ -229,7 +225,6 @@ class SessionManager:
                 self.network_loader.predict_instances(subImg)
             )
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
-        # self.bboxes = [[el for el in bbox] for bbox in self.bboxes]
         self.sendAnnotationsToClient(index, alignment_data)
 
     def sendAnnotationsToClient(self, index, alignment_data):
@@ -240,8 +235,14 @@ class SessionManager:
             and alignment_data["type"] == "custom"
             and alignment_data["rotationAngle"] != 0
         )
+        ct = self.chamberTypes[self.imgPath]
+        if alignment_data["type"] and alignment_data["type"] != ct:
+            print("overriding the originally detected chamber type.")
+            print("original chamber type:", ct)
+            ct = alignment_data["type"]
+            print("new chamber type:", ct)
         for i, prediction in enumerate(self.predictions[self.imgPath]):
-            if self.chamberTypes[self.imgPath] == CT.large.name:
+            if ct == CT.large.name:
                 iMod = i % 4
                 if iMod in (0, 3):
                     x = bboxes[i][0] + 0.1 * bboxes[i][2]
@@ -254,25 +255,35 @@ class SessionManager:
                         bboxes[i][0] + 0.2 * bboxes[i][2],
                         bboxes[i][1] + 0.45 * bboxes[i][3],
                     )
-            elif self.chamberTypes[self.imgPath] == CT.opto.name:
+            elif ct == CT.opto.name:
+                print(
+                    "calculating the count label positions as if for an opto chamber."
+                )
                 x = bboxes[i][0] + 0.5 * bboxes[i][2]
                 y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
-            else:
+            elif bboxes[i][3] > bboxes[i][2]:  # box is taller than it is wide
                 x = bboxes[i][0]
                 y = bboxes[i][1]
-                if not do_rotate:
-                    x -= 40
-                    y += bboxes[i][3]
-            if do_rotate:
-                img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))
-                x, y = rotate_around_point_highperf(
-                    (x, y), -alignment_data["rotationAngle"], img_center
+                if do_rotate:
+                    x, y = self.rotate_pt(x, y)
+                x -= 20 + (0 if prediction["count"] < 10 else 75)
+                y += (
+                    75 if self.extends_past_img_bottom(bboxes[i]) else bboxes[i][3] + 10
                 )
-                x -= 40 + (0 if prediction["count"] < 10 else 75)
-                in_lower_eighth = (
-                    bboxes[i][1] + bboxes[i][3] > 7 * self.img.shape[0] / 8
+            else:  # box is wider than it is tall
+                x = bboxes[i][0]
+                y = bboxes[i][1]
+                if do_rotate:
+                    x, y = self.rotate_pt(x, y)
+                x += 0.5 * bboxes[i][2]
+                y += (
+                    bboxes[i][3] + self.textLabelHeight
+                    if self.reaches_above_img_top(bboxes[i])
+                    else -40
                 )
-                y += -40 if in_lower_eighth else bboxes[i][3] + 40
+
+            # code to change label position based on relative dimensions of the box
+            
             resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
         counting_data = {
             "data": json.dumps(resultsData, separators=(",", ":")),
@@ -287,6 +298,16 @@ class SessionManager:
             counting_data,
         )
         self.annotations[os.path.normpath(self.imgPath)] = resultsData
+
+    def extends_past_img_bottom(self, bbox):
+        return bbox[1] + self.textLabelHeight + bbox[3] > self.img.shape[0]
+
+    def reaches_above_img_top(self, bbox):
+        return bbox[1] - self.textLabelHeight < 0
+
+    def rotate_pt(self, x, y, radians):
+        img_center = list(reversed([el / 2 for el in self.img.shape]))
+        return rotate_around_point_highperf((x, y), radians, img_center)
 
     def createErrorReport(self, edited_counts, user):
         for imgPath in edited_counts:
@@ -321,7 +342,6 @@ class SessionManager:
             writer.writerow(["Egg Counter, ALPHA version"])
             for i, imgPath in enumerate(self.predictions):
                 writer.writerow([imgPath])
-                print("predictions:", self.predictions)
                 first_pred = self.predictions[imgPath][0]
                 if inspect.isclass(first_pred) and issubclass(first_pred, Exception):
                     writer.writerows([[self.errorMessages[first_pred]], []])
@@ -336,18 +356,15 @@ class SessionManager:
                         updated_counts[int(region_index)] = int(
                             edited_counts[base_path][region_index]
                         )
-                print(
-                    "right before writing the line, what are my counts?",
-                    [updated_counts],
-                )
-                # wouldn't have to use the rowColLayout until the end?
-                if row_col_layout:
-                    for i, row in enumerate(row_col_layout):
+                if row_col_layout[i]:
+                    for j, row in enumerate(row_col_layout[i]):
                         num_entries_added = 0
                         row_entries = []
                         for col in range(row[-1] + 1):
                             if col in row:
-                                row_entries.append(ordered_counts[i][num_entries_added])
+                                row_entries.append(
+                                    ordered_counts[i][j][num_entries_added]
+                                )
                                 num_entries_added += 1
                             else:
                                 row_entries.append("")
