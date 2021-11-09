@@ -261,29 +261,16 @@ class SessionManager:
                 )
                 x = bboxes[i][0] + 0.5 * bboxes[i][2]
                 y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
-            elif bboxes[i][3] > bboxes[i][2]:  # box is taller than it is wide
+            else: # position the label inside the upper left corner
                 x = bboxes[i][0]
                 y = bboxes[i][1]
                 if do_rotate:
-                    x, y = self.rotate_pt(x, y)
-                x -= 20 + (0 if prediction["count"] < 10 else 75)
-                y += (
-                    75 if self.extends_past_img_bottom(bboxes[i]) else bboxes[i][3] + 10
-                )
-            else:  # box is wider than it is tall
-                x = bboxes[i][0]
-                y = bboxes[i][1]
-                if do_rotate:
-                    x, y = self.rotate_pt(x, y)
-                x += 0.5 * bboxes[i][2]
-                y += (
-                    bboxes[i][3] + self.textLabelHeight
-                    if self.reaches_above_img_top(bboxes[i])
-                    else -40
-                )
+                    x, y = self.rotate_pt(x, y, -alignment_data["rotationAngle"])
+                x += 50 + (0 if prediction["count"] < 10 else 40)
+                y += self.textLabelHeight
 
             # code to change label position based on relative dimensions of the box
-            
+
             resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
         counting_data = {
             "data": json.dumps(resultsData, separators=(",", ":")),
@@ -306,7 +293,7 @@ class SessionManager:
         return bbox[1] - self.textLabelHeight < 0
 
     def rotate_pt(self, x, y, radians):
-        img_center = list(reversed([el / 2 for el in self.img.shape]))
+        img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))
         return rotate_around_point_highperf((x, y), radians, img_center)
 
     def createErrorReport(self, edited_counts, user):

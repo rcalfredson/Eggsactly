@@ -48,7 +48,7 @@ class NetworkLoader:
         config_path = "configs/unet_backbone_rand_zoom.json"
         self.model_path = (
             "models/splinedist_unet_full_400epochs_"
-            + "Yang-Lab-Dell2_2021-06-10 10-27-45.734240.pth"
+            + "NZXT-U_2021-08-12 08-39-05.733572.pth"
         )
         config = Config(config_path, n_channel_in=3)
         self.network = SplineDist2D(config)
