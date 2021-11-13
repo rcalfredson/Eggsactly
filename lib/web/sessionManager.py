@@ -20,7 +20,12 @@ import torch
 from chamber import CT
 from circleFinder import CircleFinder, rotate_around_point_highperf, rotate_image
 from detectors.fcrn import model
-from lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
+from lib.web.exceptions import (
+    CUDAMemoryException,
+    ImageAnalysisException,
+    ImageIgnoredException,
+    errorMessages,
+)
 
 
 class SessionManager:
@@ -41,16 +46,14 @@ class SessionManager:
         self.room = room
         self.network_loader = network_loader
         self.lastPing = time.time()
-        self.errorMessages = {
-            ImageAnalysisException: "Image could not be analyzed.",
-            CUDAMemoryException: "Error: system ran out of resources",
-        }
         self.textLabelHeight = 96
 
     def clear_data(self):
         self.chamberTypes = {}
         self.predictions = {}
         self.annotations = {}
+        self.alignment_data = {}
+        self.basenames = {}
 
     def emit_to_room(self, evt_name, data):
         self.socketIO.emit(evt_name, data, room=self.room)
@@ -72,6 +75,8 @@ class SessionManager:
         self.emit_to_room(
             "counting-error",
             {
+                "width": self.img.shape[1],
+                "height": self.img.shape[0],
                 "data": "%s counting eggs for image %s"
                 % (prefix, self.basenames[imgPath]),
                 "filename": self.basenames[imgPath],
@@ -182,6 +187,8 @@ class SessionManager:
                 "filename": self.imgBasename,
                 "chamberType": self.cf.ct,
                 "bboxes": self.bboxes,
+                "width": self.img.shape[1],
+                "height": self.img.shape[0],
             },
         )
 
@@ -203,31 +210,45 @@ class SessionManager:
         else:
             self.alignment_data[img_path] = alignment_data
             if "ignored" in alignment_data and alignment_data["ignored"]:
-                self.predictions[img_path].append(ImageAnalysisException)
-                return
-        if "nodes" in alignment_data:
-            self.segment_image_via_alignment_data(img, img_path, alignment_data)
-        elif "bboxes" in alignment_data:
-            self.segment_image_via_bboxes(img, img_path, alignment_data)
-        self.emit_to_room(
-            "counting-progress", {"data": "Counting eggs in image %s" % imgBasename}
-        )
-        num_sub_imgs = len(self.subImgs)
-        for i, subImg in enumerate(self.subImgs):
-            self.emit_to_room(
-                "counting-progress",
-                {
-                    "overwrite": True,
-                    "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
-                },
-            )
-            self.predictions[img_path].append(
-                self.network_loader.predict_instances(subImg)
-            )
+                self.predictions[img_path].append(ImageIgnoredException)
+            else:
+                if "nodes" in alignment_data:
+                    self.segment_image_via_alignment_data(img, img_path, alignment_data)
+                elif "bboxes" in alignment_data:
+                    self.segment_image_via_bboxes(img, img_path, alignment_data)
+                self.emit_to_room(
+                    "counting-progress",
+                    {"data": "Counting eggs in image %s" % imgBasename},
+                )
+                num_sub_imgs = len(self.subImgs)
+                for i, subImg in enumerate(self.subImgs):
+                    self.emit_to_room(
+                        "counting-progress",
+                        {
+                            "overwrite": True,
+                            "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
+                        },
+                    )
+                    self.predictions[img_path].append(
+                        self.network_loader.predict_instances(subImg)
+                    )
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
         self.sendAnnotationsToClient(index, alignment_data)
 
     def sendAnnotationsToClient(self, index, alignment_data):
+        if self.is_exception(self.predictions[self.imgPath][0]):
+            self.emit_to_room(
+                "counting-annotations",
+                {
+                    "index": index,
+                    "filename": self.imgBasename,
+                    "rotationAngle": 0,
+                    "data": json.dumps(
+                        {"error": self.predictions[self.imgPath][0].__name__}
+                    ),
+                },
+            )
+            return
         resultsData = []
         bboxes = self.bboxes
         do_rotate = (
@@ -237,10 +258,7 @@ class SessionManager:
         )
         ct = self.chamberTypes[self.imgPath]
         if alignment_data["type"] and alignment_data["type"] != ct:
-            print("overriding the originally detected chamber type.")
-            print("original chamber type:", ct)
             ct = alignment_data["type"]
-            print("new chamber type:", ct)
         for i, prediction in enumerate(self.predictions[self.imgPath]):
             if ct == CT.large.name:
                 iMod = i % 4
@@ -261,15 +279,13 @@ class SessionManager:
                 )
                 x = bboxes[i][0] + 0.5 * bboxes[i][2]
                 y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
-            else: # position the label inside the upper left corner
+            else:  # position the label inside the upper left corner
                 x = bboxes[i][0]
                 y = bboxes[i][1]
                 if do_rotate:
                     x, y = self.rotate_pt(x, y, -alignment_data["rotationAngle"])
                 x += 50 + (0 if prediction["count"] < 10 else 40)
                 y += self.textLabelHeight
-
-            # code to change label position based on relative dimensions of the box
 
             resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
         counting_data = {
@@ -320,18 +336,23 @@ class SessionManager:
                 )
         self.emit_to_room("report-ready", {})
 
+    @staticmethod
+    def is_exception(my_var):
+        return inspect.isclass(my_var) and issubclass(my_var, Exception)
+
     def saveCSV(self, edited_counts, row_col_layout, ordered_counts):
-        resultsPath = "temp/results_ALPHA_%s.csv" % datetime.today().strftime(
+        resultsPath = "temp/egg_counts_ALPHA_%s.csv" % datetime.today().strftime(
             "%Y-%m-%d_%H-%M-%S"
         )
         with open(resultsPath, "wt", newline="") as resultsFile:
             writer = csv.writer(resultsFile)
             writer.writerow(["Egg Counter, ALPHA version"])
+            writer.writerow([f"Egg detection model: {self.network_loader.model_path}"])
             for i, imgPath in enumerate(self.predictions):
-                writer.writerow([imgPath])
+                writer.writerow([os.path.basename(imgPath)])
                 first_pred = self.predictions[imgPath][0]
-                if inspect.isclass(first_pred) and issubclass(first_pred, Exception):
-                    writer.writerows([[self.errorMessages[first_pred]], []])
+                if self.is_exception(first_pred):
+                    writer.writerows([[errorMessages[first_pred]], []])
                     continue
                 base_path = os.path.basename(imgPath)
                 updated_counts = [el["count"] for el in self.predictions[imgPath]]

@@ -9,6 +9,7 @@ from PIL import Image, ImageFont, ImageDraw
 from circleFinder import rotate_image, rotate_around_point_highperf
 from lib.image import drawing
 from util import putText, textStyle
+from lib.web.exceptions import errorMessages
 
 
 class DownloadManager:
@@ -29,7 +30,7 @@ class DownloadManager:
         ts = str(ts)
         self.sessions[ts] = {
             "session_manager": session_manager,
-            "folder": "temp/results_ALPHA_%s" % ts,
+            "folder": "temp/egg_counts_ALPHA_%s" % ts,
             "edited_counts": edited_counts,
         }
         Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
@@ -129,12 +130,12 @@ class DownloadManager:
             )
         return np.array(img)
 
-    def prepareImageWithError(self, path):
+    def prepareImageWithError(self, path, error_type):
         self.loadFont(140)
         img = Image.fromarray(cv2.imread(path))
         draw = ImageDraw.Draw(img)
         w, h = img.size
-        msg = "Image could not be analyzed."
+        msg = errorMessages[error_type]
         msgW, msgH = draw.textsize(msg, font=self.font)
         draw.text(
             (int(0.5 * (w - msgW)), int(0.5 * (h - msgH))),
@@ -151,7 +152,7 @@ class DownloadManager:
             if inspect.isclass(sm.predictions[path][0]) and issubclass(
                 sm.predictions[path][0], Exception
             ):
-                img = self.prepareImageWithError(path)
+                img = self.prepareImageWithError(path, sm.predictions[path][0])
             else:
                 img = self.prepareAnnotatedImage(sm, ts, path)
             cv2.imwrite(os.path.join(self.sessions[ts]["folder"], self.path_base), img)

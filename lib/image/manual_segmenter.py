@@ -245,7 +245,7 @@ class ManualSegmenter:
         bboxes = np.reshape(np.array(bboxes), (nc, nr * 2, -1))
         bboxes = np.transpose(bboxes, (1, 0, 2))
         bboxes = np.reshape(bboxes, (2 * nr * nc, -1))
-        self.bboxes = bboxes
+        self.bboxes = bboxes.tolist()
         self.sub_imgs = subImagesFromBBoxes(self.image, self.bboxes)
 
     def divide_img(self):

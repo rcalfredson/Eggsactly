@@ -199,9 +199,9 @@ def manual_recount():
     return "OK"
 
 
-@app.route("/reset-session", methods=["POST"])
-def reset_session():
-    sessions[request.form["sid"]].clear_data()
+@socketIO.on('reset-session')
+def reset_session(data):
+    sessions[data["sid"]].clear_data()
 
 
 @app.route("/upload", methods=["POST"])
