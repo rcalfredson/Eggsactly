@@ -364,6 +364,7 @@ class SessionManager:
                         updated_counts[int(region_index)] = int(
                             edited_counts[base_path][region_index]
                         )
+                    
                 if row_col_layout[i]:
                     for j, row in enumerate(row_col_layout[i]):
                         num_entries_added = 0

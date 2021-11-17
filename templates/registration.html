@@ -598,6 +598,23 @@
             });
         }
 
+
+        function missingNumInSeq(source, min = 0, max = source.length - 1) {
+            // using binary search; source of code:
+            // https://stackoverflow.com/a/40067211
+            if (min >= max) {
+                return min + 1;
+            }
+            let pivot = Math.floor((min + max) / 2);
+            // problem is in right side. Only look at right sub array
+            if (source[pivot] === pivot + 1) {
+                return missingNumInSeq(source, pivot + 1, max);
+            } else {
+                return missingNumInSeq(source, min, pivot);
+            }
+        }
+
+
         function updateImageDisplay() {
             while (preview.firstChild) {
                 preview.removeChild(preview.firstChild);
@@ -605,13 +622,21 @@
             let imgInputs = document.getElementsByClassName('img-upload');
             Array.prototype.forEach.call(input.files, (file) => {
                 let id;
+                let filenameParts = fileNameAndExt(file.name);
                 if (file.name in idsByOrigImgName) {
-                    id = makeid(3, idsByOrigImgName[file.name])
+                    let suffixes = idsByOrigImgName[file.name].map(name => {
+                        let firstSplit = name.split(filenameParts[0])[1];
+                        if (!firstSplit.includes('_')) return '';
+                        return firstSplit.split('_')[1].split('.')[0];
+                    }).filter(el => el.length > 0).map(el => parseInt(el, 10))
+                        .sort((a, b) => a - b);
+                    let missingNum = missingNumInSeq(suffixes);
+                    id = (suffixes.includes(missingNum) ?
+                        idsByOrigImgName[file.name].length : missingNum).toString()
                 } else {
-                    id = ''
+                    id = '';
                 }
 
-                let filenameParts = fileNameAndExt(file.name);
                 let imgUniqueName = `${filenameParts[0]}${id.length
                     > 0 ? `_${id}` : ''}.${filenameParts[1]}`
                 if (file.name in idsByOrigImgName) {
@@ -729,12 +754,80 @@
                 chamberRealignmentData[index].customMode === 'grid';
         }
 
+        function groupBoxesByPosition(boxes, mode) {
+            let groups = [];
+            let groupPropName = `${mode}Num`;
+            let posPropName = `${mode === 'row' ? 'y' : 'x'}Pos`;
+            let sizePropName = mode === 'row' ? 'ht' : 'wd';
+            boxes.forEach(box => {
+                if (groups.length === 0) {
+                    chamberRealignmentData[currentImgIndex].maskBBoxes[box.id][groupPropName] = 0;
+                    groups.push([box])
+                    return;
+                }
+                let i = groups.length - 1;
+                let j = groups[i].length - 1;
+                if (box[posPropName] - groups[i][j][posPropName] >
+                    0.5 * groups[i][j][sizePropName]) {
+                    chamberRealignmentData[currentImgIndex].maskBBoxes[
+                        box.id][groupPropName] = i + 1;
+                    groups.push([box]);
+                } else {
+                    chamberRealignmentData[currentImgIndex].maskBBoxes[
+                        box.id][groupPropName] = i;
+                    groups[i].push(box);
+                }
+            });
+        }
+
+        function collectRowColCountLayoutForFreehandMasks(results, imgIndex) {
+            let boxesSimplified = Object.keys(chamberRealignmentData[imgIndex].maskBBoxes).
+                map((box,) => {
+                    box = chamberRealignmentData[imgIndex].maskBBoxes[box];
+                    return {
+                        yPos: box.bounds.point.y, ht: box.bounds.height,
+                        xPos: box.bounds.point.x, wd: box.bounds.width,
+                        id: box.id,
+                    };
+                }
+                );
+            groupBoxesByPosition(boxesSimplified.sort((a, b) => a.yPos - b.yPos), 'row');
+            groupBoxesByPosition(boxesSimplified.sort((a, b) => a.xPos - b.xPos), 'col');
+            let rowColLayout = [];
+            let orderedCounts = [];
+
+            Object.keys(chamberRealignmentData[imgIndex].maskBBoxes).forEach((box, index) => {
+                box = chamberRealignmentData[imgIndex].maskBBoxes[box];
+                if (rowColLayout.length < box.rowNum + 1) {
+                    let currentLength = rowColLayout.length
+                    for (let i = 0; i < box.rowNum + 1 - currentLength; i++) {
+                        rowColLayout.push([]);
+                        orderedCounts.push([]);
+                    }
+                }
+                rowColLayout[box.rowNum].push([box.colNum,
+                annotations[orderedImgNames[imgIndex]][index].count]);
+            });
+            rowColLayout.forEach((row, index) => {
+                let origRow = row;
+                rowColLayout[index] = row.sort((a, b) => a[0] - b[0]);
+            });
+            rowColLayout.forEach((row, i) => {
+                row.forEach((entry, j) => {
+                    orderedCounts[i].push(entry[1]);
+                    rowColLayout[i][j] = entry[0]
+                })
+            });
+            results.rowsCols.push(rowColLayout);
+            results.orderedCounts.push(orderedCounts);
+            return results;
+        }
+
         function collectRowColCountLayout() {
             let results = { rowsCols: [], orderedCounts: [] };
             orderedImgNames.forEach((name, i) => {
                 if (!imageUsesGridBoxes(i)) {
-                    results.rowsCols.push(null);
-                    results.orderedCounts.push(null);
+                    results = collectRowColCountLayoutForFreehandMasks(results, i);
                     return;
                 }
                 updateGridlineXYPositions(i);
@@ -2036,7 +2129,7 @@
             document.getElementById('download-csv').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
                 displayLoadingMessage(evt.target);
-                let rowsColsCounts = collectRowColCountLayout()
+                let rowsColsCounts = collectRowColCountLayout();
                 socket.emit('prepare-csv', {
                     time: Date.now(),
                     sid: sid,
@@ -2923,12 +3016,17 @@
             setDragHandler();
         }
 
-        function checkForAnnotatedGridlineImages(index, untriaged) {
+        function checkForAnnotatedCustomMaskImages(index, untriaged) {
             if (!imageUsesGridBoxes()) {
-                return untriaged;
-            }
-            if (!chamberRealignmentData[index].gridlineBBoxes ||
-                !Object.keys(chamberRealignmentData[index].gridlineBBoxes).some(el => { return chamberRealignmentData[index].gridlineBBoxes[el].selected })) {
+                if (!chamberRealignmentData[index].maskBBoxes ||
+                    Object.keys(chamberRealignmentData[index].maskBBoxes).length === 0) {
+                    untriaged.push(index + 1);
+                }
+            } else if (!chamberRealignmentData[index].gridlineBBoxes ||
+                !Object.keys(chamberRealignmentData[index].gridlineBBoxes).some(
+                    el => {
+                        return chamberRealignmentData[index].gridlineBBoxes[el].selected;
+                    })) {
                 untriaged.push(index + 1);
             }
             return untriaged;
@@ -2944,7 +3042,7 @@
                     untriaged.push(index + 1)
                     continue;
                 }
-                if (checkForAnnotatedGridlineImages(index, untriaged)) {
+                if (checkForAnnotatedCustomMaskImages(index, untriaged)) {
                     continue;
                 }
                 else if (!(chamberRealignmentData[index].ignored ||
@@ -3110,22 +3208,24 @@
             )
             innerRect.data.parent = newRect.id;
             innerRect.onClick = (e) => {
-                let myBox = chamberRealignmentData[currentImgIndex].maskBBoxes[innerRect.data.parent];
+                let myBox = chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent];
                 if (myBox.data.state === 'delete') {
                     if (lastCanvasMoveTime - lastMouseDownTime > 0) {
                         return;
                     }
-                    myBox.remove();
-                    myBox.data.innerRect.remove();
                     myBox.data.corners.forEach(corner => {
                         corner.remove();
                     });
-                    delete myBox;
+                    myBox.data.innerRect.remove();
+                    myBox.remove();
+                    delete myBox.data.innerRect;
                     currentMaskBBox = null;
+                    delete chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent];
+                    updateRetryAnalysisButtonAppearance();
                 }
             }
-            innerRect.onMouseMove = () => {
-                let myBox = chamberRealignmentData[currentImgIndex].maskBBoxes[innerRect.data.parent];
+            innerRect.onMouseMove = (e) => {
+                let myBox = chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent];
                 if (myBox.data.state === 'resizing'
                     || pointerDown) {
                     return;
@@ -3140,12 +3240,15 @@
                 }
                 currentMaskBBox = innerRect.data.parent;
             }
-            innerRect.onMouseLeave = () => {
+            innerRect.onMouseLeave = (e) => {
+                if (!chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent]) {
+                    return;
+                }
                 if (pointerDown) {
                     return;
                 }
                 currentMaskBBox = null;
-                chamberRealignmentData[currentImgIndex].maskBBoxes[innerRect.data.parent].strokeColor = colors.grey;
+                chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent].strokeColor = colors.grey;
             }
             currentMaskBBox = newRect.id;
             newRect.data.state = null;
@@ -3210,6 +3313,7 @@
             createMaskBBox([[evt.downPoint.x - 2, evt.downPoint.y - 2],
             [evt.point.x, evt.point.y]
             ]);
+            updateRetryAnalysisButtonAppearance();
         }
 
         var setDragHandler = () => {

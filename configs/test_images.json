@@ -1,0 +1,41 @@
+{
+    "sixByFour_0002": {
+        "test": [
+            "watch",
+            "regression"
+        ],
+        "type": "sixByFour",
+        "path": "/media/Synology3/Rebecca/2021_10_30/IMG_0002.JPG",
+        "csv": "static/test_data/egg_ct_official_2021_10_30_img_0002.csv"
+    },
+    "opto_0005": {
+        "test": [
+            "regression"
+        ],
+        "type": "opto",
+        "path": "/media/Synology3/Rebecca/2021_10_30/IMG_0005.JPG",
+        "csv": "static/test_data/egg_ct_official_2021_10_30_img_0005.csv"
+    },
+    "fiveByThree_0003": {
+        "test": [
+            "regression"
+        ],
+        "type": "fiveByThree",
+        "path": "/media/Synology3/Rebecca/2021_11_3/IMG_0003.JPG",
+        "csv": "static/test_data/egg_ct_official_2021_11_3_img_0003.csv"
+    },
+    "large_0003": {
+        "test": [],
+        "type": "large",
+        "path": "/media/Synology3/Rebecca/2021_10_1/IMG_0003.JPG",
+        "csv": "static/test_data/egg_ct_official_2021_10_1_img_0003.csv"
+    },
+    "large_0006": {
+        "test": [
+            "regression"
+        ],
+        "type": "large",
+        "path": "/media/Synology3/Rebecca/2021_10_1/IMG_0006.JPG",
+        "csv": "static/test_data/egg_ct_official_2021_10_1_img_0006.csv"
+    }
+}
