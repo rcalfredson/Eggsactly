@@ -2,8 +2,14 @@ html {
   font: 1rem 'Fira Sans', sans-serif;
 }
 
+body {
+  margin: 8px;
+  color: rgb(5, 4, 28)
+}
+
 .modal {
   display: none;
+  bottom: unset;
 }
 
 #page-mask {
@@ -169,6 +175,7 @@ form p {
 
 #help-pane {
   border: 2px solid rgb(106, 126, 116);
+  box-sizing: content-box;
   display: inline-block;
   border-radius: 4px;
   width: 300px;
@@ -200,6 +207,7 @@ form p {
 }
 
 #img-form {
+  box-sizing: content-box;
   width: 600px;
   padding: 20px;
   background-color: rgb(201, 201, 201);

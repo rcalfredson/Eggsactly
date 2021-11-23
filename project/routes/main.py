@@ -39,15 +39,17 @@ def remove_old_files(folder):
 
 @main.route("/", methods=["GET", "POST"])
 def index():
+    print("what is the current user?", current_user)
+    name = current_user.name if hasattr(current_user, "name") else None
     return render_template(
-        "registration.html", users=map(str.capitalize, sorted(users))
+        "registration.html", users=map(str.capitalize, sorted(users)), name=name
     )
 
 
 @main.route("/profile")
 @login_required
 def profile():
-    return render_template('profile.html', name=current_user.name)
+    return render_template("profile.html", name=current_user.name)
 
 
 @main.route("/uploads/<filename>")

@@ -1,6 +1,7 @@
 <!doctype html>
 
 <head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.2/css/bulma.min.css" />
     <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/main.css') }}">
     <style>
         body {
@@ -17,15 +18,54 @@
 </head>
 
 <body>
+    <div class="hero-head">
+        <nav class="navbar">
+            <div class="container">
+                <div id="navbarMenuHeroA" class="navbar-menu">
+                    <div class="navbar-end">
+                        {% if current_user.is_authenticated %}
+                        <span class="navbar-item">
+                            User: {{ name }}
+                        </span>
+                        {% endif %}
+                        {% if not current_user.is_authenticated %}
+                        <a href="{{ url_for('auth.login') }}" class="navbar-item">
+                            Login
+                        </a>
+                        <a href="{{ url_for('auth.signup') }}" class="navbar-item">
+                            Sign Up
+                        </a>
+                        {% endif %}
+                        {% if current_user.is_authenticated %}
+                        <a href="{{ url_for('auth.logout') }}" class="navbar-item">
+                            Logout
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </div>
+    {% if current_user.is_authenticated %}
+    <script type="text/javascript">
+        var loggedIn = true;
+    </script>
+    {% else %}
+    <script type="text/javascript">
+        var loggedIn = false;
+    </script>
+    {% endif %}
     <script type="text/javascript">
         const socket = io();
+        console.log(`am I logged in? ${loggedIn}`);
         function rgb(r, g, b) {
             return "rgb(" + r + "," + g + "," + b + ")";
         }
         const colors = {
-            grey: '#313036',
-            red: '#fc2c03',
-            lightGrey: rgb(115, 109, 125)
+            lightRed: '#fc2c03',
+            red: rgb(155, 18, 29),
+            lightGrey: rgb(115, 109, 125),
+            grey: '#313036'
         };
         const errorMessages = {
             ImageAnalysisException: 'Image could not be analyzed.',
@@ -545,14 +585,7 @@
                 });
                 maskList.value = msg.currentMask;
             }
-            let maskMsgBox = document.getElementById('mask-name-message-box');
-            maskMsgBox.style.color = 'green';
-            maskMsgBox.innerText = 'Mask saved!'
-            setTimeout(() => {
-                let maskMsgBox = document.getElementById('mask-name-message-box');
-                maskMsgBox.style.color = 'rgb(155, 18, 29)';
-                maskMsgBox.innerText = '';
-            }, 3000);
+            displayMaskMessage('Mask saved!', 'green');
         })
         socket.on('report-ready', () => {
             let el = document.getElementById('submit-error-report');
@@ -997,6 +1030,17 @@
                 indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
         }
 
+        function displayMaskMessage(message, color) {
+            let maskMsgBox = document.getElementById('mask-name-message-box');
+            maskMsgBox.style.color = color;
+            maskMsgBox.innerText = message;
+            setTimeout(() => {
+                let maskMsgBox = document.getElementById('mask-name-message-box');
+                maskMsgBox.style.color = 'rgb(155, 18, 29)';
+                maskMsgBox.innerText = '';
+            }, 3000);
+        }
+
         function addMaskSelectionButtons() {
             displayMaskList();
             let newButtonGroup = document.createElement('div');
@@ -1179,6 +1223,12 @@
         }
 
         function saveCustomMask() {
+            if (!loggedIn) {
+                console.log('Not saving the mask because the user isnt logged in.');
+
+                displayMaskMessage('Please log in to save a mask.');
+                return;
+            }
             let reducedData = {};
             reducedData = addGridlinesToSaveData(currentImgIndex, reducedData);
             reducedData = addGridlineBoxesToSaveData(currentImgIndex, reducedData);
@@ -2984,7 +3034,7 @@
                             // recreate the inner fill
                             let origFill = reg.fill;
                             reg.outline = drawnRectangles.outline;
-                            reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
+                            reg.outline.strokeColor = reg.beenEdited() ? colors.lightRed : colors.grey;
                             reg.fill = drawnRectangles.fill;
 
 
@@ -2997,7 +3047,7 @@
                                         origText.point.y));
                                     reg.text.content = origText.content;
                                     reg.text.justification = 'center';
-                                    reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
+                                    reg.text.fillColor = reg.beenEdited() ? colors.lightRed : 'black';
                                     reg.text.fontSize = origText.fontSize;
                                 }
                                 let origEggShapes = reg.eggShapes;
@@ -3061,7 +3111,7 @@
             reg.text = new paper.PointText(new paper.Point(reg.centeredTextPosition.x, reg.centeredTextPosition.y - 10));
             reg.text.content = value;
             reg.text.justification = 'center';
-            reg.text.fillColor = colors.red;
+            reg.text.fillColor = colors.lightRed;
             reg.text.fontSize = origText.fontSize;
             if (reg.textPredicted) {
                 reg.textPredicted.remove();
@@ -3082,8 +3132,8 @@
                     eggLayingRegions[index][path.id].outline.strokeWidth = 2;
                     return;
                 }
-                eggLayingRegions[index][path.id].text.fillColor = colors.red;
-                eggLayingRegions[index][path.id].outline.strokeColor = colors.red;
+                eggLayingRegions[index][path.id].text.fillColor = colors.lightRed;
+                eggLayingRegions[index][path.id].outline.strokeColor = colors.lightRed;
             }
             path.onMouseLeave = () => {
                 if (inputAmender) {
@@ -3122,8 +3172,8 @@
                 inputAmender.placeholder = 'e.g., 42';
                 viewer.appendChild(inputAmender);
                 inputAmender.focus();
-                eggLayingRegions[index][path.id].text.fillColor = colors.red;
-                eggLayingRegions[index][path.id].outline.strokeColor = colors.red;
+                eggLayingRegions[index][path.id].text.fillColor = colors.lightRed;
+                eggLayingRegions[index][path.id].outline.strokeColor = colors.lightRed;
                 inputAmender.onkeydown = checkIfEnterKeyPressed
                 inputAmender.oninput = amendEggCount;
             }
@@ -3139,8 +3189,8 @@
         var amendEggCount = function (event, value = null) {
             if (lastKeyPressed === 'Escape') {
                 let reg = eggLayingRegions[currentImgIndex][pathAmendId];
-                reg.text.fillColor = reg.beenEdited() ? colors.red : 'black';
-                reg.outline.strokeColor = reg.beenEdited() ? colors.red : colors.grey;
+                reg.text.fillColor = reg.beenEdited() ? colors.lightRed : 'black';
+                reg.outline.strokeColor = reg.beenEdited() ? colors.lightRed : colors.grey;
                 reg.outline.strokeWidth = 1;
                 reg.text.opacity = 1.0;
                 inputAmender.remove();
