@@ -91,8 +91,13 @@
         let lastCanvasMoveTime;
         let canvas;
         let canvasLoaded = false;
-        let canvasWidth = Math.min(1300, window.innerWidth),
-            canvasHeight = Math.min(800, window.innerHeight);
+        let canvasWidth = Math.min(1300, window.innerWidth);
+        let canvasHeight = 800;
+        const alignmentHelpDialogElements = [
+            'frame', 'text', 'button', 'buttonText', 'hoverSensor',
+            'exampleImage'
+        ];
+        let alignmentHelpDialog = {};
         let logUpdates = [];
         let upperPadding, leftPadding;
         let scalingFactor;
@@ -176,7 +181,7 @@
             setEventHandler(name, handler) {
                 if (handler instanceof Function) {
                     this[name] = () => {
-                        handler(this);
+                        return handler(this);
                     };
                 } else {
                     this[name] = this.defaultEventResponse;
@@ -187,13 +192,18 @@
             }
             addMouseEventHandlers() {
                 this.paperCirc.onMouseDrag = (evt) => {
+                    if (this.doOnDrag() === false) {
+                        return;
+                    }
                     shapeBeingDragged = true;
                     this.paperCirc.position.x += evt.delta.x;
                     this.paperCirc.position.y += evt.delta.y;
                     this.paperCirc.opacity = 0;
-                    this.doOnDrag();
                 };
                 this.paperCirc.onMouseEnter = () => {
+                    if (this.doOnEnter() === false) {
+                        return;
+                    }
                     if (shapeBeingDragged) {
                         return;
                     }
@@ -203,7 +213,6 @@
                     );
                     this.paperCirc.remove();
                     this.paperCirc = newCircle;
-                    this.doOnEnter();
                     this.addMouseEventHandlers()
                 };
                 this.paperCirc.onMouseLeave = () => {
@@ -220,9 +229,11 @@
                     this.addMouseEventHandlers();
                 }
                 this.paperCirc.onMouseUp = () => {
+                    if (this.doOnMouseUp() === false) {
+                        return;
+                    }
                     shapeBeingDragged = false;
                     this.paperCirc.opacity = 1;
-                    this.doOnMouseUp();
                 };
             }
             circleArgs(position, radius) {
@@ -1943,7 +1954,11 @@
 
         function setUpMaskCreationInterface() {
             resetCurrentRealignmentMarkers();
-            if (!document.getElementById('help-pane')) {
+            let helpPane = document.getElementById('help-pane');
+            if (helpPane.style.display === 'none') {
+                helpPane.style.display = 'inline-block';
+            }
+            if (!helpPane) {
                 $('#viewer').append('<div id=help-pane></div>');
             }
             $('#help-pane').empty();
@@ -2030,6 +2045,7 @@
             if (countingState === countingStates.pre) {
                 document.getElementById('chamber-type-select').onchange = (evt) => {
                     if (evt.target.value == 'custom') {
+                        clearAlignmentGuideHelpBox();
                         editMode = 'mask';
                         tempMaskBBoxes = {};
                         tempMaskGridlines = { horiz: {}, vert: {} };
@@ -2062,7 +2078,6 @@
                         };
                         updateRetryAnalysisButtonAppearance();
                     }
-                    console.log('redrawing the canvas');
                     redrawCanvas();
                 };
                 if (countingState !== countingStates.pre) return;
@@ -2406,6 +2421,7 @@
         }
 
         var updateRealignmentGuide = function () {
+            document.getElementById('help-pane').style.display = 'inline-block';
             if (chamberRealignmentData[currentImgIndex] &&
                 chamberRealignmentData[currentImgIndex].type === 'custom'
             ) {
@@ -2421,12 +2437,186 @@
                 setHelpPaneTextIfNoMarkers({ noChamberTypeSelected, imageIgnored, chamberTypeDetected })
                 return;
             }
-            document.getElementById('help-pane').style.height = '400px';
-            document.getElementById('help-pane').innerText = 'Please drag the line' +
-            ' endpoints so that the lines are positioned as shown.';
-            let exampleImg = document.createElement('img');
-            exampleImg.setAttribute('src', `static/imgs/${chamberRealignmentData[currentImgIndex].type}_chamber_lines.jpg`);
-            document.getElementById('help-pane').append(exampleImg);
+            document.getElementById('help-pane').style.display = 'none';
+        }
+
+        function updateHelpBoxElements(framePosition, fontSize) {
+            alignmentHelpDialog.frame.position = framePosition;
+            alignmentHelpDialog.text.fontSize = fontSize;
+            alignmentHelpDialog.text.point = getHelpTextPos();
+            let buttonBounds = getHelpButtonCorners();
+            let centerPosition = [
+                0.5 * (buttonBounds.ul.x + buttonBounds.br.x),
+                0.5 * (buttonBounds.ul.y + buttonBounds.br.y)
+            ]
+            alignmentHelpDialog.button.position = new paper.Point(
+                ...centerPosition
+            );
+            alignmentHelpDialog.hoverSensor.position = new paper.Point(
+                ...centerPosition
+            );
+            resizeHelpExampleImage();
+        }
+
+        function bringHelpBoxElementsToFront() {
+            alignmentHelpDialogElements.forEach(element => {
+                alignmentHelpDialog[element].bringToFront();
+            })
+        }
+
+        function helpBoxIsMaximized() {
+            return alignmentHelpDialog.buttonText && (
+                alignmentHelpDialog.buttonText.content.includes('Start') ||
+                alignmentHelpDialog.buttonText.content.includes('Resume')
+            )
+        }
+
+        function resizeAlignmentGuideHelpBox() {
+            if (helpBoxIsMaximized()) {
+                let horizLBound = backgroundRaster.position.x -
+                    0.20 * backgroundRaster.bounds.width;
+                let horizUBound = backgroundRaster.position.x +
+                    0.49 * backgroundRaster.bounds.width;
+                let newHorizPosition = 0.5 * (horizLBound + horizUBound);
+                let vertLBound = backgroundRaster.position.y -
+                    0.20 * backgroundRaster.bounds.height;
+                let vertUBound = backgroundRaster.position.y +
+                    0.49 * backgroundRaster.bounds.height;
+                let newVertPosition = 0.5 * (vertLBound + vertUBound);
+                alignmentHelpDialog.frame.bounds.width = horizUBound - horizLBound;
+                alignmentHelpDialog.frame.bounds.height = vertUBound - vertLBound;
+                updateHelpBoxElements(new paper.Point(
+                    newHorizPosition, newVertPosition
+                ), '10pt');
+                updateHelpButtonText('Maximize example image');
+            } else if (alignmentHelpDialog.buttonText.content.includes('Maximize')) {
+                let boxBounds = calculateFullSizeHelpBoxBounds();
+                alignmentHelpDialog.frame.bounds.width = boxBounds.br.x - boxBounds.ul.x;
+                alignmentHelpDialog.frame.bounds.height = boxBounds.br.y - boxBounds.ul.y;
+                updateHelpBoxElements(new paper.Point(
+                    0.5 * (boxBounds.br.x + boxBounds.ul.x),
+                    0.5 * (boxBounds.br.y + boxBounds.ul.y)), '15pt');
+                updateHelpButtonText('Resume alignment');
+            }
+            bringHelpBoxElementsToFront();
+        }
+
+        function calculateFullSizeHelpBoxBounds() {
+            let guideBoxPadding = { leftRight: 80, topBottom: 15 };
+            let boxULCorner = new paper.Point(guideBoxPadding.leftRight,
+                guideBoxPadding.topBottom);
+            let boxBRCorner = new paper.Point(project.view.size.width - guideBoxPadding.leftRight,
+                project.view.size.height - guideBoxPadding.topBottom);
+            return { ul: boxULCorner, br: boxBRCorner };
+        }
+
+        function updateHelpButtonText(newText) {
+            alignmentHelpDialog.buttonText.content = newText;
+            alignmentHelpDialog.buttonText.point = new paper.Point(
+                alignmentHelpDialog.button.position.x -
+                0.5 * alignmentHelpDialog.buttonText.bounds.width,
+                alignmentHelpDialog.button.position.y +
+                0.3 * alignmentHelpDialog.buttonText.bounds.height
+            );
+        }
+
+        function getHelpButtonCorners() {
+            let buttonWidth = 200;
+            let buttonXPos = alignmentHelpDialog.frame.position.x - 0.5 * buttonWidth;
+            let buttonULCorner = new paper.Point(alignmentHelpDialog.frame.position.x - 0.5 * buttonWidth,
+                alignmentHelpDialog.text.position.y + 20);
+            let buttonBRCorner = new paper.Point(buttonULCorner.x + buttonWidth,
+                buttonULCorner.y + 40)
+            return { ul: buttonULCorner, br: buttonBRCorner };
+        }
+
+        function getHelpTextPos() {
+            let textXPos = alignmentHelpDialog.frame.position.x - 0.5 * alignmentHelpDialog.text.bounds.width // midpoint of the box minus half of width of the text.
+            return new paper.Point(textXPos,
+                40 + alignmentHelpDialog.frame.position.y -
+                0.5 * alignmentHelpDialog.frame.bounds.height)
+        }
+
+        function resizeHelpExampleImage() {
+            let allottedHt = alignmentHelpDialog.frame.position.y +
+                + 0.5 * alignmentHelpDialog.frame.bounds.height - (
+                    alignmentHelpDialog.button.position.y +
+                    0.5 * alignmentHelpDialog.button.bounds.height
+                );
+            let allottedWidth = 0.95 * alignmentHelpDialog.frame.bounds.width;
+            let egScaling = Math.min(0.95 * allottedHt / alignmentHelpDialog.exampleImage.height,
+                allottedWidth / alignmentHelpDialog.exampleImage.width);
+            if (alignmentHelpDialog.imgScaling) {
+                alignmentHelpDialog.exampleImage.scale(1 / alignmentHelpDialog.imgScaling)
+            }
+            alignmentHelpDialog.imgScaling = egScaling;
+            alignmentHelpDialog.exampleImage.scale(egScaling);
+            alignmentHelpDialog.exampleImage.position = new paper.Point(
+                alignmentHelpDialog.frame.position.x,
+                alignmentHelpDialog.frame.position.y +
+                0.5 * alignmentHelpDialog.frame.bounds.height - 0.5 * allottedHt
+            );
+        }
+
+        function clearAlignmentGuideHelpBox() {
+            alignmentHelpDialogElements.concat(['imgScaling']).forEach(
+                componentType => {
+                    if (alignmentHelpDialog[componentType]) {
+                        if (alignmentHelpDialog[componentType].remove) {
+                            alignmentHelpDialog[componentType].remove();
+                        }
+                        alignmentHelpDialog[componentType] = null;
+                    }
+                });
+        }
+
+        function drawAlignmentGuideHelpBox() {
+            clearAlignmentGuideHelpBox();
+            let boxBounds = calculateFullSizeHelpBoxBounds()
+            alignmentHelpDialog.frame = new paper.Path.Rectangle(boxBounds.ul,
+                boxBounds.br);
+            alignmentHelpDialog.frame.strokeColor = 'black';
+            alignmentHelpDialog.frame.strokeWidth = 3;
+            alignmentHelpDialog.frame.fillColor = 'white';
+            alignmentHelpDialog.text = new paper.PointText(new paper.Point(0, 0))
+            alignmentHelpDialog.text.content = "Please drag the line endpoints on your" +
+                " image so that the lines are positioned\nas shown in the example."
+            alignmentHelpDialog.fontSize = 16;
+            do {
+                alignmentHelpDialog.fontSize -= 1;
+                alignmentHelpDialog.text.fontSize = `${alignmentHelpDialog.fontSize}pt`;
+                alignmentHelpDialog.text.point = getHelpTextPos();
+            } while (!alignmentHelpDialog.text.isInside(alignmentHelpDialog.frame.bounds))
+
+            let buttonBounds = getHelpButtonCorners();
+            alignmentHelpDialog.button = new paper.Shape.Rectangle(
+                buttonBounds.ul, buttonBounds.br);
+            alignmentHelpDialog.button.radius = 5;
+            alignmentHelpDialog.button.fillColor = '#7F9CCB';
+            alignmentHelpDialog.button.strokeColor = 'black';
+            alignmentHelpDialog.button.strokeWidth = 0.5;
+            alignmentHelpDialog.buttonText = new PointText(new paper.Point(0, 0));
+            alignmentHelpDialog.buttonText.fontSize = '10pt';
+            updateHelpButtonText('Start alignment');
+            alignmentHelpDialog.hoverSensor = new paper.Shape.Rectangle(
+                buttonBounds.ul, buttonBounds.br
+            );
+            alignmentHelpDialog.hoverSensor.fillColor = 'black';
+            alignmentHelpDialog.hoverSensor.opacity = 0;
+            alignmentHelpDialog.hoverSensor.onMouseEnter = () => {
+                alignmentHelpDialog.button.strokeWidth = 2;
+            }
+            alignmentHelpDialog.hoverSensor.onMouseLeave = () => {
+                alignmentHelpDialog.button.strokeWidth = 0.5;
+            }
+            alignmentHelpDialog.hoverSensor.onClick = resizeAlignmentGuideHelpBox;
+            if (!alignmentHelpDialog.exampleImage) {
+                alignmentHelpDialog.exampleImage = new paper.Raster('static/imgs/' +
+                    chamberRealignmentData[currentImgIndex].type + '_chamber_lines.jpg');
+                alignmentHelpDialog.exampleImage.onLoad = () => {
+                    resizeHelpExampleImage();
+                }
+            }
         }
 
         function resetCurrentRealignmentMarkers() {
@@ -2476,6 +2666,9 @@
             };
             let eventHandlers = {
                 onDrag: (circle) => {
+                    if (helpBoxIsMaximized()) {
+                        return false;
+                    }
                     let lineDefaults = { strokeColor: 'red', strokeWidth: 2 };
                     if (circle.name === 'end1' || circle.name === 'middle') {
                         currentRealignmentMarkers.lines.toEnd1.remove();
@@ -2497,9 +2690,17 @@
                         });
                     }
                 },
-                onEnter: null,
+                onEnter: () => {
+                    if (helpBoxIsMaximized()) {
+                        return false;
+                    }
+                },
                 onLeave: null,
                 onMouseUp: (circle) => {
+                    if (helpBoxIsMaximized()) {
+                        return false;
+                    }
+
                     chamberRealignmentData[currentImgIndex].nodes[circle.name] = [
                         currentRealignmentMarkers.circles[circle.name].position.x,
                         currentRealignmentMarkers.circles[circle.name].position.y
@@ -2511,10 +2712,11 @@
                     new DraggableCircle(currentNodes[node], 'red', 6,
                         eventHandlers, node);
             });
+            tempCursor = null;
+            drawAlignmentGuideHelpBox();
         }
 
         function resetNavButtons() {
-            console.log('resetting the nav buttons');
             if (currentImgIndex === 0) {
                 document.getElementById('prev-img').setAttribute('disabled', true);
             } else if (currentImgIndex === orderedImgNames.length - 1) {
@@ -2638,7 +2840,6 @@
 
             canvasLoaded = false;
             if (opts.startAtBeginning === true) {
-                console.log('initializing the nav buttons');
                 initializeNavButtons();
             } else {
                 resetNavButtons();
@@ -3112,6 +3313,7 @@
         }
 
         function checkForAnnotatedCustomMaskImages(index, untriaged) {
+            if (!imageUsesCustomMasks()) return untriaged;
             if (!imageUsesGridBoxes()) {
                 if (!chamberRealignmentData[index].maskBBoxes ||
                     Object.keys(chamberRealignmentData[index].maskBBoxes).length === 0) {
