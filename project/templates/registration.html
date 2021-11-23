@@ -22,25 +22,25 @@
         <nav class="navbar">
             <div class="container">
                 <div id="navbarMenuHeroA" class="navbar-menu">
-                    <div class="navbar-end">
+                    <div id=userinfo-nav class="navbar-end">
                         {% if current_user.is_authenticated %}
-                        <span class="navbar-item">
+                        <span id=username-text class="navbar-item">
                             User: {{ name }}
                         </span>
                         {% endif %}
                         {% if not current_user.is_authenticated %}
-                        <a href="{{ url_for('auth.login') }}" class="navbar-item">
+                        <a id=login-link href="#" class="navbar-item">
                             Login
                         </a>
-                        <a href="{{ url_for('auth.signup') }}" class="navbar-item">
+                        <a id=signup-link href="{{ url_for('auth.signup') }}" class="navbar-item">
                             Sign Up
                         </a>
                         {% endif %}
-                        {% if current_user.is_authenticated %}
-                        <a href="{{ url_for('auth.logout') }}" class="navbar-item">
+
+                        <a id=logout-link {% if not current_user.is_authenticated %} style="display: none;" {% endif %}
+                            href="{{ url_for('auth.logout') }}" class="navbar-item">
                             Logout
                         </a>
-                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -57,7 +57,6 @@
     {% endif %}
     <script type="text/javascript">
         const socket = io();
-        console.log(`am I logged in? ${loggedIn}`);
         function rgb(r, g, b) {
             return "rgb(" + r + "," + g + "," + b + ")";
         }
@@ -575,6 +574,10 @@
             addMaskSelectionButtons();
         });
         socket.on('mask-list-update', msg => {
+            if (msg.fail === 'no_auth') {
+                displayMaskMessage('Please log in to save a mask.');
+                return;
+            }
             let maskList = document.getElementById('mask-list')
             removeOptions(maskList);
             if (msg.names.length > 0) {
@@ -639,10 +642,15 @@
                     showEggOutlines();
                 }
             });
-            document.getElementById('page-mask').style.display = 'none';
-            document.getElementById('modal-1').removeAttribute('style');
+            hideModal();
             setUpFileUploadDialog();
+            setUpLoginButtonAction();
         });
+
+        function hideModal() {
+            document.getElementById('page-mask').style.display = 'none';
+            document.getElementById('modal-1').classList.remove('is-open')
+        }
 
         var setupPings = function () {
             setInterval(() => {
@@ -674,6 +682,102 @@
             preview = document.querySelector('.preview');
             input.addEventListener('change', updateImageDisplay);
             inputReset.onclick = handleResetClick;
+        }
+
+        function setUpLoginButtonAction() {
+            let loginLink = document.getElementById('login-link');
+            if (!loginLink) {
+                return;
+            }
+            loginLink.onclick = startLoginActionViaModal;
+        }
+
+        function startLoginActionViaModal() {
+            document.getElementById('modal-1-title').innerText = 'Login'
+            let modalMessage = document.getElementById('modal-1-message');
+            modalMessage.innerHTML = '';
+            let loginForm = document.createElement('form');
+            loginForm.id = 'modal-login-form'
+            function addField(type, placeholder) {
+                let field = document.createElement('div');
+                loginForm.appendChild(field);
+                field.classList.add('field');
+                let control = document.createElement('div');
+                field.appendChild(control);
+                control.classList.add('control');
+                let input = document.createElement('input')
+                control.appendChild(input);
+                input.classList.add('input', 'is-large');
+                input.type = type;
+                input.name = type;
+                input.placeholder = placeholder;
+                return input
+            }
+            addField('email', 'Your Email').autofocus = "";
+            addField('password', 'Your Password');
+            let field = document.createElement('div');
+            field.classList.add('field');
+            loginForm.appendChild(field);
+            let label = document.createElement('label');
+            label.classList.add('checkbox');
+            let input = document.createElement('input');
+            input.type = 'checkbox';
+            input.name = 'remember';
+            input.id = 'remember-me-check';
+            label.id = 'remember-me';
+            label.innerText = 'Remember me';
+            label.prepend(input);
+
+            field.appendChild(label);
+            let button = document.createElement('button');
+            button.type = 'button';
+            button.classList.add('button', 'is-block', 'is-info', 'is-large',
+                'is-fullwidth')
+            button.innerText = 'Login';
+            loginForm.appendChild(button);
+            button.onclick = loginViaXHR;
+            modalMessage.appendChild(loginForm);
+            document.getElementById('modalToggle').click();
+        }
+
+        function loginViaXHR() {
+            let request = new XMLHttpRequest();
+            request.open('POST', 'login');
+            let formData = new FormData(
+                document.getElementById('modal-login-form'));
+
+            formData.append('modal', true);
+            request.send(formData);
+            request.onreadystatechange = function () {
+                if (request.readyState === 4) {
+                    let response = JSON.parse(request.response)
+                    if (response.success) {
+                        hideModal();
+                        loggedIn = true;
+                        ['username-text'].forEach(el => {
+                            if (document.getElementById(el)) {
+                                document.getElementById(el).remove();
+                            }
+                        });
+                        let usernameText = document.createElement('span');
+                        usernameText.id = 'username-text';
+                        usernameText.classList.add('navbar-item');
+                        usernameText.innerText =
+                            `User: ${response.name}`;
+                        document.getElementById('userinfo-nav').prepend(usernameText);
+                        document.getElementById('login-link').remove();
+                        document.getElementById('signup-link').remove();
+                        document.getElementById('logout-link').style.removeProperty('display');
+                    } else {
+                        let warning = document.createElement('div');
+                        if (document.getElementById('login-fail')) return;
+                        warning.id = 'login-fail'
+                        warning.classList.add('notification', 'is-danger');
+                        warning.innerText = 'Please check your login details and try again.'
+                        document.getElementById('modal-1-message').prepend(warning);
+                    }
+                }
+            }
         }
 
         var handleResetClick = function () {
@@ -1224,8 +1328,6 @@
 
         function saveCustomMask() {
             if (!loggedIn) {
-                console.log('Not saving the mask because the user isnt logged in.');
-
                 displayMaskMessage('Please log in to save a mask.');
                 return;
             }

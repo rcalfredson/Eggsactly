@@ -8,6 +8,7 @@ from flask import request
 from flask_socketio import SocketIO, emit
 from PIL import Image
 
+from project.lib.datamanagement.socket_io_auth import authenticated_only
 from project.lib.image.exif import correct_via_exif
 from project.lib.web.downloadManager import DownloadManager
 from project.lib.web.network_loader import NetworkLoader
@@ -66,7 +67,13 @@ def connected():
 
 
 @app.socketIO.on("save-custom-mask")
+@authenticated_only
 def save_custom_mask(data):
+    if data['no_auth']:
+        app.socketIO.emit('mask-list-update',
+        {
+            "fail": 'no_auth'
+        })
     with open(
         os.path.join("project", "configs", "masks", f"{data['maskName']}.json"), "w"
     ) as f:

@@ -93,6 +93,7 @@ form p {
   line-height: 32px;
   padding-left: 10px;
   flex: 0 0 440px;
+  margin: 16px 0;
 }
 
 #viewer {
@@ -227,6 +228,25 @@ form label, form button, #updates button, form input {
   border: 1px ridge black;
   font-size: 0.8rem;
   height: auto;
+}
+
+form input:hover {
+  background-color: #a4b0c2;
+  color:rgba(0, 0, 0, 0.6);
+}
+
+form input:focus {
+  background-color: #7F9CCB;
+  color:rgba(0, 0, 0, 0.6);
+}
+
+#remember-me {
+  border: none;
+  background-color: white;
+}
+
+#remember-me-check {
+  margin-right: 5px;
 }
 
 .mask-button-set {

@@ -14,8 +14,10 @@ def login():
 
 @auth.route("/login", methods=["POST"])
 def login_post():
+    fail_message = "Please check your login details and try again."
     email = request.form.get("email")
     password = request.form.get("password")
+    modal = True if request.form.get("modal") else False
     remember = True if request.form.get("remember") else False
 
     user = User.query.filter_by(email=email).first()
@@ -23,12 +25,18 @@ def login_post():
     # check if the user actually exists
     # take the user-supplied password, hash it, and compare it to the hashed password in the database
     if not user or not check_password_hash(user.password, password):
-        flash("Please check your login details and try again.")
-        return redirect(
-            url_for("auth.login")
+        flash(fail_message)
+        return (
+            {"success": False, "id": None, "name": None, "message": fail_message}
+            if modal
+            else redirect(url_for("auth.login"))
         )  # if the user doesn't exist or password is wrong, reload the page
     login_user(user, remember=remember)
-    return redirect(url_for("main.index"))
+    return (
+        {"success": True, "id": user.id, "name": user.name}
+        if modal
+        else redirect(url_for("main.index"))
+    )
 
 
 @auth.route("/signup")
@@ -69,4 +77,4 @@ def signup_post():
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('main.index'))
+    return redirect(url_for("main.index"))
