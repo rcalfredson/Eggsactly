@@ -240,6 +240,19 @@ form input:focus {
   color:rgba(0, 0, 0, 0.6);
 }
 
+#google-login-link {
+  margin-left: -4px;
+}
+
+#google-login-img {
+  margin-top: 5px;
+}
+
+#google-user-pic {
+  margin-left: 10px;
+  border-radius: 14px;
+}
+
 #remember-me {
   border: none;
   background-color: white;

@@ -153,3 +153,4 @@ Thumbs.db
 
 # user authentication
 db.sqlite
+flask_session

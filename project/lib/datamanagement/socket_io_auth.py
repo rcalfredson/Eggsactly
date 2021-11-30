@@ -12,6 +12,7 @@ def authenticated_only(f):
         if not current_user.is_authenticated:
             return f({'no_auth': True})
         else:
+            args[0]['no_auth'] = False
             return f(*args, **kwargs)
 
     return wrapped

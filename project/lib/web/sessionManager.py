@@ -352,8 +352,6 @@ class SessionManager:
         with open(resultsPath, "wt", newline="") as resultsFile:
             writer = csv.writer(resultsFile)
             writer.writerow(["Egg Counter, ALPHA version"])
-            print('map:', model_to_update_date)
-            print('basename:', os.path.basename(self.network_loader.model_path))
             writer.writerow(
                 [
                     "Egg-detection model updated: "

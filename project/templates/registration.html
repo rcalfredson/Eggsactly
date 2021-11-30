@@ -25,14 +25,18 @@
                     <div id=userinfo-nav class="navbar-end">
                         {% if current_user.is_authenticated %}
                         <span id=username-text class="navbar-item">
-                            User: {{ name }}
+                            User: {{ name }} {% if google_data %} (Google)
+                            {% if google_data.picture %}
+                            <img id=google-user-pic src="{{ google_data.picture }}">
+                            {% endif %}
+                            {% endif %}
                         </span>
                         {% endif %}
                         {% if not current_user.is_authenticated %}
                         <a id=login-link href="#" class="navbar-item">
-                            Login
+                            Log In
                         </a>
-                        <a id=signup-link href="{{ url_for('auth.signup') }}" class="navbar-item">
+                        <a id=signup-link href="#" class="navbar-item">
                             Sign Up
                         </a>
                         {% endif %}
@@ -90,6 +94,8 @@
         let idsByOrigImgName = {};
         let lastPongTime;
         let numFailedPings = 0;
+        let externalLoginWindow;
+        let loginButton;
         let countingState;
         let countingStates = { pre: 'pre', mid: 'mid', post: 'post' };
         let hasErrors;
@@ -101,6 +107,7 @@
         let shapeBeingDragged = false;
         let editMode;
         let tempMaskGridlines;
+        let overlappingExistingGridline;
         let gridXYMarkers;
         const lockGridlinesText = 'Lock gridlines and select regions';
         const lockMaskText = 'Lock mask and reposition image';
@@ -114,6 +121,7 @@
         let currentMaskBBox;
         let maskNames;
         let lastSelectedMask;
+        let maskCopyUpdater;
         let maskNotationButtonGroup;
         let gridlineOrientationButtonGroup;
         const orientations = ['horiz', 'vert'];
@@ -128,6 +136,7 @@
         let lastScrollTime;
         let lastMouseDownTime;
         let lastCanvasMoveTime;
+        let cursorOnCanvas;
         let canvas;
         let canvasLoaded = false;
         let canvasWidth = Math.min(1300, window.innerWidth);
@@ -283,6 +292,10 @@
                     radius: radius
                 }
             }
+        }
+
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
         }
 
         function isNormalInteger(str) {
@@ -626,6 +639,8 @@
                     shiftKeyDown = true;
                     updateBBoxOutlineForDeletion();
                     setGridNotationCursorVisibility();
+                    bringGridlineToleranceBandsToFrontOrBack('front');
+                    updateGridlineForDeletion();
                 } else if (countingState === countingStates.post &&
                     evt.key === 'Control') {
                     hideEggOutlines();
@@ -637,6 +652,7 @@
                     shiftKeyDown = false;
                     updateBBoxOutlineForDeletion();
                     setGridNotationCursorVisibility();
+                    updateGridlineForDeletion();
                 } else if (countingState === countingStates.post &&
                     evt.key === 'Control') {
                     showEggOutlines();
@@ -644,7 +660,9 @@
             });
             hideModal();
             setUpFileUploadDialog();
-            setUpLoginButtonAction();
+            ['login', 'signup'].forEach(action => {
+                setUpActionForAuthRelatedButton(action);
+            })
         });
 
         function hideModal() {
@@ -684,37 +702,120 @@
             inputReset.onclick = handleResetClick;
         }
 
-        function setUpLoginButtonAction() {
-            let loginLink = document.getElementById('login-link');
-            if (!loginLink) {
+        function setUpActionForAuthRelatedButton(actionName) {
+            let link = document.getElementById(`${actionName}-link`);
+            if (!link) {
                 return;
             }
-            loginLink.onclick = startLoginActionViaModal;
+            link.onclick = window['start' +
+                `${capitalizeFirstLetter(actionName)}ActionViaModal`];
+        }
+
+        function addField(formToExtend, type, placeholder, opts = {
+            actionOnEnter: null,
+            elementId: null
+        }) {
+            let field = document.createElement('div');
+            formToExtend.appendChild(field);
+            field.classList.add('field');
+            let control = document.createElement('div');
+            field.appendChild(control);
+            control.classList.add('control');
+            let input = document.createElement('input')
+            control.appendChild(input);
+            input.classList.add('input', 'is-large');
+            input.type = type;
+            input.name = type;
+            input.placeholder = placeholder;
+            if (opts.actionOnEnter) {
+                input.onkeydown = (e) => {
+                    if (e.code === 'Enter') {
+                        opts.actionOnEnter();
+                    }
+                }
+            }
+            if (opts.elementId) {
+                input.setAttribute('id', opts.elementId);
+            }
+            return input
+        }
+
+        function addButton(formToExtend, text, clickAction) {
+            let button = document.createElement('button');
+            button.type = 'button';
+            button.classList.add('button', 'is-block', 'is-info', 'is-large',
+                'is-fullwidth')
+            button.innerText = text;
+            formToExtend.appendChild(button);
+            button.onclick = clickAction;
+            return button;
+        }
+
+        function startSignupActionViaModal() {
+            document.getElementById('modal-1-title').innerText = 'Create Account';
+            let modalMessage = document.getElementById('modal-1-message');
+            modalMessage.innerHTML =
+                '<div style="margin-bottom: 15px;"><span>Save and load custom templates of egg-laying regions.</span></div>';
+            let form = document.createElement('form');
+            form.id = 'modal-signup-form';
+            let fieldOpts = {
+                actionOnEnter: () => {
+                    signUpViaXHR();
+                }
+            };
+            addField(form, 'email', 'Email', {
+                ...fieldOpts, ...{
+                    elementId: 'signup-email'
+                }
+            });
+            addField(form, 'name', 'Name', {
+                ...fieldOpts, ...{
+                    elementId: 'signup-name'
+                }
+            });
+            addField(form, 'password', 'Password', {
+                ...fieldOpts, ...{
+                    elementId: 'signup-password'
+                }
+            });
+            let signupButton = addButton(form, 'Sign Up', signUpViaXHR);
+            signupButton.setAttribute('id', 'signup-button');
+            modalMessage.appendChild(form);
+            document.getElementById('modalToggle').click();
         }
 
         function startLoginActionViaModal() {
-            document.getElementById('modal-1-title').innerText = 'Login'
+            document.getElementById('modal-1-title').innerText = 'Log In'
             let modalMessage = document.getElementById('modal-1-message');
             modalMessage.innerHTML = '';
             let loginForm = document.createElement('form');
             loginForm.id = 'modal-login-form'
-            function addField(type, placeholder) {
-                let field = document.createElement('div');
-                loginForm.appendChild(field);
-                field.classList.add('field');
-                let control = document.createElement('div');
-                field.appendChild(control);
-                control.classList.add('control');
-                let input = document.createElement('input')
-                control.appendChild(input);
-                input.classList.add('input', 'is-large');
-                input.type = type;
-                input.name = type;
-                input.placeholder = placeholder;
-                return input
+            let fieldOpts = {
+                actionOnEnter: () => {
+                    document.getElementById('login-button').click();
+                }
             }
-            addField('email', 'Your Email').autofocus = "";
-            addField('password', 'Your Password');
+            let emailField = addField(loginForm, 'email',
+                'Your Email', fieldOpts);
+            emailField.autofocus = "";
+            emailField.oninput = (e) => {
+                let request = new XMLHttpRequest();
+                request.open('GET', '/user/exists/google/' + emailField.value);
+                request.send();
+                request.onreadystatechange = () => {
+                    if (request.readyState === 4) {
+                        let response = JSON.parse(request.response);
+                        if (response.userExists) {
+                            loginButton.onclick = loginViaGoogleInExternalWindow;
+                        } else {
+                            loginButton.onclick = loginViaXHR;
+                        }
+
+                    }
+                }
+            }
+            addField(loginForm, 'password', 'Your Password',
+                fieldOpts);
             let field = document.createElement('div');
             field.classList.add('field');
             loginForm.appendChild(field);
@@ -729,15 +830,104 @@
             label.prepend(input);
 
             field.appendChild(label);
-            let button = document.createElement('button');
-            button.type = 'button';
-            button.classList.add('button', 'is-block', 'is-info', 'is-large',
-                'is-fullwidth')
-            button.innerText = 'Login';
-            loginForm.appendChild(button);
-            button.onclick = loginViaXHR;
+            let googleLoginLink = document.createElement('a');
+            googleLoginLink.id = 'google-login-link';
+            googleLoginLink.onclick = loginViaGoogleInExternalWindow;
+            let googleLoginImg = document.createElement('img');
+            googleLoginImg.id = 'google-login-img'
+            googleLoginImg.src = 'static/imgs/btn_google_signin_dark_pressed_web@2x.png'
+            googleLoginLink.appendChild(googleLoginImg);
+            loginButton = addButton(loginForm, 'Log In', loginViaXHR);
+            loginButton.setAttribute('id', 'login-button');
+            loginForm.appendChild(googleLoginLink);
             modalMessage.appendChild(loginForm);
             document.getElementById('modalToggle').click();
+        }
+
+        function loginViaGoogleInExternalWindow() {
+            externalLoginWindow = window.open('/login/google');
+            let loginCheckInterval = setInterval(() => {
+                try {
+                    if (externalLoginWindow.location.href === window.location.href.split('#')[0]) {
+                        clearInterval(loginCheckInterval);
+                        externalLoginWindow.close();
+                        updateLoginInfoFromOAuth()
+                    }
+                } catch (exc) {
+
+                }
+            }, 300)
+        }
+
+        function updateLoginInfoFromOAuth() {
+            let request = new XMLHttpRequest();
+            request.open('GET', 'user/info/google');
+            request.send();
+            request.onreadystatechange = () => {
+                if (request.readyState === 4) {
+                    let response = JSON.parse(request.response);
+                    hideModal();
+                    loggedIn = true;
+                    ['username-text'].forEach(el => {
+                        if (document.getElementById(el)) {
+                            document.getElementById(el).remove();
+                        }
+                    });
+                    let usernameText = document.createElement('span');
+                    usernameText.id = 'username-text';
+                    usernameText.classList.add('navbar-item');
+                    usernameText.innerText =
+                        `User: ${response.name} (Google)`;
+                    let profilePic = document.createElement('img');
+                    profilePic.id = 'google-user-pic';
+                    profilePic.src = response.picture;
+                    usernameText.appendChild(profilePic);
+                    document.getElementById('userinfo-nav').prepend(usernameText);
+                    document.getElementById('login-link').remove();
+                    document.getElementById('signup-link').remove();
+                    document.getElementById('logout-link').style.removeProperty('display');
+                    if (document.getElementById('mask-list')) {
+                        socket.emit('mask-list', { sid });
+                    }
+                }
+            }
+        }
+
+        function signUpViaXHR() {
+            let request = new XMLHttpRequest();
+            request.open('POST', 'signup');
+            let formData = new FormData(
+                document.getElementById('modal-signup-form')
+            );
+            formData.append('modal', true);
+            request.send(formData);
+            request.onreadystatechange = () => {
+                if (request.readyState === 4) {
+                    let response = JSON.parse(request.response);
+                    if (response.success) {
+                        let notification = document.createElement('div');
+                        notification.id = 'acct-created';
+                        notification.classList.add('notification', 'is-success');
+                        notification.innerText = 'Account created! Log in to start using it.';
+                        document.getElementById('modal-1-message').prepend(notification);
+                        ['email', 'name', 'password', 'button'].forEach(elName => {
+                            document.getElementById(`signup-${elName}`).setAttribute('disabled', true);
+                        })
+                        setTimeout(() => {
+                            hideModal();
+                        }, 3500);
+                    } else {
+                        if (document.getElementById('signup-fail')) {
+                            document.getElementById('signup-fail').remove();
+                        }
+                        let warning = document.createElement('div');
+                        warning.id = 'signup-fail'
+                        warning.classList.add('notification', 'is-danger');
+                        warning.innerText = response.message
+                        document.getElementById('modal-1-message').prepend(warning);
+                    }
+                }
+            }
         }
 
         function loginViaXHR() {
@@ -768,9 +958,14 @@
                         document.getElementById('login-link').remove();
                         document.getElementById('signup-link').remove();
                         document.getElementById('logout-link').style.removeProperty('display');
+                        if (document.getElementById('mask-list')) {
+                            socket.emit('mask-list', { sid });
+                        }
                     } else {
+                        if (document.getElementById('login-fail')) {
+                            document.getElementById('login-fail').remove();
+                        }
                         let warning = document.createElement('div');
-                        if (document.getElementById('login-fail')) return;
                         warning.id = 'login-fail'
                         warning.classList.add('notification', 'is-danger');
                         warning.innerText = 'Please check your login details and try again.'
@@ -897,6 +1092,10 @@
                     xDiv.appendChild(xStroke1);
                     listItem.append(xDiv);
                     xDiv.onclick = (evt) => {
+                        if (Object.keys(filesToUpload).length === 1) {
+                            handleResetClick();
+                            return;
+                        }
                         let splitId = evt.target.id.split('-');
                         let index = parseInt(splitId[splitId.length - 1]);
                         let imgKey = document.getElementById(`close-${index}`).assocImg;
@@ -1147,18 +1346,7 @@
 
         function addMaskSelectionButtons() {
             displayMaskList();
-            let newButtonGroup = document.createElement('div');
-            newButtonGroup.classList.add('mask-button-set');
-            newButtonGroup.id = 'mask-resetter-and-loader';
-            let resetMasks = document.createElement('button');
-            resetMasks.id = 'reset-masks';
-            resetMasks.innerHTML = 'Revert to last saved version';
-            resetMasks.setAttribute('disabled', true);
-            resetMasks.onclick = requestSavedMaskData;
-            let helpPane = document.getElementById('help-pane');
-            newButtonGroup.appendChild(resetMasks);
-            helpPane.appendChild(newButtonGroup);
-            $('#mask-resetter-and-loader').append(dividerString());
+            displayMaskSetterAndReloader();
             displayMaskNamingSavingUI();
         }
 
@@ -1171,6 +1359,9 @@
                 boxTypesToRemove = ['maskBBoxes', 'gridlineBBoxes'];
             }
             boxTypesToRemove.forEach(boxType => {
+                if (!crd[currentImgIndex][boxType]) {
+                    return;
+                }
                 Object.keys(crd[currentImgIndex][boxType]).forEach(k => {
                     let box = crd[currentImgIndex][boxType][k];
                     if (boxType === 'gridlineBBoxes') box = box.rectPath;
@@ -1189,10 +1380,18 @@
                 }
             });
 
+            if (!crd[currentImgIndex].maskGridlines) {
+                return;
+            }
+
             // remove gridlines
             orientations.forEach(lineType => {
+                if (!crd[currentImgIndex].maskGridlines[lineType]) {
+                    return;
+                }
                 Object.keys(crd[currentImgIndex].maskGridlines[lineType]).forEach(k => {
                     crd[currentImgIndex].maskGridlines[lineType][k].linePath.remove();
+                    crd[currentImgIndex].maskGridlines[lineType][k].cursorToleranceBand.remove();
                 });
                 if (opts.clearData) {
                     crd[currentImgIndex].maskGridlines[lineType] = {};
@@ -1221,6 +1420,7 @@
                         height: boxCoords[1][1] - boxCoords[0][1]
                     },
                 }
+                maskCopyUpdater.registerUpdate();
             });
         }
 
@@ -1260,6 +1460,7 @@
                     crd[currentImgIndex].maskGridlines[ort][
                         k
                     ] = newGridline;
+                    maskCopyUpdater.registerUpdate();
                 });
             });
 
@@ -1284,6 +1485,7 @@
                     newBBox.toggleSelected();
                 }
                 crd[currentImgIndex].gridlineBBoxes[k] = newBBox;
+                maskCopyUpdater.registerUpdate();
             });
             updateRetryAnalysisButtonAppearance();
         }
@@ -1344,10 +1546,15 @@
 
         function markMaskAsEdited() {
             document.getElementById('save-mask').removeAttribute('disabled');
-            document.getElementById('reset-masks').removeAttribute('disabled');
+            if (document.getElementById('mask-list').value !== 'Select existing mask') {
+                document.getElementById('reset-masks').removeAttribute('disabled');
+            }
         }
 
         function displayMaskNamingSavingUI() {
+            if (document.getElementById('mask-namer-and-saver')) {
+                return;
+            }
             let helpPane = document.getElementById('help-pane');
             let newButtonGroup = document.createElement('div');
             newButtonGroup.classList.add('mask-button-set');
@@ -1396,6 +1603,7 @@
                 chamberRealignmentData[currentImgIndex].customMode = 'freehand';
                 addFreehandNotationUI();
             }
+            maskCopyUpdater.registerUpdate();
             document.getElementById('mask-edit-instructions').innerHTML =
                 maskEditInstructions[chamberRealignmentData[currentImgIndex].customMode];
             currentMaskBBox = null;
@@ -1539,7 +1747,7 @@
             lockMaskButton.onclick = lockMaskOnClick;
         }
 
-        function addFreehandNotationUI() {
+        function addFreehandNotationUI(opts = { draw: true }) {
             removeBoxesAndGridlines('gridlineBBoxes', { clearData: false });
             setGridNotationCursorVisibility();
             let existingFreehandBoxIds = Object.keys(
@@ -1553,7 +1761,7 @@
                 existingBox.bounds.point.y]];
                 bounds.push([bounds[0][0] + existingBox.bounds.width,
                 bounds[0][1] + existingBox.bounds.height]);
-                createMaskBBox(bounds, { redraw: true });
+                createMaskBBox(bounds, { redraw: opts.draw });
                 delete chamberRealignmentData[currentImgIndex].maskBBoxes[
                     id
                 ];
@@ -1564,6 +1772,7 @@
             deleteBoxesTouchingRemovedGridline(evt.target);
             markMaskAsEdited();
             delete chamberRealignmentData[currentImgIndex].maskGridlines[evt.target.owner.orientation][evt.target.owner.id];
+            maskCopyUpdater.registerUpdate();
         }
 
         function addGridlineNotation(evt) {
@@ -1580,14 +1789,16 @@
                 orientation = 'vert';
             }
             let newGridLine = new Gridline(
-                tempCursor.data.lineBounds.from,
-                tempCursor.data.lineBounds.to,
+                tempCursor.side1.data.lineBounds.from,
+                tempCursor.side1.data.lineBounds.to,
                 orientation,
                 gridlineDoOnMouseDown
             );
+            maskCopyUpdater.registerUpdate();
             chamberRealignmentData[currentImgIndex].maskGridlines[orientation][newGridLine.linePath.id] = newGridLine;
             bisectBoxesByAddedGridline(newGridLine.linePath);
-            tempCursor.remove();
+            tempCursor.side1.remove();
+            tempCursor.side2.remove();
             tempCursor = null;
         }
 
@@ -1598,12 +1809,39 @@
             return gridlineOrientationButtonGroup.selected.split('-')[0] === 'horiz'
         }
 
+        function bringGridlineToleranceBandsToFrontOrBack(mode) {
+            let methodToCall = mode === 'front' ? 'bringToFront' : 'sendToBack';
+            ['horiz', 'vert'].forEach(ori => {
+                Object.keys(
+                    chamberRealignmentData[
+                        currentImgIndex].maskGridlines[ori]).forEach(gridlineId => {
+                            chamberRealignmentData[
+                                currentImgIndex
+                            ].maskGridlines[
+                                ori][gridlineId].cursorToleranceBand[methodToCall]();
+                        });
+            })
+        }
+
+        function previewGridlineMatchesOverlap() {
+            return overlappingExistingGridline && overlappingExistingGridline.status
+                && ((overlappingExistingGridline.orientation === 'horiz' &&
+                    horizSelected()) || (
+                        overlappingExistingGridline.orientation === 'vert' &&
+                        horizSelected() === false
+                    ));
+        }
+
         function setGridNotationCursorVisibility() {
             if (!tempCursor) {
                 return;
             }
-            if (shiftKeyDown || gridlinesLocked() || maskLocked() || editingFreehandMasks()) {
-                tempCursor.remove();
+            if (shiftKeyDown || gridlinesLocked() ||
+                maskLocked() || editingFreehandMasks() ||
+                cursorOnCanvas === false || previewGridlineMatchesOverlap()
+            ) {
+                tempCursor.side1.remove();
+                tempCursor.side2.remove()
                 tempCursor = null;
                 tempCursorCoordText.remove();
                 tempCursorCoordText = null;
@@ -1613,6 +1851,7 @@
         }
 
         function addGridNotationCursor(evt) {
+            let cursorSplitWidth = 2;
             if (countingState !== countingStates.pre) return;
             if (!document.getElementById('help-pane') || !document.getElementById('grid-edit-button')) return;
             if (maskNotationButtonGroup.selected !== 'grid-edit-button'
@@ -1622,9 +1861,9 @@
             if (maskLocked()) return;
 
             setGridNotationCursorVisibility();
-            if (gridlinesLocked()) return;
+            if (gridlinesLocked() || previewGridlineMatchesOverlap()) return;
             let isH = horizSelected();
-            let lineBounds;
+            let lineBounds, lineBoundsSplit;
             let imgStartX = backgroundRaster.position.x -
                 backgroundRaster.bounds.width / 2;
             let imgStartY = backgroundRaster.position.y - backgroundRaster.bounds.height / 2;
@@ -1633,6 +1872,18 @@
                     from: [imgStartX, evt.point.y],
                     to: [backgroundRaster.position.x + backgroundRaster.bounds.width / 2, evt.point.y]
                 };
+                lineBoundsSplit = {
+                    side1: {
+                        from: [imgStartX, evt.point.y],
+                        to: [evt.point.x - cursorSplitWidth, evt.point.y]
+                    },
+                    side2: {
+                        from: [evt.point.x + cursorSplitWidth,
+                        evt.point.y],
+                        to: [backgroundRaster.position.x + backgroundRaster.bounds.width / 2,
+                        evt.point.y]
+                    }
+                }
             } else {
                 lineBounds = {
                     from: [evt.point.x, imgStartY],
@@ -1640,6 +1891,17 @@
                         evt.point.x, backgroundRaster.position.y +
                         backgroundRaster.bounds.height / 2
                     ]
+                }
+                lineBoundsSplit = {
+                    side1: {
+                        from: [evt.point.x, imgStartY],
+                        to: [evt.point.x, evt.point.y - cursorSplitWidth]
+                    },
+                    side2: {
+                        from: [evt.point.x, evt.point.y + cursorSplitWidth],
+                        to: [evt.point.x,
+                        backgroundRaster.position.y + backgroundRaster.bounds.height / 2]
+                    }
                 }
             }
             if (!backgroundRaster.contains(evt.point)) return;
@@ -1672,15 +1934,25 @@
             }
             if (!tempCursor) {
                 if (shiftKeyDown || gridlinesLocked()) return;
-                tempCursor = paper.Path.Line({ ...lineBounds, ...{ strokeColor: 'black' } });
+
+                tempCursor = {
+                    side1: paper.Path.Line({
+                        ...lineBoundsSplit.side1, ...{ strokeColor: 'black' }
+                    }),
+                    side2: paper.Path.Line({
+                        ...lineBoundsSplit.side2, ... { strokeColor: 'black' }
+                    })
+                }
             } else {
-                tempCursor.segments[0].point = new paper.Point(...lineBounds.from)
-                tempCursor.segments[1].point = new paper.Point(...lineBounds.to);
+                tempCursor.side1.segments[0].point = new paper.Point(...lineBoundsSplit.side1.from);
+                tempCursor.side1.segments[1].point = new paper.Point(...lineBoundsSplit.side1.to);
+                tempCursor.side2.segments[0].point = new paper.Point(...lineBoundsSplit.side2.from);
+                tempCursor.side2.segments[1].point = new paper.Point(...lineBoundsSplit.side2.to);
             }
-            tempCursor.data.lineBounds = lineBounds;
+            tempCursor.side1.data.lineBounds = lineBounds;
         }
 
-        function addGridNotationUI() {
+        function addGridNotationUI(opts = { draw: true }) {
             let parentDiv = document.createElement('div');
             parentDiv.classList.add('mask-button-set');
             parentDiv.id = 'mode-switch-button-group';
@@ -1716,11 +1988,13 @@
             lockGridlinesButton.innerHTML = lockGridlinesText;
             lockGridlinesDiv.appendChild(lockGridlinesButton);
             lockGridlinesButton.onclick = lockOrUnlockGridlines;
-            loadGridMaskOnImage(chamberRealignmentData[currentImgIndex],
-                {
-                    clearData: false,
-                    convertToCanvas: false
-                });
+            if (opts.draw) {
+                loadGridMaskOnImage(chamberRealignmentData[currentImgIndex],
+                    {
+                        clearData: false,
+                        convertToCanvas: false
+                    });
+            }
         }
 
         function gridlinesLocked() {
@@ -1741,8 +2015,10 @@
             let lockButton = document.getElementById('lock-gridlines-button');
             if (gridlinesLocked()) {
                 lockButton.innerHTML = lockGridlinesText;
+                bringGridlineToleranceBandsToFrontOrBack('front');
             } else {
                 lockButton.innerHTML = 'Unlock gridlines';
+                bringGridlineToleranceBandsToFrontOrBack('back');
             }
         }
 
@@ -1762,19 +2038,30 @@
                 this.id = this.linePath.id;
             }
             setEventHandlers() {
-                this.linePath.onMouseEnter = event => {
-                    if (maskLocked()) return;
+                this.cursorToleranceBand.onMouseEnter = event => {
+                    if (maskLocked()) {
+                        return;
+                    }
+                    overlappingExistingGridline = {
+                        status: true,
+                        orientation: this.orientation,
+                        id: this.id
+                    };
                     if (shiftKeyDown) {
-                        event.target.strokeColor = 'red';
+                        this.linePath.strokeColor = 'red';
                     }
                 };
-                this.linePath.onMouseDown = event => {
+                this.cursorToleranceBand.onMouseDown = event => {
                     if (!shiftKeyDown || maskLocked()) return;
-                    event.target.remove();
+                    this.linePath.remove();
+                    this.cursorToleranceBand.remove();
                     this.doOnMouseDown(event);
                 }
-                this.linePath.onMouseLeave = event => {
-                    event.target.strokeColor = 'black';
+                this.cursorToleranceBand.onMouseLeave = event => {
+                    this.linePath.strokeColor = 'black';
+                    overlappingExistingGridline = {
+                        status: false
+                    };
                 }
             }
             restoreLinePath() {
@@ -1785,7 +2072,16 @@
                         strokeWidth: gridlineStrokeWidth
                     }
                 });
+                this.cursorToleranceBand = paper.Path.Line({
+                    ...{ from: this.startPoint, to: this.endPoint },
+                    ...{
+                        strokeColor: 'orange',
+                        strokeWidth: gridlineStrokeWidth + 5,
+                        opacity: 0
+                    }
+                })
                 this.linePath.owner = this;
+                this.cursorToleranceBand.owner = this;
                 this.setEventHandlers();
             }
             get reduced() {
@@ -1797,6 +2093,26 @@
                     ... (this.orientation ===
                         'vert' && { position: this.startPoint[0] })
                 }
+            }
+        }
+
+        class PeriodicUpdater {
+            constructor(actionWhenUpdating, secondsBetweenChecks = 5) {
+                this.secondsBetweenChecks = secondsBetweenChecks
+                this.updateNeeded = false;
+                this.actionWhenUpdating = actionWhenUpdating;
+                this.setupUpdates();
+            }
+            registerUpdate() {
+                this.updateNeeded = true;
+            }
+            setupUpdates() {
+                this.interval = setInterval(() => {
+                    if (this.updateNeeded) {
+                        this.actionWhenUpdating();
+                        this.updateNeeded = false;
+                    }
+                }, 1000 * this.secondsBetweenChecks);
             }
         }
 
@@ -1834,6 +2150,7 @@
                     this.rectPath.opacity = this.opacityVals.hover;
                 }
                 this.doOnToggle();
+                maskCopyUpdater.registerUpdate()
             }
             offsetByKerf(ptsToOffset) {
                 let ptNames = { start: 'startPoint', end: 'endPoint' };
@@ -2104,14 +2421,15 @@
             );
         }
 
-        function setUpMaskCreationInterface() {
+        function setUpMaskCreationInterface(opts = { draw: true }) {
             resetCurrentRealignmentMarkers();
             let helpPane = document.getElementById('help-pane');
-            if (helpPane.style.display === 'none') {
-                helpPane.style.display = 'inline-block';
-            }
             if (!helpPane) {
                 $('#viewer').append('<div id=help-pane></div>');
+                helpPane = document.getElementById('help-pane');
+            }
+            if (helpPane.style.display === 'none') {
+                helpPane.style.display = 'inline-block';
             }
             $('#help-pane').empty();
 
@@ -2122,7 +2440,11 @@
             $('#help-pane').append('<div id=mask-annotation-mode-buttons></div')
             addNotationModeToggleButtons();
             $('#help-pane').append('<div id=mode-specific-buttons></div>');
-
+            if (chamberRealignmentData[currentImgIndex].customMode === 'grid') {
+                addGridNotationUI({ draw: opts.draw });
+            } else {
+                addFreehandNotationUI({ draw: opts.draw });
+            }
             Object.keys(eggLayingRegions[currentImgIndex]).forEach(reg => {
                 if (eggLayingRegions[currentImgIndex][reg].outline) {
                     eggLayingRegions[currentImgIndex][reg].outline.remove();
@@ -2162,27 +2484,57 @@
             });
         }
 
-        function displayMaskList() {
-            let buttonGroup = document.createElement('div');
-            buttonGroup.classList.add('mask-button-set');
-            buttonGroup.id = 'mask-selector'
-            let dropdownMaskList = document.createElement('select');
-            dropdownMaskList.setAttribute('disabled', true);
-
-            dropdownMaskList.setAttribute('id', 'mask-list');
-            addDropdownElement(dropdownMaskList, 'Select existing mask', false);
-            if (maskNames.length > 0) {
-                dropdownMaskList.removeAttribute('disabled');
-                maskNames.forEach(name => {
-                    addDropdownElement(dropdownMaskList, name);
-                });
+        function displayMaskSetterAndReloader() {
+            if (document.getElementById('mask-resetter-and-loader')) {
+                return;
             }
-            buttonGroup.appendChild(dropdownMaskList);
-            let chosenMask = chamberRealignmentData[currentImgIndex].maskName;
-            dropdownMaskList.onchange = requestSavedMaskData;
-            document.getElementById('help-pane').appendChild(buttonGroup);
-            if (maskNames.includes(chamberRealignmentData[currentImgIndex].maskName)) {
-                document.getElementById('mask-list').value = chosenMask;
+            let newButtonGroup = document.createElement('div');
+            newButtonGroup.classList.add('mask-button-set');
+            newButtonGroup.id = 'mask-resetter-and-loader';
+            let resetMasks = document.createElement('button');
+            resetMasks.id = 'reset-masks';
+            resetMasks.innerHTML = 'Revert to last saved version';
+            resetMasks.setAttribute('disabled', true);
+            resetMasks.onclick = requestSavedMaskData;
+            let helpPane = document.getElementById('help-pane');
+            newButtonGroup.appendChild(resetMasks);
+            helpPane.appendChild(newButtonGroup);
+            $('#mask-resetter-and-loader').append(dividerString());
+        }
+
+        function displayMaskList() {
+            let dropdownMaskList;
+            if (document.getElementById('mask-selector')) {
+                dropdownMaskList = document.getElementById('mask-list');
+                for (i = 0; i < dropdownMaskList.length; i++) {
+                    if (dropdownMaskList.options[i].value == 'D') {
+                        dropdownMaskList.remove(i);
+                    }
+                }
+            } else {
+                let buttonGroup = document.createElement('div');
+                buttonGroup.classList.add('mask-button-set');
+                buttonGroup.id = 'mask-selector'
+                dropdownMaskList = document.createElement('select');
+                dropdownMaskList.setAttribute('disabled', true);
+
+                dropdownMaskList.setAttribute('id', 'mask-list');
+                addDropdownElement(dropdownMaskList, 'Select existing mask', false);
+                buttonGroup.appendChild(dropdownMaskList);
+                let chosenMask = chamberRealignmentData[currentImgIndex].maskName;
+                dropdownMaskList.onchange = requestSavedMaskData;
+                document.getElementById('help-pane').appendChild(buttonGroup);
+            }
+            if (maskNames) {
+                if (maskNames.length > 0) {
+                    dropdownMaskList.removeAttribute('disabled');
+                    maskNames.forEach(name => {
+                        addDropdownElement(dropdownMaskList, name);
+                    });
+                }
+                if (maskNames.includes(chamberRealignmentData[currentImgIndex].maskName)) {
+                    document.getElementById('mask-list').value = chosenMask;
+                }
             }
         }
 
@@ -2199,8 +2551,6 @@
                     if (evt.target.value == 'custom') {
                         clearAlignmentGuideHelpBox();
                         editMode = 'mask';
-                        tempMaskBBoxes = {};
-                        tempMaskGridlines = { horiz: {}, vert: {} };
                         chamberRealignmentData[currentImgIndex] = {
                             file_name: chamberRealignmentData[currentImgIndex].file_name,
                             scaling: 1,
@@ -2212,8 +2562,50 @@
                             regionsToIgnore: [],
                             maskGridlines: { horiz: {}, vert: {} },
                             customMode: 'grid'
+                        };
+                        setUpMaskCreationInterface({ draw: false });
+                        addMaskSelectionButtons();
+                        maskCopyUpdater = new PeriodicUpdater(
+                            () => {
+                                let reducedData = {};
+                                reducedData = addGridlinesToSaveData(currentImgIndex, reducedData);
+                                reducedData = addGridlineBoxesToSaveData(currentImgIndex, reducedData);
+                                reducedData = addFreehandBoxesToSaveData(currentImgIndex, reducedData);
+                                localStorage.setItem('customMask',
+                                    JSON.stringify({
+                                        ...{
+                                            customMode: chamberRealignmentData[currentImgIndex].customMode
+                                        },
+                                        ...reducedData[currentImgIndex]
+                                    })
+                                );
+                            }
+                        )
+                        if (!localStorage.getItem('customMask')) {
+                            localStorage.setItem('customMask', JSON.stringify({
+                                customMode: 'grid',
+                                maskGridlines: {
+                                    horiz: {},
+                                    vert: {}
+                                },
+                                gridlineBBoxes: {},
+                                maskBBoxes: {}
+                            }));
+                        } else {
+                            let savedMask = JSON.parse(localStorage.getItem('customMask'));
+                            loadFreehandMaskOnImage(savedMask);
+                            loadGridMaskOnImage(savedMask, {
+                                clearData: false,
+                                convertToCanvas: true
+                            });
+                            chamberRealignmentData[currentImgIndex].customMode = savedMask.customMode;
+                            if (savedMask.customMode === 'freehand') {
+                                document.getElementById(`${savedMask.customMode}-edit-button`).click();
+                            }
+                            document.getElementById('reset-masks').setAttribute('disabled', true);
                         }
-                        setUpMaskCreationInterface();
+
+                        maskCopyUpdater.registerUpdate();
                         return;
                     }
                     if (evt.target.value == chamberTypes[orderedImgNames[currentImgIndex]]) {
@@ -3020,11 +3412,18 @@
                     });
                 }
             }
-            $('#updates').append(`<img id=pic src="/uploads/${orderedImgNames[currentImgIndex]}?lastmod=${Date.now()}">`);
+            $('#updates').append('<img id=pic src="/uploads/' +
+                `${sid}/${orderedImgNames[currentImgIndex]}?lastmod=${Date.now()}">`);
             let rotationAngle = rotationAngles[orderedImgNames[currentImgIndex]] || 0;
             paper.project.clear();
             backgroundRaster = new paper.Raster('pic');
             pic = document.getElementById('pic');
+            backgroundRaster.on('mouseleave', () => {
+                cursorOnCanvas = false;
+            });
+            backgroundRaster.on('mousemove', () => {
+                cursorOnCanvas = true;
+            });
             backgroundRaster.onLoad = () => {
                 if (numErrors + numModifications > 0 && countingState === countingStates.pre) {
                     updateRealignmentGuide();
@@ -3624,6 +4023,21 @@
             moveBBoxCircles(rect);
         }
 
+        function updateGridlineForDeletion() {
+            if (overlappingExistingGridline && overlappingExistingGridline.id &&
+                chamberRealignmentData[currentImgIndex].maskGridlines[
+                overlappingExistingGridline.orientation
+                ][
+                overlappingExistingGridline.id
+                ]) {
+                chamberRealignmentData[currentImgIndex].
+                    maskGridlines[
+                    overlappingExistingGridline.orientation
+                ][overlappingExistingGridline.id].linePath.
+                    strokeColor = shiftKeyDown ? 'red' : 'black';
+            }
+        }
+
         function updateBBoxOutlineForDeletion() {
             if (!currentMaskBBox) return;
             let myBox = chamberRealignmentData[
@@ -3671,6 +4085,7 @@
                     currentMaskBBox = null;
                     delete chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent];
                     updateRetryAnalysisButtonAppearance();
+                    maskCopyUpdater.registerUpdate();
                 }
             }
             innerRect.onMouseMove = (e) => {
@@ -3782,6 +4197,7 @@
                     maskNotationButtonGroup.selected === 'freehand-edit-button'
                     && !shiftKeyDown) {
                     createOrAdjustMaskBBox(evt);
+                    maskCopyUpdater.registerUpdate();
                     return;
                 }
 

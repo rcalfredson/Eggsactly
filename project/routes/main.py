@@ -7,17 +7,22 @@ from flask import (
     send_from_directory,
     send_file,
 )
-
+from flask_dance.contrib.google import google
 from flask_login import login_required, current_user
+import oauthlib
 import os
+from pathlib import Path
 import shutil
+import sqlalchemy
 import time
+from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
+from project.lib.datamanagement.models import User, login_google_user
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 from project.users import users
-from .. import app, socketIO
+from .. import app, socketIO, db
 
 main = Blueprint("main", __name__)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
@@ -35,14 +40,22 @@ def remove_old_files(folder):
         if now - os.stat(f).st_mtime > 60 * 60:
             if os.path.isfile(f):
                 os.remove(f)
+            else:
+                shutil.rmtree(f)
 
 
 @main.route("/", methods=["GET", "POST"])
 def index():
-    print("what is the current user?", current_user)
     name = current_user.name if hasattr(current_user, "name") else None
+    user_info_endpoint = "/oauth2/v2/userinfo"
+    google_data = None
+    result = login_google_user()
     return render_template(
-        "registration.html", users=map(str.capitalize, sorted(users)), name=name
+        "registration.html",
+        users=map(str.capitalize, sorted(users)),
+        name=result["name"] if result["name"] is not None else name,
+        google_data=result["data"],
+        google_data_url=os.path.join(google.base_url, user_info_endpoint),
     )
 
 
@@ -52,10 +65,10 @@ def profile():
     return render_template("profile.html", name=current_user.name)
 
 
-@main.route("/uploads/<filename>")
-def uploaded_file(filename):
+@main.route("/uploads/<sid>/<filename>")
+def uploaded_file(sid, filename):
     return send_from_directory(
-        os.path.join("../", app.config["UPLOAD_FOLDER"]), filename
+        os.path.join("../", app.config["UPLOAD_FOLDER"], sid), filename
     )
 
 
@@ -165,7 +178,10 @@ def check_chamber_type_of_img(i, file, sid, n_files, attempts):
             room=sid,
         )
         filename = secure_filename(file)
-        filePath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
+        if not os.path.exists(folder_path):
+            Path(folder_path).mkdir(exist_ok=True, parents=True)
+        filePath = os.path.join(folder_path, filename)
         if attempts == 0:
             request.files[file].save(filePath)
         socketIO.emit(
@@ -241,7 +257,10 @@ def process_img(i, file, sid, n_files, attempts, manual_recount=False):
             room=sid,
         )
         filename = secure_filename(file)
-        filePath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
+        if not os.path.exists(folder_path):
+            Path(folder_path).mkdir(exist_ok=True, parents=True)
+        filePath = os.path.join(folder_path, filename)
         if not manual_recount and attempts == 0:
             request.files[file].save(filePath)
             correct_via_exif(filePath)

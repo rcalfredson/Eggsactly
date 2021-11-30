@@ -1,10 +1,12 @@
 from glob import glob
 import json
 import os
+from pathlib import Path
 import time
 import zipfile
 
 from flask import request
+from flask_login import current_user
 from flask_socketio import SocketIO, emit
 from PIL import Image
 
@@ -69,18 +71,17 @@ def connected():
 @app.socketIO.on("save-custom-mask")
 @authenticated_only
 def save_custom_mask(data):
-    if data['no_auth']:
-        app.socketIO.emit('mask-list-update',
-        {
-            "fail": 'no_auth'
-        })
-    with open(
-        os.path.join("project", "configs", "masks", f"{data['maskName']}.json"), "w"
-    ) as f:
+    if data["no_auth"]:
+        app.socketIO.emit("mask-list-update", {"fail": "no_auth"})
+    mask_dir = os.path.join("project", "configs", "masks", str(current_user.id))
+    if not os.path.exists(mask_dir):
+        Path(mask_dir).mkdir(parents=True)
+    with open(os.path.join(mask_dir, f"{data['maskName']}.json"), "w") as f:
+        data["user_id"] = current_user.id
         json.dump(data, f)
     app.socketIO.emit(
         "mask-list-update",
-        {"names": get_mask_list(data, emit=False), "currentMask": data["maskName"]},
+        {"names": get_mask_list(emit=False), "currentMask": data["maskName"]},
     )
 
 
@@ -94,7 +95,7 @@ def remove_img(data):
 @app.socketIO.on("load-custom-mask")
 def load_custom_mask(data):
     with open(
-        os.path.join("project", "configs", "masks", f"{data['maskName']}.json")
+        os.path.join("project", "configs", "masks", str(current_user.id), f"{data['maskName']}.json")
     ) as f:
         app.socketIO.emit("loaded-custom-mask", json.load(f), room=data["sid"])
 
@@ -114,7 +115,9 @@ def submit_error_report(data):
 @app.socketIO.on("prepare-annot-imgs-zip")
 def setup_imgs_download(data):
     ts = str(data["time"])
-    app.downloadManager.addNewSession(app.sessions[data["sid"]], ts, data["editedCounts"])
+    app.downloadManager.addNewSession(
+        app.sessions[data["sid"]], ts, data["editedCounts"]
+    )
     app.downloadManager.createImagesForDownload(str(data["time"]))
     zipfName = "%s.zip" % (app.downloadManager.sessions[ts]["folder"])
     zipf = zipfile.ZipFile(zipfName, "w", zipfile.ZIP_DEFLATED)
@@ -125,11 +128,13 @@ def setup_imgs_download(data):
 
 
 @app.socketIO.on("mask-list")
-def get_mask_list(data, emit=True):
-    names = [
-        os.path.basename(mask.split(".json")[0])
-        for mask in glob("./project/configs/masks/*.json")
-    ]
+def get_mask_list(emit=True):
+    names = []
+    if current_user.is_authenticated:
+        names = [
+            os.path.basename(mask.split(".json")[0])
+            for mask in glob(f"./project/configs/masks/{current_user.id}/*.json")
+        ]
     if emit:
         app.socketIO.emit("mask-list", {"names": names})
     else:
