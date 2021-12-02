@@ -1297,6 +1297,17 @@
                             }
                         }
                     })
+                    let combinedList = [];
+                    for (let k = 0; k < rowColLayout[j].length; k++) {
+                        combinedList.push({ col: rowColLayout[j][k], count: orderedCounts[j][k] })
+                    }
+                    combinedList.sort((a, b) => {
+                        return a.col - b.col;
+                    });
+                    for (let k = 0; k < combinedList.length; k++) {
+                        rowColLayout[j][k] = combinedList[k].col
+                        orderedCounts[j][k] = combinedList[k].count
+                    }
                 });
                 results.rowsCols.push(rowColLayout);
                 results.orderedCounts.push(orderedCounts);
@@ -1304,7 +1315,7 @@
             return results;
         }
 
-        var collectEditedCounts = function () {
+        function collectEditedCounts() {
             let editedCounts = {}
             orderedImgNames.forEach((name, i) => {
                 if (!eggLayingRegions[i] || eggLayingRegions[i].bad) {
@@ -3449,6 +3460,7 @@
                 }
                 calcScalingFactor(0);
                 document.getElementById('pic').remove();
+                $('#updates').append('<div id=paper-finished-loading hidden></div>')
                 calcPadding(0);
                 if ('error' in annotations[orderedImgNames[currentImgIndex]] ||
                     chamberRealignmentData[currentImgIndex].ignored ||

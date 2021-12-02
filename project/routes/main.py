@@ -277,3 +277,8 @@ def process_img(i, file, sid, n_files, attempts, manual_recount=False):
         else:
             kwargs = {}
         app.sessions[sid].segment_img_and_count_eggs(filePath, **kwargs)
+        socketIO.emit(
+            "counting-progress",
+            {"data": "Finished processing image %i of %i" % (i + 1, n_files)},
+            room=sid,
+        )

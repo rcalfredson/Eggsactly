@@ -2,9 +2,6 @@ import csv
 from datetime import datetime
 import inspect
 import json
-from project.lib.web.network_loader import NetworkLoader
-from project.lib.image.drawing import draw_line
-from project.lib.image.manual_segmenter import ManualSegmenter
 import os
 import time
 import traceback
@@ -14,7 +11,7 @@ warnings.filterwarnings("error")
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import torch
 
 from project.chamber import CT
@@ -24,12 +21,15 @@ from project.circleFinder import (
     rotate_image,
 )
 from project.detectors.fcrn import model
+from project.lib.image import drawing
+from project.lib.image.manual_segmenter import ManualSegmenter
 from project.lib.web.exceptions import (
     CUDAMemoryException,
     ImageAnalysisException,
     ImageIgnoredException,
     errorMessages,
 )
+from project.lib.web.network_loader import NetworkLoader
 
 with open("project/models/modelRevDates.json", "r") as f:
     model_to_update_date = json.load(f)
@@ -318,26 +318,50 @@ class SessionManager:
         return rotate_around_point_highperf((x, y), radians, img_center)
 
     def createErrorReport(self, edited_counts, user):
+        font = drawing.loadFont(14)
         for imgPath in edited_counts:
-            rel_path = os.path.normpath(os.path.join("./uploads", imgPath))
+            rel_path = os.path.normpath(os.path.join("./uploads", self.room, imgPath))
             img = rotate_image(cv2.imread(rel_path), self.rotation_angle)
             for i in edited_counts[imgPath]:
+                error_report_image_basename = ".".join(
+                    os.path.basename(imgPath).split(".")[:-1]
+                ) + "_region_%s_actualCt_%s_user_%s" % (
+                    i,
+                    edited_counts[imgPath][i],
+                    user,
+                )
                 annot = self.annotations[rel_path][int(i)]
                 imgSection = img[
                     annot["bbox"][1] : annot["bbox"][1] + annot["bbox"][3],
                     annot["bbox"][0] : annot["bbox"][0] + annot["bbox"][2],
                 ]
+                cv2.imwrite(
+                    os.path.join("error_cases", f"{error_report_image_basename}.png"),
+                    imgSection,
+                )
                 for outline in self.predictions[rel_path][int(i)]["outlines"]:
                     reversed_outline = [list(reversed(el)) for el in outline]
-                    draw_line(imgSection, [reversed_outline])
+                    drawing.draw_line(imgSection, [reversed_outline])
+                imgSection = Image.fromarray(imgSection)
+                draw = ImageDraw.Draw(imgSection)
+                draw.text(
+                    (15, 15),
+                    f"Orig: {self.predictions[rel_path][int(i)]['count']}",
+                    font=font,
+                    fill=drawing.orangeRed,
+                )
+                draw.text(
+                    (15, 35),
+                    f"Edited: {edited_counts[imgPath][i]}",
+                    font=font,
+                    fill=drawing.orangeRed,
+                )
                 cv2.imwrite(
                     os.path.join(
                         "error_cases",
-                        ".".join(os.path.basename(imgPath).split(".")[:-1])
-                        + "_%s_actualCt_%s_user_%s.png"
-                        % (i, edited_counts[imgPath][i], user),
+                        f"{error_report_image_basename}_outlines.png",
                     ),
-                    imgSection,
+                    np.array(imgSection),
                 )
         self.emit_to_room("report-ready", {})
 

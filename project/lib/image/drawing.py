@@ -3,9 +3,20 @@ import project.detectors.splinedist.spline_generator as sg
 from project.detectors.splinedist.utils import data_dir
 import numpy as np
 import os
+from pathlib import Path
+from PIL import ImageFont
 import random
 
 phi = np.load(os.path.join(data_dir(), "phi_" + str(8) + ".npy"))
+
+orangeRed = (3, 44, 252, 0)
+
+
+def loadFont(size):
+    return ImageFont.truetype(
+        os.path.join(Path(__file__).parent.absolute(), "../../static/fonts/arial.ttf"),
+        size,
+    )
 
 
 def get_rand_color(pastel_factor=0.8):

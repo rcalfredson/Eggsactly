@@ -1,18 +1,23 @@
 import argparse
+import datetime as dt
 from glob import glob
 import json
 import os
 import sys
 from selenium import webdriver
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.support.ui import WebDriverWait
+import time
 
 import timeit
 
 sys.path.append(os.path.abspath("./"))
-from lib.mail.send import send_mail
+from project.lib.mail.send import send_mail
 
 
 p = argparse.ArgumentParser(
@@ -26,12 +31,18 @@ p.add_argument(
     help="comma-separated list of email addresses"
     " where notifications should be sent if an error is detected",
 )
+p.add_argument(
+    "server_dir",
+    help="[optional] root directory where the egg-counting tool runs."
+    + " If this arg is included, tests of the following additional"
+    + " features are run: 1) error report submission.",
+)
 opts = p.parse_args()
 artifact_dest = os.path.join(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "test"
 )
 recipients = opts.recipients.split(",")
-with open("configs/test_images.json", "r") as f:
+with open("project/configs/test_images.json", "r") as f:
     test_images = json.load(f)
 imgs_to_test = {
     el: test_images[el]
@@ -51,8 +62,20 @@ class EggCountingTester:
         firefox_opts = webdriver.FirefoxOptions()
         firefox_opts.add_argument("--headless")
         self.driver = webdriver.Firefox(profile, options=firefox_opts)
+        self.set_viewport_size(1280, 947)
         self.opts = opts
-        self.time_per_image_secs = 5.3
+        self.time_per_image_secs = 10
+
+    def set_viewport_size(self, width, height):
+        window_size = self.driver.execute_script(
+            """
+            return [window.outerWidth - document.body.clientWidth + arguments[0],
+            window.outerHeight - document.body.clientHeight + arguments[1]];
+            """,
+            width,
+            height,
+        )
+        self.driver.set_window_size(*window_size)
 
     def log(self, message):
         if type(message) is not str:
@@ -62,6 +85,23 @@ class EggCountingTester:
 
     def wait(self, delay=10):
         return WebDriverWait(self.driver, delay)
+
+    def files_created_within_last_n_min(self, server_subdir, minutes=1):
+        # adapted from this source: https://stackoverflow.com/a/8087883
+        now = dt.datetime.now()
+        ago = now - dt.timedelta(minutes=minutes)
+        recent_files = []
+
+        for root, dirs, files in os.walk(
+            os.path.join(self.opts.server_dir, server_subdir)
+        ):
+            for fname in files:
+                path = os.path.join(root, fname)
+                st = os.stat(path)
+                mtime = dt.datetime.fromtimestamp(st.st_mtime)
+                if mtime > ago:
+                    recent_files.append(fname)
+        return recent_files
 
     def concat_csvs(self):
         output_name = "combined_counts.csv"
@@ -82,25 +122,119 @@ class EggCountingTester:
     def upload_images(self):
         self.num_uploaded = len(self.driver.find_elements_by_class_name("close-button"))
         self.driver.find_element_by_id("img-upload-btn").click()
-        all_images_uploaded_message = self.wait(
-            self.num_uploaded * self.time_per_image_secs
-        ).until(
-            EC.text_to_be_present_in_element(
-                (By.ID, "updates-by-image"),
-                f"Processing image {self.num_uploaded} of {self.num_uploaded}",
+        try:
+            self.wait(self.num_uploaded * self.time_per_image_secs).until(
+                EC.text_to_be_present_in_element(
+                    (By.ID, "updates-by-image"),
+                    f"Finished processing image {self.num_uploaded} of {self.num_uploaded}",
+                )
             )
-        )
-        assert (
-            all_images_uploaded_message is not None
-        ), "Did not find message reporting successful upload of all images"
-        finished_counting_message = self.wait().until(
-            EC.text_to_be_present_in_element(
-                (By.ID, "updates-by-image"), "Finished counting eggs"
+        except TimeoutException:
+            raise Exception(
+                "Did not find message reporting successful upload of all images"
             )
+        try:
+            self.wait().until(
+                EC.text_to_be_present_in_element(
+                    (By.ID, "updates-by-image"), "Finished counting eggs"
+                )
+            )
+        except TimeoutException:
+            raise Exception("Did not find message reporting successful egg counting")
+
+    def edit_egg_count(self, img_id):
+        actions = ActionChains(self.driver)
+        try:
+            self.wait().until(
+                EC.presence_of_element_located((By.ID, "paper-finished-loading"))
+            )
+        except TimeoutException:
+            raise Exception("Did not register end of loading of Paper.js")
+        try:
+            canvas = self.wait().until(
+                EC.presence_of_element_located((By.ID, "detectionResults"))
+            )
+        except TimeoutException:
+            raise Exception("Did not find <canvas> after completing egg counting")
+        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+        actions.move_to_element(canvas)
+        actions.move_by_offset(
+            self.img_list[img_id]["click_offset"]["x"],
+            self.img_list[img_id]["click_offset"]["y"],
         )
-        assert (
-            finished_counting_message is not None
-        ), "Did not find message reporting successful egg counting"
+        actions.click()
+        actions.send_keys("12")
+        actions.send_keys(Keys.RETURN)
+        actions.perform()
+
+    def check_egg_count_error_report(self, img_ids):
+        user_select_element = self.driver.find_element_by_id("user-select")
+        user_select = Select(user_select_element)
+        user_select.select_by_value("Robert")
+        actions = ActionChains(self.driver)
+        actions.click(self.driver.find_element_by_id("submit-error-report")).perform()
+        try:
+            self.wait().until(
+                EC.text_to_be_present_in_element(
+                    (By.ID, "submit-error-report"), "Submitted!"
+                )
+            )
+
+        except TimeoutException:
+            raise Exception(
+                "Did not find message reporting success when testing"
+                " egg-count correction submission"
+            )
+        recent_files = None
+        num_attempts = 0
+        while True:
+            recent_files = self.files_created_within_last_n_min("error_cases")
+            time.sleep(0.3 + 0.5 * num_attempts)
+            if len(recent_files) >= len(img_ids) or num_attempts > 3:
+                break
+            num_attempts += 1
+        for img_id in img_ids:
+            expected_filename_base = (
+                os.path.splitext(os.path.basename(self.img_list[img_id]["path"]))[0]
+                + f"_region_{self.img_list[img_id]['flagged_region_index']}"
+                + "_actualCt_12_user_Robert"
+            )
+            expected_filenames = {
+                "no_outline": expected_filename_base + ".png",
+                "outline": expected_filename_base + "_outlines.png",
+            }
+
+            assert expected_filenames["outline"] in recent_files, (
+                "Did not find the saved artifact of the egg-count correction"
+                f" for {img_id}"
+            )
+            for k in expected_filenames:
+                os.unlink(
+                    os.path.join(
+                        self.opts.server_dir, "error_cases", expected_filenames[k]
+                    )
+                )
+        print("Successfully submitted an error report.")
+
+    def flag_egg_count(self, img_id):
+        self.edit_egg_count(img_id)
+        self.check_egg_count_error_report([img_id])
+
+    def flag_egg_counts(self, imgs):
+        for i, img_id in enumerate(imgs):
+            if i > 0:
+                self.driver.find_element_by_id("next-img").click()
+                try:
+                    self.wait().until(
+                        EC.text_to_be_present_in_element(
+                            (By.ID, "current-img"),
+                            f"Viewing image {i+1} of {len(imgs)}",
+                        )
+                    )
+                except TimeoutException:
+                    raise Exception(f"Was unable to navigate to image #{i+1}")
+            self.edit_egg_count(img_id)
+        self.check_egg_count_error_report(imgs)
 
     def select_image(self, img_path):
         upload_form = self.driver.find_element_by_name("img-upload-1")
@@ -115,10 +249,12 @@ class EggCountingTester:
         ), f'Could not find expected string "{expected_title}" in page title'
 
     def download_csv(self):
-        download_csv_btn = self.wait().until(
-            EC.element_to_be_clickable((By.ID, "download-csv"))
-        )
-        assert download_csv_btn is not None, "Could not locate CSV download button"
+        try:
+            download_csv_btn = self.wait().until(
+                EC.element_to_be_clickable((By.ID, "download-csv"))
+            )
+        except TimeoutException:
+            raise Exception("Could not locate CSV download button")
         download_csv_btn.click()
 
     def set_chamber_type(self, img_path):
@@ -151,11 +287,13 @@ class EggCountingTester:
     def do_after_iterator(self):
         if self.opts.upload_style == "parallel":
             self.upload_images()
+            self.flag_egg_counts(list(self.img_list.keys()))
             self.download_csv()
             self.check_csv()
 
     def do_during_iterator(self):
-        for img_id in self.img_list:
+        for i, img_id in enumerate(self.img_list):
+            success_in_count_check = False
             try:
                 if self.opts.upload_style == "serial":
                     self.csv_ref = self.img_list[img_id]["csv"]
@@ -165,11 +303,13 @@ class EggCountingTester:
                 self.select_image(self.img_list[img_id]["path"])
                 if self.opts.upload_style == "serial":
                     self.upload_images()
+                    success_in_count_check = True
+                    self.flag_egg_count(img_id)
                     self.download_csv()
                     self.check_csv(img_id)
             except Exception as exc:
                 exc = str(exc)
-                if img_id not in exc:
+                if img_id not in exc or not success_in_count_check:
                     exc = self.add_prefix(exc, img_id)
                 self.log(exc)
                 self.errors.append(exc)
@@ -231,11 +371,6 @@ class EggCountingTester:
         return f"{prefix}{message}"
 
     def compare_csv_for_single_img(self, cts1, cts2, img_id=None):
-        prefix = (
-            ""
-            if img_id is None
-            else f"Image ID: {img_id}\tChamber type: {self.img_list[img_id]['type']}\n\t"
-        )
         assert len(set(cts1).difference(set(cts2))) == 0, self.add_prefix(
             "Diff found between generated egg counts and the given reference.", img_id
         )

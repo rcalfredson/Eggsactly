@@ -19,14 +19,6 @@ class DownloadManager:
     def __init__(self):
         self.sessions = {}
 
-    def loadFont(self, size):
-        self.font = ImageFont.truetype(
-            os.path.join(
-                Path(__file__).parent.absolute(), "../../static/fonts/arial.ttf"
-            ),
-            size,
-        )
-
     def addNewSession(self, session_manager, ts, edited_counts):
         ts = str(ts)
         self.sessions[ts] = {
@@ -38,7 +30,7 @@ class DownloadManager:
         Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
 
     def prepareAnnotatedImage(self, sm, ts, path):
-        self.loadFont(80)
+        self.font = drawing.loadFont(80)
         img = cv2.imread(path)
         check_counts = self.path_base in self.sessions[ts]["edited_counts"]
         if check_counts:
@@ -133,7 +125,7 @@ class DownloadManager:
         return np.array(img)
 
     def prepareImageWithError(self, path, error_type):
-        self.loadFont(140)
+        self.font = drawing.loadFont(140)
         img = Image.fromarray(cv2.imread(path))
         draw = ImageDraw.Draw(img)
         w, h = img.size

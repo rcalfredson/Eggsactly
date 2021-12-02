@@ -6,7 +6,12 @@
         ],
         "type": "sixByFour",
         "path": "/media/Synology3/Rebecca/2021_10_30/IMG_0002.JPG",
-        "csv": "static/test_data/egg_ct_official_2021_10_30_img_0002.csv"
+        "csv": "project/static/test_data/egg_ct_official_2021_10_30_img_0002.csv",
+        "click_offset": {
+            "x": -471,
+            "y": -303
+        },
+        "flagged_region_index": 0
     },
     "opto_0005": {
         "test": [
@@ -14,28 +19,47 @@
         ],
         "type": "opto",
         "path": "/media/Synology3/Rebecca/2021_10_30/IMG_0005.JPG",
-        "csv": "static/test_data/egg_ct_official_2021_10_30_img_0005.csv"
+        "csv": "project/static/test_data/egg_ct_official_2021_10_30_img_0005.csv",
+        "click_offset": {
+            "x": -244,
+            "y": -374
+        },
+        "flagged_region_index": 0
     },
     "fiveByThree_0003": {
         "test": [
-            "regression"
         ],
         "type": "fiveByThree",
         "path": "/media/Synology3/Rebecca/2021_11_3/IMG_0003.JPG",
-        "csv": "static/test_data/egg_ct_official_2021_11_3_img_0003.csv"
+        "csv": "project/static/test_data/egg_ct_official_2021_11_3_img_0003.csv",
+        "click_offset": {
+            "x": -282,
+            "y": -228
+        },
+        "flagged_region_index": 0
     },
     "large_0003": {
-        "test": [],
+        "test": [
+        ],
         "type": "large",
         "path": "/media/Synology3/Rebecca/2021_10_1/IMG_0003.JPG",
-        "csv": "static/test_data/egg_ct_official_2021_10_1_img_0003.csv"
+        "csv": "project/static/test_data/egg_ct_official_2021_10_1_img_0003.csv",
+        "click_offset": {
+            "x": -188,
+            "y": -338
+        },
+        "flagged_region_index": 0
     },
     "large_0006": {
         "test": [
-            "regression"
         ],
         "type": "large",
         "path": "/media/Synology3/Rebecca/2021_10_1/IMG_0006.JPG",
-        "csv": "static/test_data/egg_ct_official_2021_10_1_img_0006.csv"
+        "csv": "project/static/test_data/egg_ct_official_2021_10_1_img_0006.csv",
+        "click_offset": {
+            "x": -119,
+            "y": -315
+        },
+        "flagged_region_index": 0
     }
 }
