@@ -154,3 +154,4 @@ Thumbs.db
 # user authentication
 db.sqlite
 flask_session
+privileged_ips.json

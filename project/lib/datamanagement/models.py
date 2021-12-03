@@ -16,6 +16,7 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(100))
     name = db.Column(db.String(1000))
     is_google = db.Column(db.Boolean())
+    is_local = db.Column(db.Boolean())
 
 
 def login_google_user():
@@ -27,7 +28,7 @@ def login_google_user():
             name = google_data["name"]
             if not current_user.is_authenticated:
                 user = User.query.filter_by(
-                    email=google_data["email"], is_google=True
+                    email=google_data["email"], is_google=True, is_local=False
                 ).first()
                 if not user:
                     user = User(
@@ -37,6 +38,7 @@ def login_google_user():
                             str(os.urandom(24)), method="sha256"
                         ),
                         is_google=True,
+                        is_local=False,
                     )
 
                     db.session.add(user)
@@ -45,7 +47,7 @@ def login_google_user():
                     except sqlalchemy.exc.IntegrityError:
                         db.session.rollback()
                         user = User.query.filter_by(
-                            email=google_data["email"], is_google=False
+                            email=google_data["email"], is_google=False, is_local=False
                         ).first()
                 login_user(user, remember=False)
         except oauthlib.oauth2.rfc6749.errors.TokenExpiredError:

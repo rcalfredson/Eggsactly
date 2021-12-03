@@ -1,11 +1,55 @@
-from flask import Blueprint, flash, render_template, redirect, url_for, request
+from flask import Blueprint, flash, render_template, redirect, url_for, request, session
 from flask_dance.contrib.google import google
 from flask_login import login_user, current_user, login_required, logout_user
+import json
+import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from ..lib.datamanagement.models import User, login_google_user
 from .. import db, app
+from ..users import users
 
 auth = Blueprint("auth", __name__)
+with open("project/configs/privileged_ips.json") as f:
+    privileged_ips = json.load(f)
+
+
+@auth.route("/check_request_origin", methods=["POST"])
+def check_request_origin():
+    ip_addr = request.form.get("ip")
+    if "." in ip_addr:
+        local = ip_addr in privileged_ips["v4"]
+    elif ":" in ip_addr:
+        network = ":".join(ip_addr.split(":")[:4])
+        local = network in privileged_ips["v6"]
+    else:
+        local = False
+    session["local-ip"] = local
+    return {"local": local}
+
+
+@auth.route("/login/local", methods=["POST"])
+def login_local_user():
+    if not session["local-ip"]:
+        return {"success": False, "message": "IP address not verified"}
+    name = request.form.get("name")
+    user = User.query.filter_by(name=name, is_local=True).first()
+    if not user:
+        user = User(
+            email=os.urandom(24),
+            name=name,
+            password=generate_password_hash(str(os.urandom(24)), method="sha256"),
+            is_local=True,
+            is_google=False,
+        )
+        db.session.add(user)
+        db.session.commit()
+    login_user(user, remember=False)
+    return {"success": True}
+
+
+@auth.route("/users/local")
+def get_local_users():
+    return {"users": users if session["local-ip"] else []}
 
 
 @auth.route("/login")
@@ -22,7 +66,7 @@ def login_oath_google():
 
 @auth.route("/user/exists/google/<email>")
 def user_exists(email):
-    user = User.query.filter_by(email=email, is_google=True).first()
+    user = User.query.filter_by(email=email, is_google=True, is_local=False).first()
     return {"userExists": True if user else False}
 
 
@@ -45,7 +89,7 @@ def login_post():
     modal = True if request.form.get("modal") else False
     remember = True if request.form.get("remember") else False
 
-    user = User.query.filter_by(email=email).first()
+    user = User.query.filter_by(email=email, is_local=False).first()
 
     # check if the user actually exists
     # take the user-supplied password, hash it, and compare it to the hashed password in the database
@@ -83,7 +127,7 @@ def signup_post():
     name = request.form.get("name")
     password = request.form.get("password")
 
-    user = User.query.filter_by(email=email).first()
+    user = User.query.filter_by(email=email, is_local=False).first()
     if user:
         if user.is_google:
             error_msg += 'Try clicking "Sign in with Google" from the login menu.'
@@ -102,6 +146,7 @@ def signup_post():
         name=name,
         password=generate_password_hash(password, method="sha256"),
         is_google=False,
+        is_local=False,
     )
 
     # add the new user to the database

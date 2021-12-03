@@ -24,7 +24,7 @@
                 <div id="navbarMenuHeroA" class="navbar-menu">
                     <div id=userinfo-nav class="navbar-end">
                         {% if current_user.is_authenticated %}
-                        <span id=username-text class="navbar-item">
+                        <span id=username-text class="navbar-item" {% if is_local %} style="display: none;" {% endif %}>
                             User: {{ name }} {% if google_data %} (Google)
                             {% if google_data.picture %}
                             <img id=google-user-pic src="{{ google_data.picture }}">
@@ -34,16 +34,16 @@
                         {% endif %}
                         {% if not current_user.is_authenticated %}
                         <a id=login-link href="#" class="navbar-item">
-                            Log In
+                            Sign in
                         </a>
                         <a id=signup-link href="#" class="navbar-item">
-                            Sign Up
+                            Create account
                         </a>
                         {% endif %}
 
-                        <a id=logout-link {% if not current_user.is_authenticated %} style="display: none;" {% endif %}
-                            href="{{ url_for('auth.logout') }}" class="navbar-item">
-                            Logout
+                        <a id=logout-link onclick=resetUserDropdownIfNeeded() {% if not current_user.is_authenticated %}
+                            style="display: none;" {% endif %} href="{{ url_for('auth.logout') }}" class="navbar-item">
+                            Sign out
                         </a>
                     </div>
                 </div>
@@ -319,6 +319,27 @@
             } while (existing_ids.indexOf(result) > 0)
             return result;
         }
+
+        function checkIP(callback) {
+            var result = null;
+            var scriptUrl = "https://www.cloudflare.com/cdn-cgi/trace";
+            $.ajax({
+                url: scriptUrl,
+                type: 'get',
+                dataType: 'html',
+                async: true,
+                success: (data) => {
+                    // Convert key-value pairs to JSON
+                    // https://stackoverflow.com/a/39284735/452587
+                    data = data.trim().split('\n').reduce(function (obj, pair) {
+                        pair = pair.split('=');
+                        return obj[pair[0]] = pair[1], obj;
+                    }, {})
+                    callback(data);
+                }
+            });
+            return result;
+        }
     </script>
     <form id=notice><label style="background-color: rgb(252, 226, 113);">Please note: the page has changed recently. If
             this box overlaps with the text below it, or if any of the buttons don't have rounded edges and black
@@ -377,6 +398,98 @@
         }
 
         document.getElementById('download-log-updates').onclick = downloadLogUpdates;
+
+        function updateLoginForLocalUsers(data) {
+            let request = new XMLHttpRequest();
+            request.open('POST', 'check_request_origin');
+            let formData = new FormData();
+            formData.append('ip', data.ip);
+            request.send(formData);
+            request.onreadystatechange = () => {
+                if (request.readyState === 4) {
+                    let response = JSON.parse(request.response)
+                    if (response.local) {
+                        addUserSelectionDropdownToToolbar();
+                    }
+                }
+            }
+        }
+
+        function resetUserDropdownIfNeeded() {
+            let userSelect = document.getElementById('user-select')
+            if (userSelect && userSelect.options.length > 1) {
+                userSelect.value = null;
+                window.localStorage.removeItem('user')
+                userSelect.dispatchEvent(new Event('change'));
+            }
+            return true;
+        }
+
+        function updateSelectWidthBasedOnOption(evt) {
+            let tempSelect = document.createElement('select'),
+                tempOption = document.createElement('option');
+
+            tempOption.textContent = evt.target.options[evt.target.selectedIndex].text;
+            tempSelect.style.cssText += `
+      visibility: hidden;
+      position: fixed;
+      `;
+            tempSelect.appendChild(tempOption);
+            evt.target.after(tempSelect);
+
+            const tempSelectWidth = tempSelect.getBoundingClientRect().width;
+            evt.target.style.width = `${tempSelectWidth}px`;
+            tempSelect.remove();
+        }
+
+        function addUserSelectionDropdownToToolbar() {
+            let request = new XMLHttpRequest();
+            request.open('GET', 'users/local');
+            request.send();
+            request.onreadystatechange = () => {
+                if (request.readyState === 4) {
+                    let response = JSON.parse(request.response);
+                    let userDropdown = document.createElement('select');
+                    userDropdown.id = 'user-select';
+                    let userSelectOption = document.createElement('option');
+                    userSelectOption.innerText = 'User: not set';
+                    userSelectOption.value = null;
+                    userDropdown.appendChild(userSelectOption);
+                    response.users.forEach(user => {
+                        user = capitalizeFirstLetter(user)
+                        userSelectOption = document.createElement('option');
+                        userSelectOption.innerText = `User: ${user}`;
+                        userSelectOption.value = user;
+                        userDropdown.appendChild(userSelectOption);
+                    });
+                    document.getElementById('userinfo-nav').prepend(userDropdown);
+                    if (document.getElementById('login-link')) {
+                        document.getElementById('login-link').innerText =
+                            'Sign in as non-lab user';
+                    }
+                    userDropdown.onchange = (evt) => {
+                        if (evt.target.value && evt.target.value !== 'null') {
+                            window.localStorage.setItem(
+                                'user', evt.target.value
+                            );
+                        }
+                        if (evt.target.options[0].value === 'null') {
+                            evt.target.remove(0);
+                        }
+                        updateSelectWidthBasedOnOption(evt);
+                        loginLocalUser();
+                    }
+                    if (window.localStorage.getItem('user')) {
+                        let userSelect = document.getElementById('user-select');
+                        userSelect.value = window.localStorage.getItem(
+                            'user');
+                        userSelect.dispatchEvent(new Event('change'));
+                    }
+                }
+            }
+        }
+
+        checkIP(updateLoginForLocalUsers);
 
         var parser = new UAParser();
         let wordSpan = document.getElementById('os-dependent-key')
@@ -588,7 +701,7 @@
         });
         socket.on('mask-list-update', msg => {
             if (msg.fail === 'no_auth') {
-                displayMaskMessage('Please log in to save a mask.');
+                displayMaskMessage('Please sign in to save a mask.');
                 return;
             }
             let maskList = document.getElementById('mask-list')
@@ -752,7 +865,7 @@
         }
 
         function startSignupActionViaModal() {
-            document.getElementById('modal-1-title').innerText = 'Create Account';
+            document.getElementById('modal-1-title').innerText = 'Create account';
             let modalMessage = document.getElementById('modal-1-message');
             modalMessage.innerHTML =
                 '<div style="margin-bottom: 15px;"><span>Save and load custom templates of egg-laying regions.</span></div>';
@@ -778,14 +891,14 @@
                     elementId: 'signup-password'
                 }
             });
-            let signupButton = addButton(form, 'Sign Up', signUpViaXHR);
+            let signupButton = addButton(form, 'Create account', signUpViaXHR);
             signupButton.setAttribute('id', 'signup-button');
             modalMessage.appendChild(form);
             document.getElementById('modalToggle').click();
         }
 
         function startLoginActionViaModal() {
-            document.getElementById('modal-1-title').innerText = 'Log In'
+            document.getElementById('modal-1-title').innerText = 'Sign in'
             let modalMessage = document.getElementById('modal-1-message');
             modalMessage.innerHTML = '';
             let loginForm = document.createElement('form');
@@ -837,7 +950,7 @@
             googleLoginImg.id = 'google-login-img'
             googleLoginImg.src = 'static/imgs/btn_google_signin_dark_pressed_web@2x.png'
             googleLoginLink.appendChild(googleLoginImg);
-            loginButton = addButton(loginForm, 'Log In', loginViaXHR);
+            loginButton = addButton(loginForm, 'Sign in', loginViaXHR);
             loginButton.setAttribute('id', 'login-button');
             loginForm.appendChild(googleLoginLink);
             modalMessage.appendChild(loginForm);
@@ -908,7 +1021,7 @@
                         let notification = document.createElement('div');
                         notification.id = 'acct-created';
                         notification.classList.add('notification', 'is-success');
-                        notification.innerText = 'Account created! Log in to start using it.';
+                        notification.innerText = 'Account created! Sign in to start using it.';
                         document.getElementById('modal-1-message').prepend(notification);
                         ['email', 'name', 'password', 'button'].forEach(elName => {
                             document.getElementById(`signup-${elName}`).setAttribute('disabled', true);
@@ -929,6 +1042,30 @@
                 }
             }
         }
+
+        function loginLocalUser() {
+            let userToLogin = document.getElementById('user-select').value;
+            if (!userToLogin || userToLogin === 'null') return;
+            let request = new XMLHttpRequest();
+            request.open('POST', 'login/local');
+            let formData = new FormData();
+            formData.append('name', userToLogin);
+            request.send(formData);
+            request.onreadystatechange = () => {
+                if (request.readyState === 4) {
+                    let response = JSON.parse(request.response);
+                    ['login-link', 'signup-link', 'username-text'].forEach(
+                        elementName => {
+                            if (document.getElementById(elementName)) {
+                                document.getElementById(elementName).remove();
+                            }
+                        });
+                    document.getElementById('logout-link'
+                    ).style.removeProperty('display');
+                }
+            };
+        }
+
 
         function loginViaXHR() {
             let request = new XMLHttpRequest();
@@ -1541,7 +1678,7 @@
 
         function saveCustomMask() {
             if (!loggedIn) {
-                displayMaskMessage('Please log in to save a mask.');
+                displayMaskMessage('Please sign in to save a mask.');
                 return;
             }
             let reducedData = {};
@@ -1821,6 +1958,9 @@
         }
 
         function bringGridlineToleranceBandsToFrontOrBack(mode) {
+            if (!chamberRealignmentData[currentImgIndex]) {
+                return;
+            }
             let methodToCall = mode === 'front' ? 'bringToFront' : 'sendToBack';
             ['horiz', 'vert'].forEach(ori => {
                 Object.keys(
@@ -2841,10 +2981,6 @@
                 setupImgDownloadButton();
                 setupErrorReportButton();
             }
-
-            document.getElementById('user-select').onchange = (evt) => {
-                window.localStorage.setItem('user', evt.target.value);
-            }
             setupErrorAnnotationButtonHandlers();
             if (countingState === countingStates.pre) {
                 setupCountEggsButton();
@@ -3772,7 +3908,6 @@
         }
 
         var analyzedImagesButtons = function () {
-
             userSelectOptions = [];
             {% for user in users %}
             userSelectOptions.push({ value: '{{user}}', text: 'User: {{user}}' })
@@ -3783,10 +3918,6 @@
                     id: 'submit-error-report', text: 'Submit error report for all images',
                     hidden: true
                 },
-                {
-                    id: 'user-select', text: 'User: not set',
-                    selectOptions: userSelectOptions, hidden: countingState === countingStates.pre
-                }
             ];
             if (countingState === countingStates.pre) {
                 return allButtons.slice(1);
@@ -3855,10 +3986,6 @@
 
         function setupCanvas() {
             setupNavButtons();
-
-            if (window.localStorage.getItem('user')) {
-                selectDOM.value = window.localStorage.getItem('user');
-            }
             $('#viewer-nav').append('<div class=divider></div>');
             $('#updates').append('<br><div id=current-img-parent><p id=mode-marker></p><p id=current-img></p>');
             setCurrentImgName()

@@ -46,6 +46,7 @@ def remove_old_files(folder):
 
 @main.route("/", methods=["GET", "POST"])
 def index():
+    is_local = current_user.is_local if hasattr(current_user, "is_local") else False
     name = current_user.name if hasattr(current_user, "name") else None
     user_info_endpoint = "/oauth2/v2/userinfo"
     google_data = None
@@ -56,6 +57,7 @@ def index():
         name=result["name"] if result["name"] is not None else name,
         google_data=result["data"],
         google_data_url=os.path.join(google.base_url, user_info_endpoint),
+        is_local=is_local,
     )
 
 
