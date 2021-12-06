@@ -9,10 +9,7 @@ from flask_socketio import disconnect
 def authenticated_only(f):
     @functools.wraps(f)
     def wrapped(*args, **kwargs):
-        if not current_user.is_authenticated:
-            return f({'no_auth': True})
-        else:
-            args[0]['no_auth'] = False
-            return f(*args, **kwargs)
+        args[0]["no_auth"] = False if current_user.is_authenticated else True
+        return f(*args, **kwargs)
 
     return wrapped

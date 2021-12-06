@@ -95,7 +95,13 @@ def remove_img(data):
 @app.socketIO.on("load-custom-mask")
 def load_custom_mask(data):
     with open(
-        os.path.join("project", "configs", "masks", str(current_user.id), f"{data['maskName']}.json")
+        os.path.join(
+            "project",
+            "configs",
+            "masks",
+            str(current_user.id),
+            f"{data['maskName']}.json",
+        )
     ) as f:
         app.socketIO.emit("loaded-custom-mask", json.load(f), room=data["sid"])
 
@@ -108,8 +114,12 @@ def prepare_csv(data):
 
 
 @app.socketIO.on("submit-error-report")
+@authenticated_only
 def submit_error_report(data):
-    app.sessions[data["sid"]].createErrorReport(data["editedCounts"], data["user"])
+    if data["no_auth"]:
+        app.socketIO.emit("report-ready", {"fail": "no_auth"}, room=data["sid"])
+        return
+    app.sessions[data["sid"]].createErrorReport(data["editedCounts"], current_user.id)
 
 
 @app.socketIO.on("prepare-annot-imgs-zip")

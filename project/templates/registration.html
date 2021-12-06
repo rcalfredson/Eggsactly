@@ -410,22 +410,31 @@
                     let response = JSON.parse(request.response)
                     if (response.local) {
                         addUserSelectionDropdownToToolbar();
+                    } else {
+                        if (document.getElementById('username-text')) {
+                            document.getElementById('username-text').style.display = '';
+                        }
                     }
                 }
             }
         }
 
         function resetUserDropdownIfNeeded() {
-            let userSelect = document.getElementById('user-select')
-            if (userSelect && userSelect.options.length > 1) {
-                userSelect.value = null;
-                window.localStorage.removeItem('user')
-                userSelect.dispatchEvent(new Event('change'));
+            let userSelect = document.getElementById('user-select');
+            if (userSelect) {
+                if (userSelect.options.length > 1) {
+                    userSelect.value = null;
+                    window.localStorage.removeItem('user')
+                    userSelect.dispatchEvent(new Event('change'));
+                }
             }
             return true;
         }
 
         function updateSelectWidthBasedOnOption(evt) {
+            if (!evt.target.selectedIndex || evt.target.selectedIndex === -1) {
+                return;
+            }
             let tempSelect = document.createElement('select'),
                 tempOption = document.createElement('option');
 
@@ -649,6 +658,7 @@
         });
         socket.on('counting-done', (msg) => {
             countingState = countingStates.post;
+            inputLbl.setAttribute('hidden', true);
             clearAllUpdates();
             setupCanvas(false);
         });
@@ -716,11 +726,40 @@
             }
             displayMaskMessage('Mask saved!', 'green');
         })
-        socket.on('report-ready', () => {
+        socket.on('report-ready', (msg) => {
             let el = document.getElementById('submit-error-report');
             el.removeAttribute('disabled');
-            el.innerText = 'Submitted!';
+            if (msg.fail === 'no_auth') {
+                el.style.backgroundColor = colors.red;
+                el.style.color = 'white';
+                document.getElementById('login-link').style.fontWeight = 'bold';
+                let userSelect = document.getElementById('user-select');
+                if (userSelect) {
+                    el.innerText = 'To submit, sign in via either the dropdown or' +
+                        ' the "Sign in" button'
+                } else {
+                    el.innerText = 'Please sign in first and try again.';
+                }
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                if (userSelect) {
+                    userSelect.style.borderColor = 'red';
+                    userSelect.style.fontWeight = 'bold';
+                }
+            } else {
+                el.removeAttribute('style');
+                el.innerText = 'Submitted!';
+            }
             setTimeout(() => {
+                el.removeAttribute('style');
+                el.removeAttribute('disabled');
+                let userSelect = document.getElementById('user-select');
+                if (userSelect) {
+                    userSelect.style.borderColor = 'black';
+                    userSelect.style.fontWeight = 'normal';
+                }
+                if (document.getElementById('login-link')) {
+                    document.getElementById('login-link').style.fontWeight = 'normal';
+                }
                 el.innerText = 'Submit error report for all images';
             }, 2500)
             clearInterval(el.loadingInterval);
@@ -778,7 +817,10 @@
             })
         });
 
-        function hideModal() {
+        function hideModal(titleToCheck) {
+            if (titleToCheck && document.getElementById('modal-1-title') !== titleToCheck) {
+                return;
+            }
             document.getElementById('page-mask').style.display = 'none';
             document.getElementById('modal-1').classList.remove('is-open')
         }
@@ -912,6 +954,9 @@
                 'Your Email', fieldOpts);
             emailField.autofocus = "";
             emailField.oninput = (e) => {
+                if (emailField.value.length === 0) {
+                    return;
+                }
                 let request = new XMLHttpRequest();
                 request.open('GET', '/user/exists/google/' + emailField.value);
                 request.send();
@@ -999,6 +1044,9 @@
                     document.getElementById('login-link').remove();
                     document.getElementById('signup-link').remove();
                     document.getElementById('logout-link').style.removeProperty('display');
+                    if (document.getElementById('user-select')) {
+                        document.getElementById('user-select').style.display = 'none';
+                    }
                     if (document.getElementById('mask-list')) {
                         socket.emit('mask-list', { sid });
                     }
@@ -1027,7 +1075,7 @@
                             document.getElementById(`signup-${elName}`).setAttribute('disabled', true);
                         })
                         setTimeout(() => {
-                            hideModal();
+                            hideModal('Create account');
                         }, 3500);
                     } else {
                         if (document.getElementById('signup-fail')) {
@@ -1095,6 +1143,9 @@
                         document.getElementById('login-link').remove();
                         document.getElementById('signup-link').remove();
                         document.getElementById('logout-link').style.removeProperty('display');
+                        if (document.getElementById('user-select')) {
+                            document.getElementById('user-select').style.display = 'none';
+                        }
                         if (document.getElementById('mask-list')) {
                             socket.emit('mask-list', { sid });
                         }
@@ -1118,6 +1169,9 @@
             updateImageDisplay();
             inputReset.setAttribute('hidden', true);
             inputLbl.innerText = 'Choose images to upload';
+            inputLbl.removeAttribute('hidden');
+            input.removeAttribute('disabled');
+            inputLbl.style.color = '';
             clearAllUpdates();
             socket.emit('reset-session', { sid })
         };
@@ -2844,6 +2898,8 @@
                     sid
                 };
                 countingState = countingStates.mid;
+                input.setAttribute('disabled', true);
+                inputLbl.style.color = colors.grey;
                 $.ajax({
                     url: '/manual-recount',
                     type: "POST",
@@ -2954,18 +3010,18 @@
         function setupErrorReportButton() {
             document.getElementById('submit-error-report').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
-                if (document.getElementById('user-select').value === 'null') {
-                    document.getElementById('user-select').style.borderColor = 'red';
-                    document.getElementById('user-select').style.fontWeight = 'bold';
-                    evt.target.innerText = 'Please set user first and try again.';
-                    setTimeout(() => {
-                        evt.target.innerText = 'Submit error report for all images';
-                        evt.target.removeAttribute('disabled');
-                        document.getElementById('user-select').style.borderColor = 'black';
-                        document.getElementById('user-select').style.fontWeight = 'normal';
-                    }, 2500);
-                    return;
-                }
+                // if (document.getElementById('user-select').value === 'null') {
+                //     document.getElementById('user-select').style.borderColor = 'red';
+                //     document.getElementById('user-select').style.fontWeight = 'bold';
+                //     evt.target.innerText = 'Please set user first and try again.';
+                //     setTimeout(() => {
+                //         evt.target.innerText = 'Submit error report for all images';
+                //         evt.target.removeAttribute('disabled');
+                //         document.getElementById('user-select').style.borderColor = 'black';
+                //         document.getElementById('user-select').style.fontWeight = 'normal';
+                //     }, 2500);
+                //     return;
+                // }
                 displayLoadingMessage(evt.target);
                 socket.emit('submit-error-report', {
                     editedCounts: collectEditedCounts(),
@@ -3815,7 +3871,7 @@
                 inputAmender.style = 'position: absolute; left:' +
                     ` ${viewer.offsetLeft + eggLayingRegions[index][path.id].outline.bounds.x}px; ` +
                     `top: ${viewer.offsetTop + eggLayingRegions[index][path.id].outline.bounds.y}px; ` +
-                    `width: ${50 * paper.view.zoom}px;` +
+                    `width: ${75 * paper.view.zoom}px;` +
                     `height: ${26 * paper.view.zoom}px;` +
                     `font-size: ${0.75 * text.fontSize * paper.view.zoom}px;`
                 inputAmender.placeholder = 'e.g., 42';
