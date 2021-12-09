@@ -46,7 +46,11 @@ def remove_old_files(folder):
 
 @main.route("/", methods=["GET", "POST"])
 def index():
-    is_local = current_user.is_local if hasattr(current_user, "is_local") else False
+    origin_flag = request.args.get('origin')
+    if origin_flag in ('external', 'local'):
+        is_local = origin_flag == 'local'
+    else:
+        is_local = current_user.is_local if hasattr(current_user, "is_local") else False
     name = current_user.name if hasattr(current_user, "name") else None
     user_info_endpoint = "/oauth2/v2/userinfo"
     google_data = None

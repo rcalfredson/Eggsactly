@@ -142,9 +142,10 @@
         let canvasWidth = Math.min(1300, window.innerWidth);
         let canvasHeight = 800;
         const alignmentHelpDialogElements = [
-            'frame', 'text', 'button', 'buttonText', 'hoverSensor',
-            'exampleImage'
+            'frame', 'text', 'button', 'buttonText',
+            'exampleImage', 'exampleText', 'hoverSensor'
         ];
+        let lastHelpBoxWasMinimized;
         let alignmentHelpDialog = {};
         let logUpdates = [];
         let upperPadding, leftPadding;
@@ -408,7 +409,21 @@
             request.onreadystatechange = () => {
                 if (request.readyState === 4) {
                     let response = JSON.parse(request.response)
-                    if (response.local) {
+                    let displayAsLocal = response.local;
+                    let searchParams = window.location.search;
+                    let queryParams;
+                    if (searchParams.length > 0) {
+                        queryParams = searchParams.split('?')[1].split('&');
+                    } else {
+                        queryParams = [];
+                    }
+                    if (searchParams) {
+                        document.getElementById('logout-link').href += searchParams;
+                    }
+                    if (displayAsLocal && queryParams.includes('origin=external')) {
+                        displayAsLocal = false;
+                    }
+                    if (displayAsLocal) {
                         addUserSelectionDropdownToToolbar();
                     } else {
                         if (document.getElementById('username-text')) {
@@ -420,11 +435,11 @@
         }
 
         function resetUserDropdownIfNeeded() {
+            window.localStorage.removeItem('user');
             let userSelect = document.getElementById('user-select');
             if (userSelect) {
                 if (userSelect.options.length > 1) {
                     userSelect.value = null;
-                    window.localStorage.removeItem('user')
                     userSelect.dispatchEvent(new Event('change'));
                 }
             }
@@ -732,15 +747,31 @@
             if (msg.fail === 'no_auth') {
                 el.style.backgroundColor = colors.red;
                 el.style.color = 'white';
-                document.getElementById('login-link').style.fontWeight = 'bold';
-                let userSelect = document.getElementById('user-select');
-                if (userSelect) {
-                    el.innerText = 'To submit, sign in via either the dropdown or' +
-                        ' the "Sign in" button'
-                } else {
-                    el.innerText = 'Please sign in first and try again.';
+                if (document.getElementById('login-link')) {
+                    document.getElementById('login-link').style.fontWeight = 'bold';
                 }
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                let userSelect = document.getElementById('user-select');
+                let userMessage;
+                if (userSelect) {
+                    userMessage = 'To submit, sign in via either the dropdown or' +
+                        ' the "Sign in" button.'
+                } else {
+                    userMessage = 'Please sign in first and try again.';
+                }
+                document.getElementById('modal-1-title').innerText = 'Sign in'
+                document.getElementById('modal-1-message').style.fontSize = '11px';
+                document.getElementById('modal-1-message').innerText =
+                    userMessage;
+                document.getElementById('modal-1-close').removeAttribute('hidden');
+                document.getElementById('modalToggle').click();
+                let intervalCheck = setInterval(() => {
+                    if (window.getComputedStyle(document.
+                        getElementById('modal-1')).display === 'none') {
+                        document.getElementById('modal-1-message').style.fontSize = '';
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        clearInterval(intervalCheck);
+                    }
+                }, 200)
                 if (userSelect) {
                     userSelect.style.borderColor = 'red';
                     userSelect.style.fontWeight = 'bold';
@@ -818,7 +849,7 @@
         });
 
         function hideModal(titleToCheck) {
-            if (titleToCheck && document.getElementById('modal-1-title') !== titleToCheck) {
+            if (titleToCheck && document.getElementById('modal-1-title').innerText !== titleToCheck) {
                 return;
             }
             document.getElementById('page-mask').style.display = 'none';
@@ -2012,7 +2043,8 @@
         }
 
         function bringGridlineToleranceBandsToFrontOrBack(mode) {
-            if (!chamberRealignmentData[currentImgIndex]) {
+            if (!(chamberRealignmentData[currentImgIndex] &&
+                chamberRealignmentData[currentImgIndex].maskGridlines)) {
                 return;
             }
             let methodToCall = mode === 'front' ? 'bringToFront' : 'sendToBack';
@@ -3203,6 +3235,7 @@
                 ...centerPosition
             );
             resizeHelpExampleImage();
+            alignmentHelpDialog.exampleText.point = getExampleHelpPos();
         }
 
         function bringHelpBoxElementsToFront() {
@@ -3246,6 +3279,7 @@
                 updateHelpButtonText('Resume alignment');
             }
             bringHelpBoxElementsToFront();
+            chamberRealignmentData[currentImgIndex].helpBoxMaximized = helpBoxIsMaximized();
         }
 
         function calculateFullSizeHelpBoxBounds() {
@@ -3271,10 +3305,14 @@
             let buttonWidth = 200;
             let buttonXPos = alignmentHelpDialog.frame.position.x - 0.5 * buttonWidth;
             let buttonULCorner = new paper.Point(alignmentHelpDialog.frame.position.x - 0.5 * buttonWidth,
-                alignmentHelpDialog.text.position.y + 20);
+                alignmentHelpDialog.text.position.y + 40);
             let buttonBRCorner = new paper.Point(buttonULCorner.x + buttonWidth,
                 buttonULCorner.y + 40)
             return { ul: buttonULCorner, br: buttonBRCorner };
+        }
+
+        function getExampleHelpPos() {
+            return alignmentHelpDialog.exampleImage.position;
         }
 
         function getHelpTextPos() {
@@ -3325,16 +3363,22 @@
             alignmentHelpDialog.frame.strokeColor = 'black';
             alignmentHelpDialog.frame.strokeWidth = 3;
             alignmentHelpDialog.frame.fillColor = 'white';
-            alignmentHelpDialog.text = new paper.PointText(new paper.Point(0, 0))
+            alignmentHelpDialog.text = new paper.PointText(new paper.Point(0, 0));
             alignmentHelpDialog.text.content = "Please drag the line endpoints on your" +
-                " image so that the lines are positioned\nas shown in the example."
+                " image so that the lines are positioned\nas shown in the example." +
+                " Once the alignment looks good, you can count eggs.";
             alignmentHelpDialog.fontSize = 16;
             do {
                 alignmentHelpDialog.fontSize -= 1;
                 alignmentHelpDialog.text.fontSize = `${alignmentHelpDialog.fontSize}pt`;
                 alignmentHelpDialog.text.point = getHelpTextPos();
             } while (!alignmentHelpDialog.text.isInside(alignmentHelpDialog.frame.bounds))
-
+            // how to place this properly
+            alignmentHelpDialog.exampleText = new paper.PointText(new paper.Point(0, 0));
+            alignmentHelpDialog.exampleText.content = 'example';
+            alignmentHelpDialog.exampleText.fontSize = '15pt';
+            alignmentHelpDialog.exampleText.fillColor = 'red';
+            alignmentHelpDialog.exampleText.justification = 'center';
             let buttonBounds = getHelpButtonCorners();
             alignmentHelpDialog.button = new paper.Shape.Rectangle(
                 buttonBounds.ul, buttonBounds.br);
@@ -3349,20 +3393,27 @@
                 buttonBounds.ul, buttonBounds.br
             );
             alignmentHelpDialog.hoverSensor.fillColor = 'black';
-            alignmentHelpDialog.hoverSensor.opacity = 0;
+            alignmentHelpDialog.hoverSensor.opacity = 0.4;
+            alignmentHelpDialog.hoverSensor.onMouseDown = () => {
+                resizeAlignmentGuideHelpBox();
+            }
             alignmentHelpDialog.hoverSensor.onMouseEnter = () => {
                 alignmentHelpDialog.button.strokeWidth = 2;
-            }
+            };
             alignmentHelpDialog.hoverSensor.onMouseLeave = () => {
                 alignmentHelpDialog.button.strokeWidth = 0.5;
-            }
-            alignmentHelpDialog.hoverSensor.onClick = resizeAlignmentGuideHelpBox;
+            };
             if (!alignmentHelpDialog.exampleImage) {
                 alignmentHelpDialog.exampleImage = new paper.Raster('static/imgs/' +
                     chamberRealignmentData[currentImgIndex].type + '_chamber_lines.jpg');
                 alignmentHelpDialog.exampleImage.onLoad = () => {
                     resizeHelpExampleImage();
+                    alignmentHelpDialog.exampleText.point = getExampleHelpPos();
                 }
+            }
+            if (chamberRealignmentData[currentImgIndex].helpBoxMaximized !== undefined
+                && chamberRealignmentData[currentImgIndex].helpBoxMaximized === false) {
+                resizeAlignmentGuideHelpBox();
             }
         }
 
@@ -3706,6 +3757,7 @@
                                 eggOutlines = drawEggOutlines(annotation,
                                     drawnRectangles.bbox);
                             }
+                            innerRect.bringToFront();
                             eggLayingRegions[currentImgIndex][innerRect.id] = {
                                 outline: rectPath,
                                 fill: innerRect,
@@ -3759,10 +3811,13 @@
                                 reg.eggShapes = drawEggOutlines(annotation, drawnRectangles.bbox);
                                 addHoverHandler(reg.fill, currentImgIndex);
                             }
+                            reg.fill.bringToFront();
                             eggLayingRegions[currentImgIndex][reg.fill.id] = {
+                                centeredTextPosition: reg.centeredTextPosition,
                                 outline: reg.outline,
                                 fill: reg.fill,
                                 text: reg.text,
+                                textPredicted: reg.textPredicted,
                                 eggShapes: reg.eggShapes,
                                 bboxIndex: reg.bboxIndex,
                                 originalCount: reg.originalCount,
@@ -3788,9 +3843,6 @@
         }
 
         var drawTextForUneditedCount = (reg) => {
-            if (reg.textPredicted) {
-                reg.textPredicted.remove();
-            }
             let x, y;
             if (reg.centeredTextPosition) {
                 x = reg.centeredTextPosition.x;
@@ -3800,6 +3852,9 @@
                 y = reg.text.point.y;
             }
             reg.text.remove();
+            if (reg.textPredicted) {
+                reg.textPredicted.remove();
+            }
             reg.text = new paper.PointText(new paper.Point(x, y));
             reg.text.content = reg.originalCount;
             reg.text.justification = 'center';

@@ -57,7 +57,7 @@ def non_maximum_suppression(
 
     # sort scores descendingly
     ind = np.argsort(scores)[::-1]
-    survivors = np.zeros(len(ind), np.bool)
+    survivors = np.zeros(len(ind), bool)
     polygons = polygons[ind]
     scores = scores[ind]
 

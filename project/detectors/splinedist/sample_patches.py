@@ -18,7 +18,7 @@ def get_valid_inds(datas, patch_size, patch_filter=None):
         )
 
     if patch_filter is None:
-        patch_mask = np.ones(datas[0].shape, dtype=np.bool)
+        patch_mask = np.ones(datas[0].shape, dtype=bool)
     else:
         patch_mask = patch_filter(datas[0], patch_size)
 

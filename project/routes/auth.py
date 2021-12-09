@@ -159,6 +159,9 @@ def signup_post():
 @login_required
 def logout():
     logout_user()
+    kwargs = {}
+    if request.args.get('origin'):
+        kwargs = {'origin': request.args.get('origin')}
     if app.blueprints["google"].token:
         del app.blueprints["google"].token
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.index", **kwargs))
