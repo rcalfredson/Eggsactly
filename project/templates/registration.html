@@ -3373,7 +3373,6 @@
                 alignmentHelpDialog.text.fontSize = `${alignmentHelpDialog.fontSize}pt`;
                 alignmentHelpDialog.text.point = getHelpTextPos();
             } while (!alignmentHelpDialog.text.isInside(alignmentHelpDialog.frame.bounds))
-            // how to place this properly
             alignmentHelpDialog.exampleText = new paper.PointText(new paper.Point(0, 0));
             alignmentHelpDialog.exampleText.content = 'example';
             alignmentHelpDialog.exampleText.fontSize = '15pt';
@@ -3393,7 +3392,7 @@
                 buttonBounds.ul, buttonBounds.br
             );
             alignmentHelpDialog.hoverSensor.fillColor = 'black';
-            alignmentHelpDialog.hoverSensor.opacity = 0.4;
+            alignmentHelpDialog.hoverSensor.opacity = 0;
             alignmentHelpDialog.hoverSensor.onMouseDown = () => {
                 resizeAlignmentGuideHelpBox();
             }
