@@ -1,9 +1,7 @@
-import base64
 from csbdeep.utils import normalize
 import cv2
 from dotenv import load_dotenv
-from imageio import imread
-import io
+import numpy as np
 import os
 import requests
 import torch
@@ -12,6 +10,8 @@ from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
 from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.scheduler import Scheduler
+
+import timeit
 
 NETWORK_CONSTS = {
     GPUTaskTypes.arena: {
@@ -45,7 +45,7 @@ def request_work():
         print("starting a task")
         active_tasks[task["group_id"]] = task
         perform_task()
-        print('task complete')
+        print("task complete")
         request_work()
     except requests.exceptions.ConnectionError:
         print("Failed to connect to the egg-counting server")
@@ -57,15 +57,31 @@ scheduler.schedule.every(1).second.do(request_work)
 
 def perform_task():
     for task_key in list(active_tasks.keys()):
+        start_t = timeit.default_timer()
         task = active_tasks[task_key]
         if task["type"] not in GPUTaskTypes.__members__:
             del active_tasks[task_key]
             return
         task_type = GPUTaskTypes[task["type"]]
-        print('task type:', task_type.name)
+        print("task type:", task_type.name)
+        decode_start_t = timeit.default_timer()
+
         img = cv2.cvtColor(
-            imread(io.BytesIO(base64.b64decode(task["image"]))), cv2.COLOR_RGB2BGR
+            cv2.imdecode(
+                np.asarray(
+                    bytearray(
+                        requests.get(
+                            f"{server_uri}/{task['img_path']}", stream=True
+                        ).raw.read()
+                    ),
+                    dtype="uint8",
+                ),
+                cv2.IMREAD_COLOR,
+            ),
+            cv2.COLOR_RGB2BGR,
         )
+        print("time spent decoding:", timeit.default_timer() - decode_start_t)
+        resize_norm_start_t = timeit.default_timer()
         if task_type == GPUTaskTypes.arena:
             img = cv2.resize(
                 img,
@@ -75,14 +91,24 @@ def perform_task():
                 interpolation=cv2.INTER_CUBIC,
             )
         img = normalize(img, 1, 99.8, axis=(0, 1))
+        predict_start_t = timeit.default_timer()
+        print(
+            "time spent resizing and normalizing:",
+            predict_start_t - resize_norm_start_t,
+        )
         predictions = networks[task_type].predict_instances(img)[1]
         predictions = {k: predictions[k].tolist() for k in predictions}
+        post_req_start_t = timeit.default_timer()
+        print("time spent predicting:", post_req_start_t - predict_start_t)
         requests.request(
             "POST",
             f"{server_uri}/tasks/gpu/{task_key}",
             json={"predictions": predictions},
         )
         del active_tasks[task_key]
+        end_t = timeit.default_timer()
+        print("time spent making post request:", end_t - post_req_start_t)
+        print("total time for task:", end_t - start_t)
 
 
 def init_networks():
