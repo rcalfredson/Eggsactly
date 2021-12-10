@@ -147,11 +147,10 @@ def check_chamber_type_of_imgs(sid):
     n_files = len(request.files)
     for i, file in enumerate(file_list):
         attempts = 0
-        succeeded = False
         while True:
             try:
                 check_chamber_type_of_img(i, file, sid, n_files, attempts)
-                succeeded = True
+                break
             except CUDAMemoryException:
                 attempts += 1
                 socketIO.emit(
@@ -163,14 +162,7 @@ def check_chamber_type_of_imgs(sid):
                     room=sid,
                 )
                 pauser.end_high_impact_py_prog()
-            except ImageAnalysisException:
-                app.sessions[sid].report_counting_error(
-                    app.sessions[sid].imgPath, ImageAnalysisException
-                )
-                break
-            if succeeded:
-                break
-            elif attempts > MAX_ATTEMPTS_PER_IMG:
+            if attempts > MAX_ATTEMPTS_PER_IMG:
                 app.sessions[sid].report_counting_error(
                     app.sessions[sid].imgPath, CUDAMemoryException
                 )
