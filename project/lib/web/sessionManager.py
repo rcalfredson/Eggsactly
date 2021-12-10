@@ -153,10 +153,10 @@ class SessionManager:
         taskgroup = self.gpu_manager.add_task_group(self.room, n_tasks=1)
         self.gpu_manager.add_task(self.room, img_path, GPUTaskTypes.arena)
         taskgroup.add_completion_listener(
-            Listener(self.segment_image_via_object_detection, (img, img_path))
+            Listener(self.segment_image_via_object_detection, (img_path,))
         )
 
-    def segment_image_via_object_detection(self, img, img_path, predictions):
+    def segment_image_via_object_detection(self, img_path, predictions):
         if type(predictions) is list and len(predictions) == 1:
             predictions = predictions[0]
         try:
@@ -193,13 +193,13 @@ class SessionManager:
                 },
             )
         except Exception as exc:
-            print("exception while finding circles:", exc)
+            print("exception while finding circles:", type(exc), exc)
             if self.is_CUDA_mem_error(exc):
                 raise CUDAMemoryException
             else:
-                raise ImageAnalysisException
+                self.report_counting_error(self.imgPath, ImageAnalysisException)
         except RuntimeWarning:
-            raise ImageAnalysisException
+            self.report_counting_error(self.imgPath, ImageAnalysisException)
 
     def check_chamber_type_and_find_bounding_boxes(self, img_path):
         imgBasename = os.path.basename(img_path)

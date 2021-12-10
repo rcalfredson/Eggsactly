@@ -52,7 +52,7 @@ def request_work():
 
 
 scheduler = Scheduler(1)
-scheduler.schedule.every(1).second.do(request_work)
+scheduler.schedule.every(0.75).seconds.do(request_work)
 
 
 def perform_task():
