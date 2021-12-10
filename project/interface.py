@@ -11,8 +11,8 @@ from flask_socketio import SocketIO, emit
 from PIL import Image
 
 from project.lib.datamanagement.socket_io_auth import authenticated_only
-from project.lib.image.exif import correct_via_exif
 from project.lib.web.downloadManager import DownloadManager
+from project.lib.web.gpu_manager import GPUManager
 from project.lib.web.network_loader import NetworkLoader
 from project.lib.web.scheduler import Scheduler
 from project.lib.web.sessionManager import SessionManager
@@ -26,6 +26,7 @@ app = create_app()
 app.sessions = {}
 app.downloadManager = DownloadManager()
 network_loader = NetworkLoader(NET_ARCH)
+app.gpu_manager = GPUManager()
 
 
 def prune_old_sessions():
@@ -63,7 +64,7 @@ def field_ping(data):
 @app.socketIO.on("connect")
 def connected():
     app.sessions[request.sid] = SessionManager(
-        app.socketIO, request.sid, network_loader
+        app.socketIO, request.sid, network_loader, app.gpu_manager
     )
     app.socketIO.emit("sid-from-server", {"sid": request.sid}, room=request.sid)
 

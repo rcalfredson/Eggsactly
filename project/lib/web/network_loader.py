@@ -6,6 +6,7 @@ from project.lib.image.drawing import get_interpolated_points
 import torch
 import numpy as np
 
+# note: to be deprecated upon completion of GPU worker architecture.
 
 class NetworkLoader:
     def __init__(self, net_arch):
