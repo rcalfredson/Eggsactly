@@ -19,6 +19,7 @@ from project.chamber import CT
 from csbdeep.utils import normalize
 
 dirname = os.path.dirname(__file__)
+ARENA_IMG_RESIZE_FACTOR = 0.186
 UNET_SETTINGS = {
     "config_path": "project/configs/unet_reduced_backbone_arena_wells.json",
     "n_channel": 3,
@@ -146,20 +147,34 @@ class CircleFinder:
     segmenting the image.
     """
 
-    def __init__(self, img, imgName, allowSkew=False, model=default_model):
+    def __init__(
+        self,
+        img: np.ndarray,
+        imgName: str,
+        allowSkew: bool = False,
+        model: SplineDist2D = default_model,
+        predict_resize_factor: float = ARENA_IMG_RESIZE_FACTOR,
+    ):
         """Create new CircleFinder instance.
 
         Arguments:
           - img: the image to analyze, in Numpy array form
           - imgName: the basename of the image
-          - allowSkew: boolean which, if set to False, registers an error if skew is
-                       detected in the image.
+          - allowSkew: boolean which, if set to its default value of False, registers
+                       an error if skew is detected in the image.
+          - model: landmark-detection model to use. Currently, only SplineDist-based
+                   models are supported, or at least models with a predict_instances
+                   method whose return values mirror those from SplineDist.
+                   Defaults to the currently best-performing model.
+          - predict_resize_factor: factor by which the image is scaled before being
+                                   inputted to the model.
         """
         self.img = img
         self.imgName = imgName
         self.skewed = None
         self.allowSkew = allowSkew
         self.model = model
+        self.predict_resize_factor = predict_resize_factor
 
     def getPixelToMMRatio(self):
         """Calculate the image's ratio of pixels to mm, averaged between the result
@@ -619,8 +634,27 @@ class CircleFinder:
                         dict(row=self.rowRegressions[j], col=self.colRegressions[i])
                     )
 
-    def findCircles(self, debug=False, predict_resize_factor=0.186):
+    def resize_image(self):
+        self.imageResized = cv2.resize(
+            self.img,
+            (0, 0),
+            fx=self.predict_resize_factor,
+            fy=self.predict_resize_factor,
+            interpolation=cv2.INTER_CUBIC,
+        )
+        image = normalize(self.imageResized, 1, 99.8, axis=(0, 1))
+        self.imageResized = image.astype(np.float32)
+
+    def findCircles(self, debug=False, predictions=None):
         """Find the location of arena wells for the image in attribute `self.img`.
+
+        Arguments:
+          - debug: if True, displays the inputted image with markers over detected
+                   landmarks and prints their coordinates to the console
+          - predictions: positions of predicted landmarks. Note: its format must match
+                     that of the second element of the tuple returned from a call to
+                     predict_instances method of a SplineDist model. Defaults to None,
+                     in which case new predictions are made.
 
         Returns:
           - wells: list of the coordinates of detected wells.
@@ -631,17 +665,10 @@ class CircleFinder:
                         columns with the border of the image.
           - rotationAngle: angle in radians by which the image was rotated.
         """
-        self.imageResized = cv2.resize(
-            self.img,
-            (0, 0),
-            fx=predict_resize_factor,
-            fy=predict_resize_factor,
-            interpolation=cv2.INTER_CUBIC,
-        )
-        image = normalize(self.imageResized, 1, 99.8, axis=(0, 1))
-        self.imageResized = image.astype(np.float32)
-        labels, details = self.model.predict_instances(self.imageResized)
-        self.centroids = details["points"]
+        self.resize_image()
+        if predictions is None:
+            _, predictions = self.model.predict_instances(self.imageResized)
+        self.centroids = predictions["points"]
         self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
         if debug:
             print("what are centroids?", self.centroids)
@@ -673,13 +700,13 @@ class CircleFinder:
         self.processDetections()
         wells = np.array(
             [
-                np.round(np.divide(well, predict_resize_factor)).astype(int)
+                np.round(np.divide(well, self.predict_resize_factor)).astype(int)
                 for well in self.sortedCentroids
             ]
         )
         for i in range(len(self.wellCoords)):
             self.wellCoords[i] = np.round(
-                np.divide(self.wellCoords[i], predict_resize_factor)
+                np.divide(self.wellCoords[i], self.predict_resize_factor)
             ).astype(int)
         wells = wells.reshape(self.numRowsCols[0] * self.numRowsCols[1], 2).astype(int)
         self.wells = wells

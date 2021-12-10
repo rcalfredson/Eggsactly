@@ -19,6 +19,7 @@ from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
 from project.lib.datamanagement.models import User, login_google_user
+from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 from project.users import users
@@ -177,7 +178,6 @@ def check_chamber_type_of_imgs(sid):
 
 def check_chamber_type_of_img(i, file, sid, n_files, attempts):
     if file and allowed_file(file):
-        # socketIO.emit("clear-display", room=sid)
         socketIO.emit(
             "counting-progress",
             {"data": "Uploading image %i of %i" % (i + 1, n_files)},
@@ -190,6 +190,7 @@ def check_chamber_type_of_img(i, file, sid, n_files, attempts):
         filePath = os.path.join(folder_path, filename)
         if attempts == 0:
             request.files[file].save(filePath)
+            correct_via_exif(filePath)
         socketIO.emit(
             "counting-progress",
             {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},

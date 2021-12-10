@@ -12,7 +12,6 @@ warnings.filterwarnings("error")
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
-import torch
 
 from project.chamber import CT
 from project.circleFinder import (
@@ -20,7 +19,7 @@ from project.circleFinder import (
     rotate_around_point_highperf,
     rotate_image,
 )
-from project.detectors.fcrn import model
+from project.lib.event import Listener
 from project.lib.image import drawing
 from project.lib.image.manual_segmenter import ManualSegmenter
 from project.lib.web.exceptions import (
@@ -29,6 +28,8 @@ from project.lib.web.exceptions import (
     ImageIgnoredException,
     errorMessages,
 )
+from project.lib.web.gpu_manager import GPUManager
+from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.network_loader import NetworkLoader
 
 with open("project/models/modelRevDates.json", "r") as f:
@@ -38,11 +39,16 @@ with open("project/models/modelRevDates.json", "r") as f:
 class SessionManager:
     """Represent and process information while using the egg-counting web app."""
 
-    def __init__(self, socketIO, room, network_loader: NetworkLoader):
+    def __init__(
+        self, socketIO, room, network_loader: NetworkLoader, gpu_manager: GPUManager
+    ):
         """Create a new SessionData instance.
 
         Arguments:
           - socketIO: SocketIO server
+          - room: SocketIO room where messages get sent
+          - network_loader: NetworkLoader instance loaded with an egg-detection model
+          - gpu_manager: GPUManager instance where GPU tasks get added
         """
         self.chamberTypes = {}
         self.predictions = {}
@@ -52,6 +58,7 @@ class SessionManager:
         self.socketIO = socketIO
         self.room = room
         self.network_loader = network_loader
+        self.gpu_manager = gpu_manager
         self.lastPing = time.time()
         self.textLabelHeight = 96
 
@@ -107,19 +114,17 @@ class SessionManager:
         ]
         alignment_data["regionsToIgnore"] = []
         translated_bboxes = []
-        for i, bbox in enumerate(self.bboxes):
+        for bbox in self.bboxes:
             new_bbox = [
                 bbox[0] + bbox_translation[0],
                 bbox[1] + bbox_translation[1],
                 bbox[2],
                 bbox[3],
             ]
-            x_coords = [new_bbox[0], new_bbox[0] + bbox[2]]
-            y_coords = [new_bbox[1], new_bbox[1] + bbox[3]]
             if new_bbox[0] < 0:
                 new_bbox[2] += new_bbox[0]
                 new_bbox[0] = 0
-            if y_coords[0] < 0:
+            if new_bbox[1] < 0:
                 new_bbox[2] += new_bbox[1]
                 new_bbox[1] = 0
             translated_bboxes.append(list(map(round, new_bbox)))
@@ -143,16 +148,17 @@ class SessionManager:
         self.chamberTypes[img_path] = alignment_data["type"]
         self.rotation_angle = segmenter.rotation_angle
 
-    def segment_image_via_object_detection(self, img, img_path):
+    def enqueue_arena_detection_task(self, img, img_path):
         self.cf = CircleFinder(img, os.path.basename(img_path), allowSkew=True)
-        if self.cf.skewed:
-            self.emit_to_room(
-                "counting-progress",
-                {
-                    "data": "Skew detected in image %s;"
-                    + " stopping analysis." % self.imgBasename
-                },
-            )
+        taskgroup = self.gpu_manager.add_task_group(self.room, n_tasks=1)
+        self.gpu_manager.add_task(self.room, img_path, GPUTaskTypes.arena)
+        taskgroup.add_completion_listener(
+            Listener(self.segment_image_via_object_detection, (img, img_path))
+        )
+
+    def segment_image_via_object_detection(self, img, img_path, predictions):
+        if type(predictions) is list and len(predictions) == 1:
+            predictions = predictions[0]
         try:
             (
                 circles,
@@ -160,11 +166,31 @@ class SessionManager:
                 numRowsCols,
                 rotatedImg,
                 self.rotation_angle,
-            ) = self.cf.findCircles()
-
+            ) = self.cf.findCircles(debug=False, predictions=predictions)
+            if self.cf.skewed:
+                self.emit_to_room(
+                    "counting-progress",
+                    {
+                        "data": "Skew detected in image %s;"
+                        + " stopping analysis." % self.imgBasename
+                    },
+                )
+                raise ImageAnalysisException
             self.chamberTypes[img_path] = self.cf.ct
             self.subImgs, self.bboxes = self.cf.getSubImages(
                 rotatedImg, circles, avgDists, numRowsCols
+            )
+            self.bboxes = [[round(el) for el in bbox] for bbox in self.bboxes]
+            self.emit_to_room(
+                "chamber-analysis",
+                {
+                    "rotationAngle": self.rotation_angle,
+                    "filename": self.imgBasename,
+                    "chamberType": self.cf.ct,
+                    "bboxes": self.bboxes,
+                    "width": self.img.shape[1],
+                    "height": self.img.shape[0],
+                },
             )
         except Exception as exc:
             print("exception while finding circles:", exc)
@@ -187,21 +213,9 @@ class SessionManager:
         )
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
-        self.segment_image_via_object_detection(img, img_path)
-        self.bboxes = [[round(el) for el in bbox] for bbox in self.bboxes]
-        self.emit_to_room(
-            "chamber-analysis",
-            {
-                "rotationAngle": self.rotation_angle,
-                "filename": self.imgBasename,
-                "chamberType": self.cf.ct,
-                "bboxes": self.bboxes,
-                "width": self.img.shape[1],
-                "height": self.img.shape[0],
-            },
-        )
+        self.enqueue_arena_detection_task(img, img_path)
 
-    def segment_img_and_count_eggs(self, img_path, alignment_data=None, index=None):
+    def segment_img_and_count_eggs(self, img_path, alignment_data, index=None):
         imgBasename = os.path.basename(img_path)
         self.imgBasename = imgBasename
         img_path = os.path.normpath(img_path)
@@ -213,33 +227,30 @@ class SessionManager:
         )
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
-        if alignment_data is None:
-            self.segment_image_via_object_detection(img, img_path)
+        self.alignment_data[img_path] = alignment_data
+        if "ignored" in alignment_data and alignment_data["ignored"]:
+            self.predictions[img_path].append(ImageIgnoredException)
         else:
-            self.alignment_data[img_path] = alignment_data
-            if "ignored" in alignment_data and alignment_data["ignored"]:
-                self.predictions[img_path].append(ImageIgnoredException)
-            else:
-                if "nodes" in alignment_data:
-                    self.segment_image_via_alignment_data(img, img_path, alignment_data)
-                elif "bboxes" in alignment_data:
-                    self.segment_image_via_bboxes(img, img_path, alignment_data)
+            if "nodes" in alignment_data:
+                self.segment_image_via_alignment_data(img, img_path, alignment_data)
+            elif "bboxes" in alignment_data:
+                self.segment_image_via_bboxes(img, img_path, alignment_data)
+            self.emit_to_room(
+                "counting-progress",
+                {"data": "Counting eggs in image %s" % imgBasename},
+            )
+            num_sub_imgs = len(self.subImgs)
+            for i, subImg in enumerate(self.subImgs):
                 self.emit_to_room(
                     "counting-progress",
-                    {"data": "Counting eggs in image %s" % imgBasename},
+                    {
+                        "overwrite": True,
+                        "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
+                    },
                 )
-                num_sub_imgs = len(self.subImgs)
-                for i, subImg in enumerate(self.subImgs):
-                    self.emit_to_room(
-                        "counting-progress",
-                        {
-                            "overwrite": True,
-                            "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
-                        },
-                    )
-                    self.predictions[img_path].append(
-                        self.network_loader.predict_instances(subImg)
-                    )
+                self.predictions[img_path].append(
+                    self.network_loader.predict_instances(subImg)
+                )
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
         self.sendAnnotationsToClient(index, alignment_data)
 
