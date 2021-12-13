@@ -1,6 +1,10 @@
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from csbdeep.utils import normalize
 import cv2
+import datetime
 from dotenv import load_dotenv
+import jwt
 import numpy as np
 import os
 import requests
@@ -8,6 +12,7 @@ import torch
 from project.circleFinder import ARENA_IMG_RESIZE_FACTOR
 from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
+from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.scheduler import Scheduler
 
@@ -26,8 +31,29 @@ NETWORK_CONSTS = {
 }
 
 
+class AuthHelper:
+    def __init__(self, keypath):
+        with open(keypath, "rb") as f:
+            self.private_key = serialization.load_pem_private_key(
+                f.read(), password=None, backend=default_backend()
+            )
+        self.start_time = "{date:%Y-%m-%d_%H:%M:%S}".format(
+            date=datetime.datetime.now()
+        )
+
+    def get_jwt(self):
+        jwt_token = jwt.encode(
+            {"name": f"gpu-worker-{self.start_time}"},
+            key=self.private_key,
+            algorithm="RS256",
+        )
+        return jwt_token
+
+
 load_dotenv()
 server_uri = os.environ["MAIN_SERVER_URI"]
+key_holder = AuthHelper(os.environ["PRIVATE_KEY_PATH"])
+request_headers = {"Authorization": f"access_token {key_holder.get_jwt()}"}
 active_tasks = {}
 networks = {}
 
@@ -37,14 +63,27 @@ def request_work():
         return
     print("\ngetting a task")
     try:
-        r = requests.get(f"{server_uri}/tasks/gpu")
+        r = requests.get(f"{server_uri}/tasks/gpu", headers=request_headers)
+        if r.status_code >= 400 and r.status_code < 500:
+            print("Server rejected request. Status:", r.status_code)
+            return
         task = r.json()
         if len(task.keys()) == 0:
             print("no work found")
             return
         print("starting a task")
         active_tasks[task["group_id"]] = task
-        perform_task()
+        attempts = 0
+        while True:
+            try:
+                perform_task()
+            except CUDAMemoryException:
+                attempts += 1
+                # when this was caught in the original server,
+                # a message was printed to the
+                pass
+            if attempts > 1:
+                break
         print("task complete")
         request_work()
     except requests.exceptions.ConnectionError:
@@ -104,6 +143,7 @@ def perform_task():
             "POST",
             f"{server_uri}/tasks/gpu/{task_key}",
             json={"predictions": predictions},
+            headers=request_headers,
         )
         del active_tasks[task_key]
         end_t = timeit.default_timer()
