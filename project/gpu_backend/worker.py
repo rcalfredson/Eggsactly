@@ -133,8 +133,6 @@ def perform_task(attempt_ct=0):
         if attempt_ct == 0:
             print("task type:", task_type.name)
         print("num attempts:", attempt_ct + 1)
-        if attempt_ct == 0:
-            raise CUDAMemoryException
         decode_start_t = timeit.default_timer()
 
         img = cv2.cvtColor(
