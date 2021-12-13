@@ -12,6 +12,7 @@ import torch
 from project.circleFinder import ARENA_IMG_RESIZE_FACTOR
 from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
+from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.scheduler import Scheduler
@@ -29,6 +30,7 @@ NETWORK_CONSTS = {
         "config": "project/configs/unet_backbone_rand_zoom.json",
     },
 }
+MAX_ATTEMPTS_PER_IMG = 2
 
 
 class AuthHelper:
@@ -56,6 +58,7 @@ key_holder = AuthHelper(os.environ["PRIVATE_KEY_PATH"])
 request_headers = {"Authorization": f"access_token {key_holder.get_jwt()}"}
 active_tasks = {}
 networks = {}
+pauser = PythonPauser()
 
 
 def request_work():
@@ -65,7 +68,7 @@ def request_work():
     try:
         r = requests.get(f"{server_uri}/tasks/gpu", headers=request_headers)
         if r.status_code >= 400 and r.status_code < 500:
-            print("Server rejected request. Status:", r.status_code)
+            print("server rejected request. status:", r.status_code)
             return
         task = r.json()
         if len(task.keys()) == 0:
@@ -74,27 +77,52 @@ def request_work():
         print("starting a task")
         active_tasks[task["group_id"]] = task
         attempts = 0
+        succeeded = False
         while True:
             try:
-                perform_task()
-            except CUDAMemoryException:
+                perform_task(attempts)
+                succeeded = True
+            except CUDAMemoryException as exc:
                 attempts += 1
-                # when this was caught in the original server,
-                # a message was printed to the
-                pass
-            if attempts > 1:
+                post_results_to_server(
+                    task["group_id"],
+                    {
+                        "error": repr(exc),
+                        "will_retry": attempts < MAX_ATTEMPTS_PER_IMG,
+                        "img_path": task["img_path"],
+                    },
+                )
+                if attempts < MAX_ATTEMPTS_PER_IMG:
+                    pauser.end_high_impact_py_prog()
+                else:
+                    break
+            if succeeded:
                 break
-        print("task complete")
+        if succeeded:
+            print("task complete")
+        else:
+            print("unable to complete task due to error")
+            del active_tasks[task["group_id"]]
         request_work()
     except requests.exceptions.ConnectionError:
-        print("Failed to connect to the egg-counting server")
+        print("failed to connect to the egg-counting server")
 
 
 scheduler = Scheduler(1)
 scheduler.schedule.every(0.75).seconds.do(request_work)
 
 
-def perform_task():
+def post_results_to_server(task_key, result):
+    requests.request(
+        "POST",
+        f"{server_uri}/tasks/gpu/{task_key}",
+        json=result,
+        headers=request_headers,
+    )
+
+
+def perform_task(attempt_ct=0):
+    pauser.set_resume_timer()
     for task_key in list(active_tasks.keys()):
         start_t = timeit.default_timer()
         task = active_tasks[task_key]
@@ -102,7 +130,11 @@ def perform_task():
             del active_tasks[task_key]
             return
         task_type = GPUTaskTypes[task["type"]]
-        print("task type:", task_type.name)
+        if attempt_ct == 0:
+            print("task type:", task_type.name)
+        print("num attempts:", attempt_ct + 1)
+        if attempt_ct == 0:
+            raise CUDAMemoryException
         decode_start_t = timeit.default_timer()
 
         img = cv2.cvtColor(
@@ -139,12 +171,8 @@ def perform_task():
         predictions = {k: predictions[k].tolist() for k in predictions}
         post_req_start_t = timeit.default_timer()
         print("time spent predicting:", post_req_start_t - predict_start_t)
-        requests.request(
-            "POST",
-            f"{server_uri}/tasks/gpu/{task_key}",
-            json={"predictions": predictions},
-            headers=request_headers,
-        )
+        post_results_to_server(task_key, {"predictions": predictions})
+
         del active_tasks[task_key]
         end_t = timeit.default_timer()
         print("time spent making post request:", end_t - post_req_start_t)

@@ -5,6 +5,7 @@ import numpy as np
 from threading import Thread
 
 from project.lib.web.auth_helper import AuthDecoder
+from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task import GPUTask
 from .. import app
 
@@ -22,7 +23,25 @@ class TaskFinalizer(Thread):
         self.group_id = group_id
         self.results = results
 
+    def handle_error(self):
+        if self.results["error"] == repr(CUDAMemoryException()):
+            if self.results["will_retry"]:
+                app.socketIO.emit(
+                    "counting-progress",
+                    {
+                        "data": "Ran out of system resources. "
+                        "Trying to reallocate and try again..."
+                    },
+                    room=self.group_id,
+                )
+            else:
+                app.sessions[self.group_id].report_counting_error(
+                    self.results["img_path"], CUDAMemoryException
+                )
+
     def run(self):
+        if "error" in self.results:
+            self.handle_error()
         results = {
             k: np.array(self.results["predictions"][k])
             for k in self.results["predictions"]

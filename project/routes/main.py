@@ -9,16 +9,14 @@ from flask import (
 )
 from flask_dance.contrib.google import google
 from flask_login import login_required, current_user
-import oauthlib
 import os
 from pathlib import Path
 import shutil
-import sqlalchemy
 import time
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
-from project.lib.datamanagement.models import User, login_google_user
+from project.lib.datamanagement.models import login_google_user
 from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
@@ -47,9 +45,9 @@ def remove_old_files(folder):
 
 @main.route("/", methods=["GET", "POST"])
 def index():
-    origin_flag = request.args.get('origin')
-    if origin_flag in ('external', 'local'):
-        is_local = origin_flag == 'local'
+    origin_flag = request.args.get("origin")
+    if origin_flag in ("external", "local"):
+        is_local = origin_flag == "local"
     else:
         is_local = current_user.is_local if hasattr(current_user, "is_local") else False
     name = current_user.name if hasattr(current_user, "name") else None
@@ -142,33 +140,13 @@ class AllowedDataTypes(Enum):
 
 
 def check_chamber_type_of_imgs(sid):
-    MAX_ATTEMPTS_PER_IMG = 1
     file_list = request.files
     n_files = len(request.files)
     for i, file in enumerate(file_list):
-        attempts = 0
-        while True:
-            try:
-                check_chamber_type_of_img(i, file, sid, n_files, attempts)
-                break
-            except CUDAMemoryException:
-                attempts += 1
-                socketIO.emit(
-                    "counting-progress",
-                    {
-                        "data": "Ran out of system resources. Trying"
-                        " to reallocate and try again..."
-                    },
-                    room=sid,
-                )
-                pauser.end_high_impact_py_prog()
-            if attempts > MAX_ATTEMPTS_PER_IMG:
-                app.sessions[sid].report_counting_error(
-                    app.sessions[sid].imgPath, CUDAMemoryException
-                )
+        check_chamber_type_of_img(i, file, sid, n_files)
 
 
-def check_chamber_type_of_img(i, file, sid, n_files, attempts):
+def check_chamber_type_of_img(i, file, sid, n_files):
     if file and allowed_file(file):
         socketIO.emit(
             "counting-progress",
@@ -180,9 +158,8 @@ def check_chamber_type_of_img(i, file, sid, n_files, attempts):
         if not os.path.exists(folder_path):
             Path(folder_path).mkdir(exist_ok=True, parents=True)
         filePath = os.path.join(folder_path, filename)
-        if attempts == 0:
-            request.files[file].save(filePath)
-            correct_via_exif(filePath)
+        request.files[file].save(filePath)
+        correct_via_exif(filePath)
         socketIO.emit(
             "counting-progress",
             {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},
