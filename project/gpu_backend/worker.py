@@ -16,6 +16,7 @@ from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.scheduler import Scheduler
+from project.lib.web.sessionManager import SessionManager
 
 import timeit
 
@@ -165,7 +166,11 @@ def perform_task(attempt_ct=0):
             "time spent resizing and normalizing:",
             predict_start_t - resize_norm_start_t,
         )
-        predictions = networks[task_type].predict_instances(img)[1]
+        try:
+            predictions = networks[task_type].predict_instances(img)[1]
+        except Exception as exc:
+            if SessionManager.is_CUDA_mem_error(exc):
+                raise CUDAMemoryException
         predictions = {k: predictions[k].tolist() for k in predictions}
         post_req_start_t = timeit.default_timer()
         print("time spent predicting:", post_req_start_t - predict_start_t)
