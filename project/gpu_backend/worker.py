@@ -14,6 +14,7 @@ import torch
 from project.circleFinder import ARENA_IMG_RESIZE_FACTOR
 from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
+from project.lib.image.drawing import get_interpolated_points
 from project.lib.image.sub_image_helper import SubImageHelper
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException
@@ -130,11 +131,8 @@ def perform_task(attempt_ct=0):
             del active_tasks[task_key]
             return
         task_type = GPUTaskTypes[task["type"]]
-        if task_type != GPUTaskTypes.arena:
-            print("task:", task)
         if attempt_ct == 0:
             print("task type:", task_type.name)
-            print("path:", task["img_path"])
         print("num attempts:", attempt_ct + 1)
         decode_start_t = timeit.default_timer()
 
@@ -180,26 +178,29 @@ def perform_task(attempt_ct=0):
         predictions = []
         for img in imgs:
             try:
-                predictions.append(networks[task_type].predict_instances(img)[1])
+                results = networks[task_type].predict_instances(img)[1]
+                results['count'] = len(results['points'])
+                results['outlines'] = get_interpolated_points(results['coord'])
+                predictions.append(results)
             except Exception as exc:
                 print("encountered an exception.", exc)
                 print(type(exc))
                 if SessionManager.is_CUDA_mem_error(exc):
                     raise CUDAMemoryException
 
-        predictions = [
-            {k: prediction_set[k].tolist() for k in prediction_set}
-            for prediction_set in predictions
-        ]
-        # want to ensure that predictions is a list with no nesting,
-        # and that is accurate.
-        # if len(predictions) == 1:
-            # predictions = predictions[0]
+        converted_predictions = []
+        for prediction_set in predictions:
+            converted_set = {}
+            for k in prediction_set:
+                if type(prediction_set[k]) is np.ndarray:
+                    converted_set[k] = prediction_set[k].tolist()
+                else:
+                    converted_set[k] = prediction_set[k]
+            converted_predictions.append(converted_set)
         post_req_start_t = timeit.default_timer()
         print("time spent predicting:", post_req_start_t - predict_start_t)
-        print('predictions sent:', predictions)
         post_results_to_server(
-            task_key, {"predictions": predictions, "metadata": metadata}
+            task_key, {"predictions": converted_predictions, "metadata": metadata}
         )
 
         del active_tasks[task_key]

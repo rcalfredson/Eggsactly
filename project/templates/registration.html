@@ -687,8 +687,6 @@
         });
         socket.on('counting-annotations', (msg) => {
             annotations[msg.filename] = JSON.parse(msg.data);
-            console.log('updating counting data for file', msg.filename);
-            console.log(annotations[msg.filename]);
             rotationAngles[msg.filename] = msg.rotationAngle;
             if (!msg.index) {
                 orderedImgNames.push(msg.filename)
