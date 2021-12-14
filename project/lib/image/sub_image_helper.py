@@ -11,14 +11,8 @@ class SubImageHelper:
     def get_sub_images(self, img, alignment_data):
         if "nodes" in alignment_data:
             self.segment_image_via_alignment_data(img, alignment_data)
-        elif 'bboxes' in alignment_data:
-            # do we have access to the rotation angle, scaling, etc? I think...
+        elif "bboxes" in alignment_data:
             self.segment_image_via_bboxes(img, alignment_data)
-        # once we get to this point, we should have the sub-images at least,
-        # even if the same updates aren't yet being sent to the client,
-        # but the messaging will be added later.
-        print('have sub-images been calculated?',
-            self.subImgs)
 
     def segment_image_via_alignment_data(self, img, alignment_data):
         segmenter = NodeBasedSegmenter(
@@ -61,8 +55,3 @@ class SubImageHelper:
         self.subImgs = CircleFinder.getSubImagesFromBBoxes(
             img, translated_bboxes, alignment_data["regionsToIgnore"]
         )
-        # for sub_img in self.subImgs:
-        #     cv2.imshow("debug sub-img", sub_img.astype(np.uint8))
-        #     print("scaling factor:", alignment_data.get("scaling", 1))
-        #     print('sub-image?', sub_img.astype(np.uint8))
-        #     cv2.waitKey(0)

@@ -250,7 +250,7 @@ def process_img(i, file, sid, n_files, attempts, manual_recount=False):
         if manual_recount:
             kwargs = {
                 "alignment_data": request.json["chamberData"][index],
-                "index": int(index),
+                "index": index,
                 "n_files": n_files
             }
         else:
