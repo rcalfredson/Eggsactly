@@ -3795,6 +3795,7 @@
 
 
                             if (countingState !== countingStates.pre) {
+                                console.log('redrawing a region after counting is complete');
                                 if (reg.beenEdited()) {
                                     drawTextForEditedCount(reg, reg.text.content);
                                 } else {

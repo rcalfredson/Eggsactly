@@ -155,3 +155,7 @@ Thumbs.db
 db.sqlite
 flask_session
 privileged_ips.json
+
+# backend authentication
+project/auth_secrets/*
+!project/auth_secrets/.gitkeep
