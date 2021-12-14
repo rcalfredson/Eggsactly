@@ -111,10 +111,7 @@ class SessionManager:
         taskgroup = self.gpu_manager.add_task_group(
             self.room, n_tasks=1, task_type=GPUTaskTypes.arena
         )
-        self.gpu_manager.add_task(
-            taskgroup,
-            img_path,
-        )
+        self.gpu_manager.add_task(taskgroup, img_path)
         taskgroup.add_completion_listener(
             Listener(self.segment_image_via_object_detection, (img_path,))
         )

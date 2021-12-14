@@ -168,8 +168,7 @@ def perform_task(attempt_ct=0):
             helper = SubImageHelper()
             helper.get_sub_images(img, task["data"])
             metadata["rotationAngle"] = helper.rotation_angle
-            if "nodes" in task["data"]:
-                metadata["bboxes"] = helper.bboxes
+            metadata["bboxes"] = helper.bboxes
             imgs = helper.subImgs
         predict_start_t = timeit.default_timer()
         print(
