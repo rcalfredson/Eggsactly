@@ -51,6 +51,7 @@ class SessionManager:
           - gpu_manager: GPUManager instance where GPU tasks get added
         """
         self.chamberTypes = {}
+        self.cfs = {}
         self.predictions = {}
         self.basenames = {}
         self.annotations = {}
@@ -64,6 +65,7 @@ class SessionManager:
 
     def clear_data(self):
         self.chamberTypes = {}
+        self.cfs = {}
         self.predictions = {}
         self.annotations = {}
         self.alignment_data = {}
@@ -100,7 +102,7 @@ class SessionManager:
         self.predictions[imgPath].append(err_type)
         time.sleep(2)
 
-    def segment_image_via_bboxes(self, img, img_path, alignment_data):
+    def segment_image_via_bboxes(self, img, alignment_data):
         img = cv2.resize(
             img,
             (0, 0),
@@ -149,35 +151,39 @@ class SessionManager:
         self.rotation_angle = segmenter.rotation_angle
 
     def enqueue_arena_detection_task(self, img, img_path):
-        self.cf = CircleFinder(img, os.path.basename(img_path), allowSkew=True)
+        self.cfs[img_path] = CircleFinder(
+            img, os.path.basename(img_path), allowSkew=True
+        )
         taskgroup = self.gpu_manager.add_task_group(self.room, n_tasks=1)
-        self.gpu_manager.add_task(self.room, img_path, GPUTaskTypes.arena)
+        self.gpu_manager.add_task(taskgroup, img_path, GPUTaskTypes.arena)
         taskgroup.add_completion_listener(
             Listener(self.segment_image_via_object_detection, (img_path,))
         )
 
     def segment_image_via_object_detection(self, img_path, predictions):
+        imgBasename = os.path.basename(img_path)
         if type(predictions) is list and len(predictions) == 1:
             predictions = predictions[0]
         try:
+            print("running circle finder for this image path:", img_path)
             (
                 circles,
                 avgDists,
                 numRowsCols,
                 rotatedImg,
                 self.rotation_angle,
-            ) = self.cf.findCircles(debug=False, predictions=predictions)
-            if self.cf.skewed:
+            ) = self.cfs[img_path].findCircles(debug=False, predictions=predictions)
+            if self.cfs[img_path].skewed:
                 self.emit_to_room(
                     "counting-progress",
                     {
                         "data": "Skew detected in image %s;"
-                        + " stopping analysis." % self.imgBasename
+                        + " stopping analysis." % imgBasename
                     },
                 )
                 raise ImageAnalysisException
-            self.chamberTypes[img_path] = self.cf.ct
-            self.subImgs, self.bboxes = self.cf.getSubImages(
+            self.chamberTypes[img_path] = self.cfs[img_path].ct
+            self.subImgs, self.bboxes = self.cfs[img_path].getSubImages(
                 rotatedImg, circles, avgDists, numRowsCols
             )
             self.bboxes = [[round(el) for el in bbox] for bbox in self.bboxes]
@@ -185,8 +191,8 @@ class SessionManager:
                 "chamber-analysis",
                 {
                     "rotationAngle": self.rotation_angle,
-                    "filename": self.imgBasename,
-                    "chamberType": self.cf.ct,
+                    "filename": imgBasename,
+                    "chamberType": self.cfs[img_path].ct,
                     "bboxes": self.bboxes,
                     "width": self.img.shape[1],
                     "height": self.img.shape[0],
@@ -200,10 +206,10 @@ class SessionManager:
                 self.report_counting_error(self.imgPath, ImageAnalysisException)
         except RuntimeWarning:
             self.report_counting_error(self.imgPath, ImageAnalysisException)
+        del self.cfs[img_path]
 
     def check_chamber_type_and_find_bounding_boxes(self, img_path):
         imgBasename = os.path.basename(img_path)
-        self.imgBasename = imgBasename
         img_path = os.path.normpath(img_path)
         self.imgPath = img_path
         self.predictions[img_path] = []
@@ -217,7 +223,6 @@ class SessionManager:
 
     def segment_img_and_count_eggs(self, img_path, alignment_data, index=None):
         imgBasename = os.path.basename(img_path)
-        self.imgBasename = imgBasename
         img_path = os.path.normpath(img_path)
         self.imgPath = img_path
         self.predictions[img_path] = []
@@ -234,7 +239,7 @@ class SessionManager:
             if "nodes" in alignment_data:
                 self.segment_image_via_alignment_data(img, img_path, alignment_data)
             elif "bboxes" in alignment_data:
-                self.segment_image_via_bboxes(img, img_path, alignment_data)
+                self.segment_image_via_bboxes(img, alignment_data)
             self.emit_to_room(
                 "counting-progress",
                 {"data": "Counting eggs in image %s" % imgBasename},
@@ -252,15 +257,15 @@ class SessionManager:
                     self.network_loader.predict_instances(subImg)
                 )
         self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
-        self.sendAnnotationsToClient(index, alignment_data)
+        self.sendAnnotationsToClient(index, imgBasename, alignment_data)
 
-    def sendAnnotationsToClient(self, index, alignment_data):
+    def sendAnnotationsToClient(self, index, imgBasename, alignment_data):
         if self.is_exception(self.predictions[self.imgPath][0]):
             self.emit_to_room(
                 "counting-annotations",
                 {
                     "index": index,
-                    "filename": self.imgBasename,
+                    "filename": imgBasename,
                     "rotationAngle": 0,
                     "data": json.dumps(
                         {"error": self.predictions[self.imgPath][0].__name__}
@@ -306,7 +311,7 @@ class SessionManager:
             resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
         counting_data = {
             "data": json.dumps(resultsData, separators=(",", ":")),
-            "filename": self.imgBasename,
+            "filename": imgBasename,
             "rotationAngle": self.rotation_angle
             if hasattr(self, "rotation_angle")
             else None,
@@ -317,12 +322,6 @@ class SessionManager:
             counting_data,
         )
         self.annotations[os.path.normpath(self.imgPath)] = resultsData
-
-    def extends_past_img_bottom(self, bbox):
-        return bbox[1] + self.textLabelHeight + bbox[3] > self.img.shape[0]
-
-    def reaches_above_img_top(self, bbox):
-        return bbox[1] - self.textLabelHeight < 0
 
     def rotate_pt(self, x, y, radians):
         img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))
