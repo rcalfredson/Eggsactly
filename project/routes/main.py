@@ -226,7 +226,6 @@ def process_img(i, file, sid, n_files, attempts, manual_recount=False):
     if manual_recount:
         file, index = file["file_name"], file["index"]
     if file and allowed_file(file):
-        # socketIO.emit("clear-display", room=sid)
         socketIO.emit(
             "counting-progress",
             {"data": "Uploading image %i of %i" % (i + 1, n_files)},

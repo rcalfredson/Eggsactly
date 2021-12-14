@@ -8,6 +8,8 @@ import jwt
 import numpy as np
 import os
 import requests
+import time
+import timeit
 import torch
 from project.circleFinder import ARENA_IMG_RESIZE_FACTOR
 from project.detectors.splinedist.config import Config
@@ -15,7 +17,6 @@ from project.detectors.splinedist.models.model2d import SplineDist2D
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task_types import GPUTaskTypes
-from project.lib.web.scheduler import Scheduler
 from project.lib.web.sessionManager import SessionManager
 
 import timeit
@@ -63,9 +64,10 @@ pauser = PythonPauser()
 
 
 def request_work():
-    if len(active_tasks) > 0:
-        return
     print("\ngetting a task")
+    if len(active_tasks) > 0:
+        print("returning early")
+        return
     try:
         r = requests.get(f"{server_uri}/tasks/gpu", headers=request_headers)
         if r.status_code >= 400 and r.status_code < 500:
@@ -109,10 +111,6 @@ def request_work():
         print("failed to connect to the egg-counting server")
 
 
-scheduler = Scheduler(1)
-scheduler.schedule.every(0.75).seconds.do(request_work)
-
-
 def post_results_to_server(task_key, result):
     requests.request(
         "POST",
@@ -133,6 +131,7 @@ def perform_task(attempt_ct=0):
         task_type = GPUTaskTypes[task["type"]]
         if attempt_ct == 0:
             print("task type:", task_type.name)
+            print("path:", task["img_path"])
         print("num attempts:", attempt_ct + 1)
         decode_start_t = timeit.default_timer()
 
@@ -197,4 +196,10 @@ def init_splinedist_network(type):
 
 
 init_networks()
-scheduler.run_continuously()
+while True:
+    start_t = timeit.default_timer()
+    request_work()
+    end_t = timeit.default_timer()
+    time_balance = 0.75 - (end_t - start_t)
+    if time_balance > 0:
+        time.sleep(time_balance)

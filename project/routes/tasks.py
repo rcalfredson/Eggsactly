@@ -21,6 +21,7 @@ class TaskFinalizer(Thread):
     def __init__(self, group_id, results):
         Thread.__init__(self)
         self.group_id = group_id
+        self.room = app.gpu_manager.task_groups[group_id].room
         self.results = results
 
     def handle_error(self):
@@ -32,10 +33,10 @@ class TaskFinalizer(Thread):
                         "data": "Ran out of system resources. "
                         "Trying to reallocate and try again..."
                     },
-                    room=self.group_id,
+                    room=self.room,
                 )
             else:
-                app.sessions[self.group_id].report_counting_error(
+                app.sessions[self.room].report_counting_error(
                     self.results["img_path"], CUDAMemoryException
                 )
 
@@ -46,7 +47,7 @@ class TaskFinalizer(Thread):
             k: np.array(self.results["predictions"][k])
             for k in self.results["predictions"]
         }
-        app.gpu_manager.task_groups[self.group_id].register_completed_task(results)
+        app.gpu_manager.register_completed_task(results, self.group_id)
 
 
 def check_auth(request):
@@ -69,7 +70,8 @@ def get_task():
     return jsonify(
         img_path=task.img_path,
         type=task.task_type.name,
-        group_id=task.group_id,
+        room=task.task_group.room,
+        group_id=task.task_group.id,
     )
 
 
