@@ -167,8 +167,9 @@ def perform_task(attempt_ct=0):
         elif task_type == GPUTaskTypes.egg:
             helper = SubImageHelper()
             helper.get_sub_images(img, task["data"])
-            if hasattr(helper, 'rotation_angle'):
-                metadata['rotationAngle'] = helper.rotation_angle
+            if "nodes" in task["data"]:
+                metadata["rotationAngle"] = helper.rotation_angle
+                metadata["bboxes"] = helper.bboxes
             imgs = helper.subImgs
         predict_start_t = timeit.default_timer()
         print(
@@ -179,8 +180,8 @@ def perform_task(attempt_ct=0):
         for img in imgs:
             try:
                 results = networks[task_type].predict_instances(img)[1]
-                results['count'] = len(results['points'])
-                results['outlines'] = get_interpolated_points(results['coord'])
+                results["count"] = len(results["points"])
+                results["outlines"] = get_interpolated_points(results["coord"])
                 predictions.append(results)
             except Exception as exc:
                 print("encountered an exception.", exc)

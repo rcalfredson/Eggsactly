@@ -45,13 +45,6 @@ class TaskFinalizer(Thread):
     def run(self):
         if "error" in self.results:
             self.handle_error()
-        print("before registering a completed task, what is results?", self.results)
-        # at this point, self.results is a dictionary
-        # containing two keys: predictions and metadata.
-        # the value of predictions is a list, and that of metadata is a dict.
-        # before this point, predictions is a list with one result
-        # per image.
-        # in this case we don't want to convert to Numpy form.
         if self.task_type == GPUTaskTypes.arena:
             results = {
                 "predictions": [
@@ -62,7 +55,6 @@ class TaskFinalizer(Thread):
             }
         else:
             results = self.results
-        print("after converting to numpy array:", results)
         app.gpu_manager.register_completed_task(results, self.group_id)
 
 

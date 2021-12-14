@@ -213,6 +213,7 @@ class SessionManager:
         if type(predictions) is list and len(predictions) == 1:
             predictions = predictions[0]
         self.alignment_data[imgPath]["rotationAngle"] = metadata["rotationAngle"]
+        self.bboxes[imgPath] = metadata["bboxes"]
         self.predictions[imgPath] = predictions
         if self.is_exception(self.predictions[imgPath][0]):
             self.emit_to_room(

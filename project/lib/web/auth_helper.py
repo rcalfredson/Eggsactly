@@ -1,6 +1,5 @@
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
-import datetime
 import jwt
 from jwt.exceptions import InvalidTokenError
 

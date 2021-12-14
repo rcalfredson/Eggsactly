@@ -5,9 +5,6 @@ from project.lib.image.node_based_segmenter import NodeBasedSegmenter
 
 
 class SubImageHelper:
-    def __init__(self) -> None:
-        pass
-
     def get_sub_images(self, img, alignment_data):
         if "nodes" in alignment_data:
             self.segment_image_via_alignment_data(img, alignment_data)
