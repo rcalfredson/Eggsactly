@@ -9,18 +9,18 @@ class GPUManager:
         self.queue = queue.Queue()
         self.task_groups = {}
 
-    def add_task_group(self, room, n_tasks) -> GPUTaskGroup:
-        new_task = GPUTaskGroup(n_tasks, room)
-        self.task_groups[new_task.id] = new_task
-        return self.task_groups[new_task.id]
+    def add_task_group(self, room, n_tasks, task_type) -> GPUTaskGroup:
+        new_taskgroup = GPUTaskGroup(n_tasks, room, task_type)
+        self.task_groups[new_taskgroup.id] = new_taskgroup
+        return self.task_groups[new_taskgroup.id]
 
-    def register_completed_task(self, predictions, group_id):
-        self.task_groups[group_id].register_completed_task(predictions)
+    def register_completed_task(self, results, group_id):
+        self.task_groups[group_id].register_completed_task(results)
         if self.task_groups[group_id].complete:
             del self.task_groups[group_id]
 
-    def add_task(self, task_group, img_path, task_type):
-        task = GPUTask(task_group, img_path, task_type)
+    def add_task(self, task_group, img_path, data={}):
+        task = GPUTask(task_group, img_path, data)
         self.queue.put(task)
 
     def get_task(self):

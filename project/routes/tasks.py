@@ -7,6 +7,7 @@ from threading import Thread
 from project.lib.web.auth_helper import AuthDecoder
 from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task import GPUTask
+from project.lib.web.gpu_task_types import GPUTaskTypes
 from .. import app
 
 
@@ -22,6 +23,7 @@ class TaskFinalizer(Thread):
         Thread.__init__(self)
         self.group_id = group_id
         self.room = app.gpu_manager.task_groups[group_id].room
+        self.task_type = app.gpu_manager.task_groups[group_id].task_type
         self.results = results
 
     def handle_error(self):
@@ -43,10 +45,24 @@ class TaskFinalizer(Thread):
     def run(self):
         if "error" in self.results:
             self.handle_error()
-        results = {
-            k: np.array(self.results["predictions"][k])
-            for k in self.results["predictions"]
-        }
+        print("before registering a completed task, what is results?", self.results)
+        # at this point, self.results is a dictionary
+        # containing two keys: predictions and metadata.
+        # the value of predictions is a list, and that of metadata is a dict.
+        # before this point, predictions is a list with one result
+        # per image.
+        # in this case we don't want to convert to Numpy form.
+        if self.task_type == GPUTaskTypes.arena:
+            results = {
+                "predictions": [
+                    {k: np.array(prediction_set[k]) for k in prediction_set}
+                    for prediction_set in self.results["predictions"]
+                ],
+                "metadata": self.results["metadata"],
+            }
+        else:
+            results = self.results
+        print("after converting to numpy array:", results)
         app.gpu_manager.register_completed_task(results, self.group_id)
 
 
@@ -64,6 +80,7 @@ def check_auth(request):
 @tasks.route("/tasks/gpu")
 def get_task():
     check_auth(request)
+    task: GPUTask
     task = app.gpu_manager.get_task()
     if type(task) is not GPUTask:
         return jsonify({})
@@ -72,6 +89,7 @@ def get_task():
         type=task.task_type.name,
         room=task.task_group.room,
         group_id=task.task_group.id,
+        data=task.data,
     )
 
 

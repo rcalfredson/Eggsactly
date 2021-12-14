@@ -120,7 +120,10 @@ def manual_recount():
     pauser.set_resume_timer()
     process_imgs(request.json["sid"], data_type=AllowedDataTypes.json)
     pauser.set_resume_timer()
-    socketIO.emit("counting-done", {"is_retry": True}, room=request.json["sid"])
+    # counting-done shouldn't be emitted until all the tasks have been
+    # completed, so does that change what should be considered the
+    # task group in this case?
+    # we're still using only one task per group.
     return "OK"
 
 
@@ -247,13 +250,10 @@ def process_img(i, file, sid, n_files, attempts, manual_recount=False):
         if manual_recount:
             kwargs = {
                 "alignment_data": request.json["chamberData"][index],
-                "index": index,
+                "index": int(index),
+                "n_files": n_files
             }
         else:
             kwargs = {}
         app.sessions[sid].segment_img_and_count_eggs(filePath, **kwargs)
-        socketIO.emit(
-            "counting-progress",
-            {"data": "Finished processing image %i of %i" % (i + 1, n_files)},
-            room=sid,
-        )
+        

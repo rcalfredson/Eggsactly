@@ -687,6 +687,8 @@
         });
         socket.on('counting-annotations', (msg) => {
             annotations[msg.filename] = JSON.parse(msg.data);
+            console.log('updating counting data for file', msg.filename);
+            console.log(annotations[msg.filename]);
             rotationAngles[msg.filename] = msg.rotationAngle;
             if (!msg.index) {
                 orderedImgNames.push(msg.filename)
@@ -3042,18 +3044,6 @@
         function setupErrorReportButton() {
             document.getElementById('submit-error-report').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
-                // if (document.getElementById('user-select').value === 'null') {
-                //     document.getElementById('user-select').style.borderColor = 'red';
-                //     document.getElementById('user-select').style.fontWeight = 'bold';
-                //     evt.target.innerText = 'Please set user first and try again.';
-                //     setTimeout(() => {
-                //         evt.target.innerText = 'Submit error report for all images';
-                //         evt.target.removeAttribute('disabled');
-                //         document.getElementById('user-select').style.borderColor = 'black';
-                //         document.getElementById('user-select').style.fontWeight = 'normal';
-                //     }, 2500);
-                //     return;
-                // }
                 displayLoadingMessage(evt.target);
                 socket.emit('submit-error-report', {
                     editedCounts: collectEditedCounts(),
@@ -3777,6 +3767,9 @@
                             }
                         });
                     } else {
+                        console.log('current image index:', currentImgIndex)
+                        console.log('there was already an entry in egg-laying regions.');
+                        console.log(eggLayingRegions[currentImgIndex])
                         Object.keys(eggLayingRegions[currentImgIndex]).forEach((region, i) => {
                             // recreate the text
                             let reg = eggLayingRegions[currentImgIndex][region];
