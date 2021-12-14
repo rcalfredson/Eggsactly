@@ -14,6 +14,7 @@ import torch
 from project.circleFinder import ARENA_IMG_RESIZE_FACTOR
 from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
+from project.lib.image.sub_image_helper import SubImageHelper
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task_types import GPUTaskTypes
@@ -129,6 +130,8 @@ def perform_task(attempt_ct=0):
             del active_tasks[task_key]
             return
         task_type = GPUTaskTypes[task["type"]]
+        if task_type != GPUTaskTypes.arena:
+            print("task:", task)
         if attempt_ct == 0:
             print("task type:", task_type.name)
             print("path:", task["img_path"])
@@ -160,20 +163,44 @@ def perform_task(attempt_ct=0):
                 interpolation=cv2.INTER_CUBIC,
             )
         img = normalize(img, 1, 99.8, axis=(0, 1))
+        metadata = {}
+        if task_type == GPUTaskTypes.arena:
+            imgs = (img,)
+        elif task_type == GPUTaskTypes.egg:
+            helper = SubImageHelper()
+            helper.get_sub_images(img, task["data"])
+            if hasattr(helper, 'rotation_angle'):
+                metadata['rotationAngle'] = helper.rotation_angle
+            imgs = helper.subImgs
         predict_start_t = timeit.default_timer()
         print(
             "time spent resizing and normalizing:",
             predict_start_t - resize_norm_start_t,
         )
-        try:
-            predictions = networks[task_type].predict_instances(img)[1]
-        except Exception as exc:
-            if SessionManager.is_CUDA_mem_error(exc):
-                raise CUDAMemoryException
-        predictions = {k: predictions[k].tolist() for k in predictions}
+        predictions = []
+        for img in imgs:
+            try:
+                predictions.append(networks[task_type].predict_instances(img)[1])
+            except Exception as exc:
+                print("encountered an exception.", exc)
+                print(type(exc))
+                if SessionManager.is_CUDA_mem_error(exc):
+                    raise CUDAMemoryException
+
+        predictions = [
+            {k: prediction_set[k].tolist() for k in prediction_set}
+            for prediction_set in predictions
+        ]
+        # want to ensure that predictions is a list with no nesting,
+        # and that is accurate.
+        # if len(predictions) == 1:
+            # predictions = predictions[0]
         post_req_start_t = timeit.default_timer()
         print("time spent predicting:", post_req_start_t - predict_start_t)
-        post_results_to_server(task_key, {"predictions": predictions})
+        print('predictions sent:', predictions)
+        post_results_to_server(
+            task_key, {"predictions": predictions, "metadata": metadata}
+        )
 
         del active_tasks[task_key]
         end_t = timeit.default_timer()

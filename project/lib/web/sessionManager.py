@@ -21,7 +21,7 @@ from project.circleFinder import (
 )
 from project.lib.event import Listener
 from project.lib.image import drawing
-from project.lib.image.manual_segmenter import ManualSegmenter
+from project.lib.image.node_based_segmenter import NodeBasedSegmenter
 from project.lib.web.exceptions import (
     CUDAMemoryException,
     ImageAnalysisException,
@@ -131,7 +131,6 @@ class SessionManager:
                 new_bbox[1] = 0
             translated_bboxes.append(list(map(round, new_bbox)))
 
-        self.rotation_angle = alignment_data["rotationAngle"]
         self.bboxes = translated_bboxes
         self.subImgs = CircleFinder.getSubImagesFromBBoxes(
             img, translated_bboxes, alignment_data["regionsToIgnore"]
@@ -143,36 +142,69 @@ class SessionManager:
         #     cv2.waitKey(0)
 
     def segment_image_via_alignment_data(self, img, img_path, alignment_data):
-        segmenter = ManualSegmenter(
+        segmenter = NodeBasedSegmenter(
             img, alignment_data["nodes"], alignment_data["type"]
         )
         self.subImgs, self.bboxes = segmenter.calc_bboxes_and_subimgs()
         self.chamberTypes[img_path] = alignment_data["type"]
-        self.rotation_angle = segmenter.rotation_angle
+        if img_path in self.alignment_data:
+            self.alignment_data[img_path]["rotationAngle"] = segmenter.rotation_angle
+        else:
+            self.alignment_data[img_path] = {"rotationAngle": segmenter.rotation_angle}
 
     def enqueue_arena_detection_task(self, img, img_path):
         self.cfs[img_path] = CircleFinder(
             img, os.path.basename(img_path), allowSkew=True
         )
-        taskgroup = self.gpu_manager.add_task_group(self.room, n_tasks=1)
-        self.gpu_manager.add_task(taskgroup, img_path, GPUTaskTypes.arena)
+        taskgroup = self.gpu_manager.add_task_group(
+            self.room, n_tasks=1, task_type=GPUTaskTypes.arena
+        )
+        self.gpu_manager.add_task(
+            taskgroup,
+            img_path,
+        )
         taskgroup.add_completion_listener(
             Listener(self.segment_image_via_object_detection, (img_path,))
         )
 
+    def enqueue_egg_counting_task(self, index, n_files, img_path, alignment_data):
+        taskgroup = self.gpu_manager.add_task_group(
+            self.room, n_tasks=1, task_type=GPUTaskTypes.egg
+        )
+        self.gpu_manager.add_task(taskgroup, img_path, alignment_data)
+        taskgroup.add_completion_listener(
+            Listener(
+                self.sendAnnotationsToClient, (index, n_files, img_path, alignment_data)
+            )
+        )
+
+    # now reached the point where the SessionManager should be refactored
+    # in the form it would need after the GPU worker assumes the details of egg
+    # counting. The next step is to ensure the necessary data reaches the GPU worker
+    # after which we need to transfer the code related to calculating sub-images
+    # from SessionManager to the new SubImageHelper class.
+    # one question: doesn't the SessionManager rely on those subimages
+    # later when processing error reports?
+    # no, it uses freestanding code to generate that. I'm not sure if
+    # that's a good or bad decision, because it appears not to account
+    # for any transformations of the image other than rotation,
+    # but that's a concern separate from this round of refactoring.
+
     def segment_image_via_object_detection(self, img_path, predictions):
         imgBasename = os.path.basename(img_path)
+        # why are there two levels of nesting?
+        # we have the results from each task in the group,
+        # and within each task, there can be multiple sub-images.
+        print('initial predictions:', predictions)
         if type(predictions) is list and len(predictions) == 1:
             predictions = predictions[0]
+            input('trimmed using the conditional')
+        print('predictions:', predictions)
         try:
             print("running circle finder for this image path:", img_path)
-            (
-                circles,
-                avgDists,
-                numRowsCols,
-                rotatedImg,
-                self.rotation_angle,
-            ) = self.cfs[img_path].findCircles(debug=False, predictions=predictions)
+            (circles, avgDists, numRowsCols, rotatedImg, rotationAngle) = self.cfs[
+                img_path
+            ].findCircles(debug=False, predictions=predictions)
             if self.cfs[img_path].skewed:
                 self.emit_to_room(
                     "counting-progress",
@@ -187,10 +219,14 @@ class SessionManager:
                 rotatedImg, circles, avgDists, numRowsCols
             )
             self.bboxes = [[round(el) for el in bbox] for bbox in self.bboxes]
+            if img_path not in self.alignment_data:
+                self.alignment_data[img_path] = {"rotationAngle": rotationAngle}
+            else:
+                self.alignment_data[img_path]["rotationAngle"] = rotationAngle
             self.emit_to_room(
                 "chamber-analysis",
                 {
-                    "rotationAngle": self.rotation_angle,
+                    "rotationAngle": self.alignment_data[img_path]["rotationAngle"],
                     "filename": imgBasename,
                     "chamberType": self.cfs[img_path].ct,
                     "bboxes": self.bboxes,
@@ -221,46 +257,54 @@ class SessionManager:
         img = self.img
         self.enqueue_arena_detection_task(img, img_path)
 
-    def segment_img_and_count_eggs(self, img_path, alignment_data, index=None):
+    def segment_img_and_count_eggs(self, img_path, alignment_data, index, n_files):
         imgBasename = os.path.basename(img_path)
         img_path = os.path.normpath(img_path)
-        self.imgPath = img_path
         self.predictions[img_path] = []
         self.basenames[img_path] = imgBasename
         self.emit_to_room(
             "counting-progress", {"data": "Segmenting image %s" % imgBasename}
         )
-        self.img = np.array(Image.open(img_path), dtype=np.float32)
-        img = self.img
         self.alignment_data[img_path] = alignment_data
         if "ignored" in alignment_data and alignment_data["ignored"]:
             self.predictions[img_path].append(ImageIgnoredException)
         else:
             if "nodes" in alignment_data:
-                self.segment_image_via_alignment_data(img, img_path, alignment_data)
-            elif "bboxes" in alignment_data:
-                self.segment_image_via_bboxes(img, alignment_data)
-            self.emit_to_room(
-                "counting-progress",
-                {"data": "Counting eggs in image %s" % imgBasename},
-            )
-            num_sub_imgs = len(self.subImgs)
-            for i, subImg in enumerate(self.subImgs):
-                self.emit_to_room(
-                    "counting-progress",
-                    {
-                        "overwrite": True,
-                        "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
-                    },
-                )
-                self.predictions[img_path].append(
-                    self.network_loader.predict_instances(subImg)
-                )
-        self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
-        self.sendAnnotationsToClient(index, imgBasename, alignment_data)
+                self.chamberTypes[img_path] = alignment_data["type"]
+            self.enqueue_egg_counting_task(index, n_files, img_path, alignment_data)
+        #     if "nodes" in alignment_data:
+        #         self.segment_image_via_alignment_data(img, img_path, alignment_data)
+        #     elif "bboxes" in alignment_data:
+        #         self.segment_image_via_bboxes(img, alignment_data)
+        #     self.emit_to_room(
+        #         "counting-progress",
+        #         {"data": "Counting eggs in image %s" % imgBasename},
+        #     )
+        #     num_sub_imgs = len(self.subImgs)
+        #     for i, subImg in enumerate(self.subImgs):
+        #         self.emit_to_room(
+        #             "counting-progress",
+        #             {
+        #                 "overwrite": True,
+        #                 "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
+        #             },
+        #         )
+        #         self.predictions[img_path].append(
+        #             self.network_loader.predict_instances(subImg)
+        #         )
+        # self.sendAnnotationsToClient(index, imgBasename, alignment_data)
 
-    def sendAnnotationsToClient(self, index, imgBasename, alignment_data):
-        if self.is_exception(self.predictions[self.imgPath][0]):
+    def sendAnnotationsToClient(
+        self, index, n_files, imgPath, alignment_data, predictions, metadata
+    ):
+        imgBasename = os.path.basename(imgPath)
+        print('predictions at start:', predictions)
+        if type(predictions) is list and len(predictions) == 1:
+            predictions = predictions[0]
+        self.alignment_data[imgPath] = metadata['rotationAngle']
+        self.predictions[imgPath] = predictions
+        print('predictions for image path', imgPath, self.predictions[imgPath])
+        if self.is_exception(self.predictions[imgPath][0]):
             self.emit_to_room(
                 "counting-annotations",
                 {
@@ -268,7 +312,7 @@ class SessionManager:
                     "filename": imgBasename,
                     "rotationAngle": 0,
                     "data": json.dumps(
-                        {"error": self.predictions[self.imgPath][0].__name__}
+                        {"error": self.predictions[imgPath][0].__name__}
                     ),
                 },
             )
@@ -280,10 +324,10 @@ class SessionManager:
             and alignment_data["type"] == "custom"
             and alignment_data["rotationAngle"] != 0
         )
-        ct = self.chamberTypes[self.imgPath]
+        ct = self.chamberTypes[imgPath]
         if alignment_data["type"] and alignment_data["type"] != ct:
             ct = alignment_data["type"]
-        for i, prediction in enumerate(self.predictions[self.imgPath]):
+        for i, prediction in enumerate(self.predictions[imgPath]):
             if ct == CT.large.name:
                 iMod = i % 4
                 if iMod in (0, 3):
@@ -312,7 +356,7 @@ class SessionManager:
         counting_data = {
             "data": json.dumps(resultsData, separators=(",", ":")),
             "filename": imgBasename,
-            "rotationAngle": self.rotation_angle
+            "rotationAngle": self.alignment_data[imgPath]["rotationAngle"]
             if hasattr(self, "rotation_angle")
             else None,
             "index": index,
@@ -321,7 +365,15 @@ class SessionManager:
             "counting-annotations",
             counting_data,
         )
-        self.annotations[os.path.normpath(self.imgPath)] = resultsData
+        self.annotations[os.path.normpath(imgPath)] = resultsData
+        print("index is", index, type(index), "and n_files is", n_files, type(n_files))
+        self.emit_to_room(
+            "counting-progress",
+            {"data": "Finished processing image %i of %i" % (index, n_files)},
+        )
+        if index + 1 == n_files:
+            self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
+            self.emit_to_room("counting-done", {"is_retry": True})
 
     def rotate_pt(self, x, y, radians):
         img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))
@@ -331,7 +383,9 @@ class SessionManager:
         font = drawing.loadFont(14)
         for imgPath in edited_counts:
             rel_path = os.path.normpath(os.path.join("./uploads", self.room, imgPath))
-            img = rotate_image(cv2.imread(rel_path), self.rotation_angle)
+            img = rotate_image(
+                cv2.imread(rel_path), self.alignment_data[imgPath]["rotationAngle"]
+            )
             for i in edited_counts[imgPath]:
                 error_report_image_basename = ".".join(
                     os.path.basename(imgPath).split(".")[:-1]
