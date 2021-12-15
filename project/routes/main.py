@@ -13,8 +13,8 @@ import os
 from pathlib import Path
 import shutil
 import time
-from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
+import zipfile
 
 from project.lib.datamanagement.models import login_google_user
 from project.lib.image.exif import correct_via_exif
@@ -118,12 +118,8 @@ def handle_annot_img_upload():
 @main.route("/manual-recount", methods=["POST"])
 def manual_recount():
     pauser.set_resume_timer()
-    process_imgs(request.json["sid"], data_type=AllowedDataTypes.json)
+    process_imgs(request.json["sid"])
     pauser.set_resume_timer()
-    # counting-done shouldn't be emitted until all the tasks have been
-    # completed, so does that change what should be considered the
-    # task group in this case?
-    # we're still using only one task per group.
     return "OK"
 
 
@@ -171,35 +167,22 @@ def check_chamber_type_of_img(i, file, sid, n_files):
         app.sessions[sid].check_chamber_type_and_find_bounding_boxes(filePath)
 
 
-def process_imgs(sid, data_type):
+def process_imgs(sid):
     MAX_ATTEMPTS_PER_IMG = 1
-
-    if data_type == AllowedDataTypes.file:
-        file_list = request.files
-        n_files = len(request.files)
-    elif data_type == AllowedDataTypes.json:
-        file_list = [
-            {
-                "index": entry,
-                "file_name": request.json["chamberData"][entry]["file_name"],
-            }
-            for entry in request.json["chamberData"]
-        ]
-        n_files = len(request.json["chamberData"])
-
+    file_list = [
+        {
+            "index": entry,
+            "file_name": request.json["chamberData"][entry]["file_name"],
+        }
+        for entry in request.json["chamberData"]
+    ]
+    n_files = len(request.json["chamberData"])
     for i, file in enumerate(file_list):
         attempts = 0
         succeeded = False
         while True:
             try:
-                process_img(
-                    i,
-                    file,
-                    sid,
-                    n_files,
-                    attempts,
-                    manual_recount=data_type == AllowedDataTypes.json,
-                )
+                process_img(i, file, sid, n_files)
                 succeeded = True
             except CUDAMemoryException:
                 attempts += 1
@@ -225,35 +208,22 @@ def process_imgs(sid, data_type):
                 )
 
 
-def process_img(i, file, sid, n_files, attempts, manual_recount=False):
-    if manual_recount:
-        file, index = file["file_name"], file["index"]
+def process_img(i, file, sid, n_files):
+    file, index = file["file_name"], file["index"]
     if file and allowed_file(file):
-        socketIO.emit(
-            "counting-progress",
-            {"data": "Uploading image %i of %i" % (i + 1, n_files)},
-            room=sid,
-        )
         filename = secure_filename(file)
         folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
         if not os.path.exists(folder_path):
             Path(folder_path).mkdir(exist_ok=True, parents=True)
         filePath = os.path.join(folder_path, filename)
-        if not manual_recount and attempts == 0:
-            request.files[file].save(filePath)
-            correct_via_exif(filePath)
         socketIO.emit(
             "counting-progress",
             {"data": "Processing image %i of %i" % (i + 1, n_files)},
             room=sid,
         )
-        if manual_recount:
-            kwargs = {
-                "alignment_data": request.json["chamberData"][index],
-                "index": index,
-                "n_files": n_files
-            }
-        else:
-            kwargs = {}
+        kwargs = {
+            "alignment_data": request.json["chamberData"][index],
+            "index": index,
+            "n_files": n_files,
+        }
         app.sessions[sid].segment_img_and_count_eggs(filePath, **kwargs)
-        

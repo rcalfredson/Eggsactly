@@ -148,6 +148,7 @@
         let lastHelpBoxWasMinimized;
         let alignmentHelpDialog = {};
         let logUpdates = [];
+        let logUpdateDelayTimeout;
         let upperPadding, leftPadding;
         let scalingFactor;
         let zoomScaleImgToMask;
@@ -564,7 +565,13 @@
             return d;
         }
 
-        function addToLogUpdates(message) {
+        function addToLogUpdates(message, opts = {}) {
+            const defaultOpts = {
+                amountToWaitBeforeDelayAck1: 5000,
+                amountToWaitBeforeDelayAck2: 10000,
+                customMessage: null
+            };
+            opts = {...defaultOpts, ...opts};
             let messageTs = Date.now();
             if (logUpdates.length === 100) {
                 document.getElementById(`log-update-${logUpdates.shift()}`).remove();
@@ -583,7 +590,30 @@
                 el.style.boxShadow = '0 0 1px 1px rgb(127, 156, 203) inset';
             }
             el.scrollTop = el.scrollHeight;
-            logUpdates.push(messageTs)
+            logUpdates.push(messageTs);
+            if (logUpdateDelayTimeout) {
+                clearTimeout(logUpdateDelayTimeout);
+            }
+            if (opts.amountToWaitBeforeDelayAck1 > 0) {
+                logUpdateDelayTimeout = setTimeout(() => {
+                    acknowledgeLogDelay(opts.customMessage,
+                        opts.amountToWaitBeforeDelayAck2
+                    )
+                },
+                    opts.amountToWaitBeforeDelayAck1);
+            }
+        }
+
+        function acknowledgeLogDelay(message, delay) {
+            if (countingState === countingStates.post) return;
+            let newPara = document.createElement('p');
+            newPara.style.color = 'red';
+            newPara.innerText = message || 'No response yet from server... Please wait.';
+            addToLogUpdates(newPara, {
+                amountToWaitBeforeDelayAck1: delay,
+                amountToWaitBeforeDelayAck2: -1,
+                customMessage: 'Sorry; failed to connect. Please try again later.'
+            });
         }
 
         function resetAllVariables() {
@@ -632,9 +662,12 @@
                 }
                 return;
             }
+            let logOpts = msg.data.includes('Finished') ? {
+                amountToWaitBeforeDelayAck1: -1
+            } : {};
             let newPara = document.createElement('p');
             newPara.innerText = msg.data;
-            addToLogUpdates(newPara);
+            addToLogUpdates(newPara, logOpts);
         });
 
 

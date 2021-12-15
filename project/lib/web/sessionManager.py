@@ -164,6 +164,10 @@ class SessionManager:
                     "height": self.img.shape[0],
                 },
             )
+            self.emit_to_room(
+                "counting-progress",
+                {"data": "Finished segmenting image %s" % imgBasename},
+            )
         except Exception as exc:
             print("exception while finding circles:", type(exc), exc)
             if self.is_CUDA_mem_error(exc):
