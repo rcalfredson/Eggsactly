@@ -1,8 +1,10 @@
+from dotenv import load_dotenv
 from flask import abort, Blueprint, request
 from flask.json import jsonify
 from jwt.exceptions import InvalidTokenError
 import numpy as np
-from threading import Thread
+import os
+from threading import Event, Thread
 
 from project.lib.web.auth_helper import AuthDecoder
 from project.lib.web.exceptions import CUDAMemoryException
@@ -11,6 +13,8 @@ from project.lib.web.gpu_task_types import GPUTaskTypes
 from .. import app
 
 
+load_dotenv()
+SAFE_TIMEOUT = int(os.environ["GPU_WORKER_TIMEOUT"]) - 1
 tasks = Blueprint("tasks", __name__)
 num_workers = 1
 auth_decoder = AuthDecoder(
@@ -72,17 +76,30 @@ def check_auth(request):
 @tasks.route("/tasks/gpu")
 def get_task():
     check_auth(request)
+
+    def task_as_json(task: GPUTask):
+        return jsonify(
+            img_path=task.img_path,
+            type=task.task_type.name,
+            room=task.task_group.room,
+            group_id=task.task_group.id,
+            data=task.data,
+        )
+
     task: GPUTask
     task = app.gpu_manager.get_task()
     if type(task) is not GPUTask:
-        return jsonify({})
-    return jsonify(
-        img_path=task.img_path,
-        type=task.task_type.name,
-        room=task.task_group.room,
-        group_id=task.task_group.id,
-        data=task.data,
-    )
+        task_request = Event()
+        app.gpu_manager.add_task_request(task_request)
+        task_available = task_request.wait(timeout=SAFE_TIMEOUT)
+        if task_request in app.gpu_manager.task_requests:
+            app.gpu_manager.task_requests.remove(task_request)
+        if task_available:
+            return task_as_json(app.gpu_manager.get_task())
+        else:
+            return jsonify({})
+    else:
+        return task_as_json(task)
 
 
 @tasks.route("/tasks/gpu/<group_id>", methods=["POST"])

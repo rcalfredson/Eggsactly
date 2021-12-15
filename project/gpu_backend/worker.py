@@ -21,7 +21,6 @@ from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.sessionManager import SessionManager
 
-import timeit
 
 NETWORK_CONSTS = {
     GPUTaskTypes.arena: {
@@ -59,6 +58,7 @@ class AuthHelper:
 load_dotenv()
 server_uri = os.environ["MAIN_SERVER_URI"]
 key_holder = AuthHelper(os.environ["PRIVATE_KEY_PATH"])
+reconnect_attempt_delay = int(os.environ['GPU_WORKER_RECONNECT_ATTEMPT_DELAY'])
 request_headers = {"Authorization": f"access_token {key_holder.get_jwt()}"}
 active_tasks = {}
 networks = {}
@@ -71,7 +71,10 @@ def request_work():
         print("returning early")
         return
     try:
-        r = requests.get(f"{server_uri}/tasks/gpu", headers=request_headers)
+        r = requests.get(
+            f"{server_uri}/tasks/gpu",
+            headers=request_headers,
+        )
         if r.status_code >= 400 and r.status_code < 500:
             print("server rejected request. status:", r.status_code)
             return
@@ -111,6 +114,7 @@ def request_work():
         request_work()
     except requests.exceptions.ConnectionError:
         print("failed to connect to the egg-counting server")
+        time.sleep(reconnect_attempt_delay)
 
 
 def post_results_to_server(task_key, result):
@@ -225,9 +229,4 @@ def init_splinedist_network(type):
 
 init_networks()
 while True:
-    start_t = timeit.default_timer()
     request_work()
-    end_t = timeit.default_timer()
-    time_balance = 0.75 - (end_t - start_t)
-    if time_balance > 0:
-        time.sleep(time_balance)
