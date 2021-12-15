@@ -164,10 +164,6 @@ class SessionManager:
                     "height": self.img.shape[0],
                 },
             )
-            self.emit_to_room(
-                "counting-progress",
-                {"data": "Finished segmenting image %s" % imgBasename},
-            )
         except Exception as exc:
             print("exception while finding circles:", type(exc), exc)
             if self.is_CUDA_mem_error(exc):
@@ -196,9 +192,6 @@ class SessionManager:
         img_path = os.path.normpath(img_path)
         self.predictions[img_path] = []
         self.basenames[img_path] = imgBasename
-        self.emit_to_room(
-            "counting-progress", {"data": "Segmenting image %s" % imgBasename}
-        )
         self.alignment_data[img_path] = alignment_data
         if "ignored" in alignment_data and alignment_data["ignored"]:
             self.predictions[img_path].append(ImageIgnoredException)
@@ -280,12 +273,7 @@ class SessionManager:
         )
         self.annotations[os.path.normpath(imgPath)] = resultsData
         index_item_ct = int(index) + 1
-        self.emit_to_room(
-            "counting-progress",
-            {"data": "Finished processing image %i of %i" % (index_item_ct, n_files)},
-        )
         if index_item_ct == n_files:
-            self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
             self.emit_to_room("counting-done", {"is_retry": True})
 
     def rotate_pt(self, x, y, radians):

@@ -133,11 +133,6 @@ def handle_upload():
     return "OK"
 
 
-class AllowedDataTypes(Enum):
-    file = 1
-    json = 2
-
-
 def check_chamber_type_of_imgs(sid):
     file_list = request.files
     n_files = len(request.files)
@@ -216,11 +211,6 @@ def process_img(i, file, sid, n_files):
         if not os.path.exists(folder_path):
             Path(folder_path).mkdir(exist_ok=True, parents=True)
         filePath = os.path.join(folder_path, filename)
-        socketIO.emit(
-            "counting-progress",
-            {"data": "Processing image %i of %i" % (i + 1, n_files)},
-            room=sid,
-        )
         kwargs = {
             "alignment_data": request.json["chamberData"][index],
             "index": index,

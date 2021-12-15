@@ -565,13 +565,14 @@
             return d;
         }
 
-        function addToLogUpdates(message, opts = {}) {
-            const defaultOpts = {
-                amountToWaitBeforeDelayAck1: 5000,
-                amountToWaitBeforeDelayAck2: 10000,
-                customMessage: null
-            };
-            opts = {...defaultOpts, ...opts};
+        function addToLogUpdates(message, //opts = {}) {
+        ) {
+            // const defaultOpts = {
+            //     amountToWaitBeforeDelayAck1: 5000,
+            //     amountToWaitBeforeDelayAck2: 10000,
+            //     customMessage: null
+            // };
+            // opts = {...defaultOpts, ...opts};
             let messageTs = Date.now();
             if (logUpdates.length === 100) {
                 document.getElementById(`log-update-${logUpdates.shift()}`).remove();
@@ -594,14 +595,14 @@
             if (logUpdateDelayTimeout) {
                 clearTimeout(logUpdateDelayTimeout);
             }
-            if (opts.amountToWaitBeforeDelayAck1 > 0) {
-                logUpdateDelayTimeout = setTimeout(() => {
-                    acknowledgeLogDelay(opts.customMessage,
-                        opts.amountToWaitBeforeDelayAck2
-                    )
-                },
-                    opts.amountToWaitBeforeDelayAck1);
-            }
+            // if (opts.amountToWaitBeforeDelayAck1 > 0) {
+            //     logUpdateDelayTimeout = setTimeout(() => {
+            //         acknowledgeLogDelay(opts.customMessage,
+            //             opts.amountToWaitBeforeDelayAck2
+            //         )
+            //     },
+            //         opts.amountToWaitBeforeDelayAck1);
+            // }
         }
 
         function acknowledgeLogDelay(message, delay) {
@@ -1594,8 +1595,8 @@
             }
         }
 
-        function updateRetryAnalysisButtonStatus() {
-            document.getElementById('retry-analysis-button').style.color =
+        function updateCountEggsButtonStatus() {
+            document.getElementById('count-eggs-button').style.color =
                 indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
         }
 
@@ -1753,7 +1754,7 @@
                 crd[currentImgIndex].gridlineBBoxes[k] = newBBox;
                 maskCopyUpdater.registerUpdate();
             });
-            updateRetryAnalysisButtonStatus();
+            updateCountEggsButtonStatus();
         }
 
         function addGridlinesToSaveData(key, dataOut) {
@@ -2402,7 +2403,7 @@
                         end: [true, true]
                     }
                 },
-                doOnToggle = updateRetryAnalysisButtonStatus) {
+                doOnToggle = updateCountEggsButtonStatus) {
                 this.opacityVals = {
                     hidden: 0,
                     hover: 0.25,
@@ -2903,7 +2904,7 @@
                             ignored: chamberRealignmentData[currentImgIndex].ignored,
                             file_name: chamberRealignmentData[currentImgIndex].file_name
                         };
-                        updateRetryAnalysisButtonStatus();
+                        updateCountEggsButtonStatus();
                     }
                     redrawCanvas();
                 };
@@ -2930,7 +2931,7 @@
                         );
                     }
                     updateIgnoreButtonText();
-                    updateRetryAnalysisButtonStatus();
+                    updateCountEggsButtonStatus();
                 };
             }
         }
@@ -2946,7 +2947,7 @@
         }
 
         function setupCountEggsButton() {
-            document.getElementById('retry-analysis-button').onclick = () => {
+            document.getElementById('count-eggs-button').onclick = () => {
                 let untriaged = indicesOfUntriagedImages();
                 if (untriaged.length > 0) {
                     document.getElementById('mode-marker').innerHTML = 'Images can only be submitted if' +
@@ -3643,7 +3644,7 @@
 
                     if (numErrors > 0) {
                         displayImageAnalysisErrorMessage();
-                        document.getElementById('retry-analysis-button').style.color = colors.lightGrey;
+                        document.getElementById('count-eggs-button').style.color = colors.lightGrey;
                     }
 
                     resetCurrentRealignmentMarkers();
@@ -3860,7 +3861,7 @@
                     }
                 }
                 if (countingState === countingStates.pre) {
-                    updateRetryAnalysisButtonStatus();
+                    updateCountEggsButtonStatus();
                 }
                 origCenter = paper.view.center;
                 canvasLoaded = true;
@@ -4036,7 +4037,7 @@
                 { value: 'custom', text: 'Custom masks' }
                 ]
             },
-            { id: 'retry-analysis-button', text: 'Count eggs' }
+            { id: 'count-eggs-button', text: 'Count eggs' }
             ];
             if (countingState !== countingStates.pre) {
                 return allButtons.slice(2, 2);
@@ -4358,7 +4359,7 @@
                     delete myBox.data.innerRect;
                     currentMaskBBox = null;
                     delete chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent];
-                    updateRetryAnalysisButtonStatus();
+                    updateCountEggsButtonStatus();
                     maskCopyUpdater.registerUpdate();
                 }
             }
@@ -4451,7 +4452,7 @@
             createMaskBBox([[evt.downPoint.x - 2, evt.downPoint.y - 2],
             [evt.point.x, evt.point.y]
             ]);
-            updateRetryAnalysisButtonStatus();
+            updateCountEggsButtonStatus();
         }
 
         var setDragHandler = () => {
