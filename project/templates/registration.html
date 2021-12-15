@@ -120,7 +120,7 @@
         const imageTransformInstructions = 'Transforming image: drag to pan; shift + drag to rotate; scroll to zoom';
         let currentMaskBBox;
         let maskNames;
-        let lastSelectedMask;
+        let lastEditedMaskIndex;
         let maskCopyUpdater;
         let maskNotationButtonGroup;
         let gridlineOrientationButtonGroup;
@@ -1561,7 +1561,7 @@
             }
         }
 
-        function updateRetryAnalysisButtonAppearance() {
+        function updateRetryAnalysisButtonStatus() {
             document.getElementById('retry-analysis-button').style.color =
                 indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
         }
@@ -1720,7 +1720,7 @@
                 crd[currentImgIndex].gridlineBBoxes[k] = newBBox;
                 maskCopyUpdater.registerUpdate();
             });
-            updateRetryAnalysisButtonAppearance();
+            updateRetryAnalysisButtonStatus();
         }
 
         function addGridlinesToSaveData(key, dataOut) {
@@ -1778,6 +1778,7 @@
         }
 
         function markMaskAsEdited() {
+            if (!document.getElementById('save-mask')) return;
             document.getElementById('save-mask').removeAttribute('disabled');
             if (document.getElementById('mask-list').value !== 'Select existing mask') {
                 document.getElementById('reset-masks').removeAttribute('disabled');
@@ -2334,20 +2335,27 @@
         }
 
         class PeriodicUpdater {
-            constructor(actionWhenUpdating, secondsBetweenChecks = 5) {
+            constructor(registerUpdateCallback,
+                actionWhenUpdating,
+                secondsBetweenChecks = 5) {
                 this.secondsBetweenChecks = secondsBetweenChecks
                 this.updateNeeded = false;
+                this.registerUpdateCallback = registerUpdateCallback;
                 this.actionWhenUpdating = actionWhenUpdating;
                 this.setupUpdates();
             }
             registerUpdate() {
+                this.registerUpdateCallback();
                 this.updateNeeded = true;
+            }
+            runUpdate() {
+                this.actionWhenUpdating();
+                this.updateNeeded = false;
             }
             setupUpdates() {
                 this.interval = setInterval(() => {
                     if (this.updateNeeded) {
-                        this.actionWhenUpdating();
-                        this.updateNeeded = false;
+                        this.runUpdate();
                     }
                 }, 1000 * this.secondsBetweenChecks);
             }
@@ -2361,7 +2369,7 @@
                         end: [true, true]
                     }
                 },
-                doOnToggle = updateRetryAnalysisButtonAppearance) {
+                doOnToggle = updateRetryAnalysisButtonStatus) {
                 this.opacityVals = {
                     hidden: 0,
                     hover: 0.25,
@@ -2804,16 +2812,20 @@
                         addMaskSelectionButtons();
                         maskCopyUpdater = new PeriodicUpdater(
                             () => {
+                                lastEditedMaskIndex = currentImgIndex;
+                            },
+                            () => {
                                 let reducedData = {};
-                                reducedData = addGridlinesToSaveData(currentImgIndex, reducedData);
-                                reducedData = addGridlineBoxesToSaveData(currentImgIndex, reducedData);
-                                reducedData = addFreehandBoxesToSaveData(currentImgIndex, reducedData);
+                                reducedData = addGridlinesToSaveData(lastEditedMaskIndex, reducedData);
+                                reducedData = addGridlineBoxesToSaveData(lastEditedMaskIndex, reducedData);
+                                reducedData = addFreehandBoxesToSaveData(lastEditedMaskIndex, reducedData);
                                 localStorage.setItem('customMask',
                                     JSON.stringify({
                                         ...{
-                                            customMode: chamberRealignmentData[currentImgIndex].customMode
+                                            customMode:
+                                                chamberRealignmentData[lastEditedMaskIndex].customMode
                                         },
-                                        ...reducedData[currentImgIndex]
+                                        ...reducedData[lastEditedMaskIndex]
                                     })
                                 );
                             }
@@ -2841,7 +2853,6 @@
                             }
                             document.getElementById('reset-masks').setAttribute('disabled', true);
                         }
-
                         maskCopyUpdater.registerUpdate();
                         return;
                     }
@@ -2851,13 +2862,15 @@
                         delete eggLayingRegions[currentImgIndex];
                         document.getElementById('help-pane').remove();
                     } else {
+                        editMode = 'node';
+                        if (maskCopyUpdater) maskCopyUpdater.runUpdate();
                         chamberRealignmentData[currentImgIndex] = {
                             type: evt.target.value,
                             rotationAngle: 0,
                             ignored: chamberRealignmentData[currentImgIndex].ignored,
                             file_name: chamberRealignmentData[currentImgIndex].file_name
                         };
-                        updateRetryAnalysisButtonAppearance();
+                        updateRetryAnalysisButtonStatus();
                     }
                     redrawCanvas();
                 };
@@ -2884,7 +2897,7 @@
                         );
                     }
                     updateIgnoreButtonText();
-                    updateRetryAnalysisButtonAppearance();
+                    updateRetryAnalysisButtonStatus();
                 };
             }
         }
@@ -3416,14 +3429,6 @@
 
         var drawChamberAlignmentMarkers = function () {
             if (document.getElementById('chamber-type-select').value === 'custom') {
-                Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach(key => {
-                    chamberRealignmentData[currentImgIndex].gridlineBBoxes[key].restoreRectPath(key);
-                });
-                Object.keys(chamberRealignmentData[currentImgIndex].maskGridlines).forEach(key => {
-                    Object.keys(chamberRealignmentData[currentImgIndex].maskGridlines[key]).forEach(lineId => {
-                        chamberRealignmentData[currentImgIndex].maskGridlines[key][lineId].restoreLinePath(lineId);
-                    });
-                });
                 return;
             }
             if (!chamberRealignmentData[currentImgIndex].nodes) {
@@ -3588,11 +3593,9 @@
                 return 'error' in annotations[k];
             });
             hasModifiedTypes = Object.keys(annotations).map((k) => {
-                let index = Object.keys(chamberRealignmentData).map(
-                    crKey => {
-                        return chamberRealignmentData[crKey].file_name;
-                    }
-                ).indexOf(k)
+                let index = Object.keys(chamberRealignmentData).find(crKey => {
+                    return chamberRealignmentData[crKey].file_name === k
+                });
 
                 return index > -1 &&
                     hasAValue(chamberRealignmentData[index].type) &&
@@ -3765,9 +3768,6 @@
                             }
                         });
                     } else {
-                        console.log('current image index:', currentImgIndex)
-                        console.log('there was already an entry in egg-laying regions.');
-                        console.log(eggLayingRegions[currentImgIndex])
                         Object.keys(eggLayingRegions[currentImgIndex]).forEach((region, i) => {
                             // recreate the text
                             let reg = eggLayingRegions[currentImgIndex][region];
@@ -3786,7 +3786,6 @@
 
 
                             if (countingState !== countingStates.pre) {
-                                console.log('redrawing a region after counting is complete');
                                 if (reg.beenEdited()) {
                                     drawTextForEditedCount(reg, reg.text.content);
                                 } else {
@@ -3826,6 +3825,9 @@
                             }
                         });
                     }
+                }
+                if (countingState === countingStates.pre) {
+                    updateRetryAnalysisButtonStatus();
                 }
                 origCenter = paper.view.center;
                 canvasLoaded = true;
@@ -4105,8 +4107,8 @@
         }
 
         function checkForAnnotatedCustomMaskImages(index, untriaged) {
-            if (!imageUsesCustomMasks()) return untriaged;
-            if (!imageUsesGridBoxes()) {
+            if (!imageUsesCustomMasks(index)) return untriaged;
+            if (!imageUsesGridBoxes(index)) {
                 if (!chamberRealignmentData[index].maskBBoxes ||
                     Object.keys(chamberRealignmentData[index].maskBBoxes).length === 0) {
                     untriaged.push(index + 1);
@@ -4131,10 +4133,8 @@
                     untriaged.push(index + 1)
                     continue;
                 }
-                if (checkForAnnotatedCustomMaskImages(index, untriaged)) {
-                    continue;
-                }
-                else if (!(chamberRealignmentData[index].ignored ||
+                untriaged = checkForAnnotatedCustomMaskImages(index, untriaged)
+                if (!(chamberRealignmentData[index].ignored ||
                     !['', 'null'].includes(chamberRealignmentData[index].type))) {
                     untriaged.push(index + 1);
                 }
@@ -4325,7 +4325,7 @@
                     delete myBox.data.innerRect;
                     currentMaskBBox = null;
                     delete chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent];
-                    updateRetryAnalysisButtonAppearance();
+                    updateRetryAnalysisButtonStatus();
                     maskCopyUpdater.registerUpdate();
                 }
             }
@@ -4418,7 +4418,7 @@
             createMaskBBox([[evt.downPoint.x - 2, evt.downPoint.y - 2],
             [evt.point.x, evt.point.y]
             ]);
-            updateRetryAnalysisButtonAppearance();
+            updateRetryAnalysisButtonStatus();
         }
 
         var setDragHandler = () => {

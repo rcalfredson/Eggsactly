@@ -169,9 +169,9 @@ class SessionManager:
             if self.is_CUDA_mem_error(exc):
                 raise CUDAMemoryException
             else:
-                self.report_counting_error(self.imgPath, ImageAnalysisException)
+                self.report_counting_error(img_path, ImageAnalysisException)
         except RuntimeWarning:
-            self.report_counting_error(self.imgPath, ImageAnalysisException)
+            self.report_counting_error(img_path, ImageAnalysisException)
         del self.cfs[img_path]
 
     def check_chamber_type_and_find_bounding_boxes(self, img_path):
