@@ -61,6 +61,7 @@ class SessionManager:
         self.room = room
         self.network_loader = network_loader
         self.gpu_manager = gpu_manager
+        self.counting_task_group = None
         self.lastPing = time.time()
         self.textLabelHeight = 96
 
@@ -116,16 +117,8 @@ class SessionManager:
             Listener(self.segment_image_via_object_detection, (img_path,))
         )
 
-    def enqueue_egg_counting_task(self, index, n_files, img_path, alignment_data):
-        taskgroup = self.gpu_manager.add_task_group(
-            self.room, n_tasks=1, task_type=GPUTaskTypes.egg
-        )
-        self.gpu_manager.add_task(taskgroup, img_path, alignment_data)
-        taskgroup.add_completion_listener(
-            Listener(
-                self.sendAnnotationsToClient, (index, n_files, img_path, alignment_data)
-            )
-        )
+    def enqueue_egg_counting_task(self, img_path, alignment_data):
+        self.gpu_manager.add_task(self.counting_task_group, img_path, alignment_data)
 
     def segment_image_via_object_detection(self, img_path, predictions):
         imgBasename = os.path.basename(img_path)
@@ -177,8 +170,6 @@ class SessionManager:
     def check_chamber_type_and_find_bounding_boxes(self, img_path):
         imgBasename = os.path.basename(img_path)
         img_path = os.path.normpath(img_path)
-        self.imgPath = img_path
-        self.predictions[img_path] = []
         self.basenames[img_path] = imgBasename
         self.emit_to_room(
             "counting-progress", {"data": "Segmenting image %s" % imgBasename}
@@ -188,33 +179,38 @@ class SessionManager:
         self.enqueue_arena_detection_task(img, img_path)
 
     def segment_img_and_count_eggs(self, img_path, alignment_data, index, n_files):
+        if int(index) == 0:
+            self.counting_task_group = self.gpu_manager.add_task_group(
+                self.room, n_tasks=n_files, task_type=GPUTaskTypes.egg
+            )
+            self.counting_task_group.add_completion_listener(
+                Listener(
+                    self.send_annotations_for_task_group,
+                )
+            )
         imgBasename = os.path.basename(img_path)
         img_path = os.path.normpath(img_path)
-        self.predictions[img_path] = []
         self.basenames[img_path] = imgBasename
         self.alignment_data[img_path] = alignment_data
-        if "ignored" in alignment_data and alignment_data["ignored"]:
-            self.predictions[img_path].append(ImageIgnoredException)
-        else:
-            if "nodes" in alignment_data:
-                self.chamberTypes[img_path] = alignment_data["type"]
-            self.enqueue_egg_counting_task(index, n_files, img_path, alignment_data)
+        if "nodes" in alignment_data:
+            self.chamberTypes[img_path] = alignment_data["type"]
+        self.enqueue_egg_counting_task(img_path, alignment_data)
 
-    def sendAnnotationsToClient(
-        self, index, n_files, imgPath, alignment_data, predictions, metadata
-    ):
+    def send_annotations_for_task(self, prediction_set, metadata, img_index):
+        imgPath = self.img_paths[img_index]
         imgBasename = os.path.basename(imgPath)
-        if type(predictions) is list and len(predictions) == 1:
-            predictions = predictions[0]
-        self.alignment_data[imgPath]["rotationAngle"] = metadata["rotationAngle"]
+        self.alignment_data[imgPath]["rotationAngle"] = metadata.get(
+            "rotationAngle", 0
+        )
         if "bboxes" in metadata:
             self.bboxes[imgPath] = metadata["bboxes"]
-        self.predictions[imgPath] = predictions
+        self.predictions[imgPath] = prediction_set
+        alignment_data = self.alignment_data[imgPath]
         if self.is_exception(self.predictions[imgPath][0]):
             self.emit_to_room(
                 "counting-annotations",
                 {
-                    "index": index,
+                    "index": str(img_index),
                     "filename": imgBasename,
                     "rotationAngle": 0,
                     "data": json.dumps(
@@ -222,59 +218,64 @@ class SessionManager:
                     ),
                 },
             )
-            return
-        resultsData = []
-        bboxes = self.bboxes[imgPath]
-        do_rotate = (
-            type(alignment_data) is dict
-            and alignment_data["type"] == "custom"
-            and alignment_data["rotationAngle"] != 0
-        )
-        ct = self.chamberTypes[imgPath]
-        if alignment_data["type"] and alignment_data["type"] != ct:
-            ct = alignment_data["type"]
-        for i, prediction in enumerate(self.predictions[imgPath]):
-            if ct == CT.large.name:
-                iMod = i % 4
-                if iMod in (0, 3):
-                    x = bboxes[i][0] + 0.1 * bboxes[i][2]
-                    y = bboxes[i][1] + 0.15 * bboxes[i][3]
-                elif iMod == 1:
-                    x = bboxes[i][0] + 0.4 * bboxes[i][2]
-                    y = bboxes[i][1] + 0.2 * bboxes[i][3]
-                elif iMod == 2:
-                    x, y = (
-                        bboxes[i][0] + 0.2 * bboxes[i][2],
-                        bboxes[i][1] + 0.45 * bboxes[i][3],
-                    )
-            elif ct == CT.opto.name:
-                x = bboxes[i][0] + 0.5 * bboxes[i][2]
-                y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
-            else:  # position the label inside the upper left corner
-                x = bboxes[i][0]
-                y = bboxes[i][1]
-                if do_rotate:
-                    x, y = self.rotate_pt(x, y, -alignment_data["rotationAngle"])
-                x += 50 + (0 if prediction["count"] < 10 else 40)
-                y += self.textLabelHeight
+        else:
+            resultsData = []
+            bboxes = self.bboxes[imgPath]
+            do_rotate = (
+                type(alignment_data) is dict
+                and alignment_data["type"] == "custom"
+                and alignment_data["rotationAngle"] != 0
+            )
+            ct = self.chamberTypes[imgPath]
+            if alignment_data["type"] and alignment_data["type"] != ct:
+                ct = alignment_data["type"]
+            for i, prediction in enumerate(self.predictions[imgPath]):
+                if ct == CT.large.name:
+                    iMod = i % 4
+                    if iMod in (0, 3):
+                        x = bboxes[i][0] + 0.1 * bboxes[i][2]
+                        y = bboxes[i][1] + 0.15 * bboxes[i][3]
+                    elif iMod == 1:
+                        x = bboxes[i][0] + 0.4 * bboxes[i][2]
+                        y = bboxes[i][1] + 0.2 * bboxes[i][3]
+                    elif iMod == 2:
+                        x, y = (
+                            bboxes[i][0] + 0.2 * bboxes[i][2],
+                            bboxes[i][1] + 0.45 * bboxes[i][3],
+                        )
+                elif ct == CT.opto.name:
+                    x = bboxes[i][0] + 0.5 * bboxes[i][2]
+                    y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
+                else:  # position the label inside the upper left corner
+                    x = bboxes[i][0]
+                    y = bboxes[i][1]
+                    if do_rotate:
+                        x, y = self.rotate_pt(x, y, -alignment_data["rotationAngle"])
+                    x += 50 + (0 if prediction["count"] < 10 else 40)
+                    y += self.textLabelHeight
 
-            resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
-        counting_data = {
-            "data": json.dumps(resultsData, separators=(",", ":")),
-            "filename": imgBasename,
-            "rotationAngle": self.alignment_data[imgPath]["rotationAngle"]
-            if "rotationAngle" in self.alignment_data[imgPath]
-            else None,
-            "index": index,
-        }
-        self.emit_to_room(
-            "counting-annotations",
-            counting_data,
-        )
-        self.annotations[os.path.normpath(imgPath)] = resultsData
-        index_item_ct = int(index) + 1
-        if index_item_ct == n_files:
-            self.emit_to_room("counting-done", {"is_retry": True})
+                resultsData.append(
+                    {**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}}
+                )
+            counting_data = {
+                "data": json.dumps(resultsData, separators=(",", ":")),
+                "filename": imgBasename,
+                "rotationAngle": self.alignment_data[imgPath]["rotationAngle"]
+                if "rotationAngle" in self.alignment_data[imgPath]
+                else None,
+                "index": str(img_index),
+            }
+            self.emit_to_room(
+                "counting-annotations",
+                counting_data,
+            )
+            self.annotations[os.path.normpath(imgPath)] = resultsData
+
+    def send_annotations_for_task_group(self, predictions, metadata):
+        self.img_paths = list(self.basenames.keys())
+        for i, prediction_set in enumerate(predictions):
+            self.send_annotations_for_task(prediction_set, metadata[i], i)
+        self.emit_to_room("counting-done", {"is_retry": True})
 
     def rotate_pt(self, x, y, radians):
         img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))

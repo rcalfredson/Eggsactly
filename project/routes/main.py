@@ -115,14 +115,6 @@ def handle_annot_img_upload():
     return "OK"
 
 
-@main.route("/manual-recount", methods=["POST"])
-def manual_recount():
-    pauser.set_resume_timer()
-    process_imgs(request.json["sid"])
-    pauser.set_resume_timer()
-    return "OK"
-
-
 @main.route("/upload", methods=["POST"])
 def handle_upload():
     pauser.set_resume_timer()
@@ -162,7 +154,10 @@ def check_chamber_type_of_img(i, file, sid, n_files):
         app.sessions[sid].check_chamber_type_and_find_bounding_boxes(filePath)
 
 
-def process_imgs(sid):
+@main.route("/count-eggs", methods=["POST"])
+def count_eggs_in_batch():
+    sid = request.json["sid"]
+    pauser.set_resume_timer()
     MAX_ATTEMPTS_PER_IMG = 1
     file_list = [
         {
@@ -177,7 +172,7 @@ def process_imgs(sid):
         succeeded = False
         while True:
             try:
-                process_img(i, file, sid, n_files)
+                count_eggs_in_img(i, file, sid, n_files)
                 succeeded = True
             except CUDAMemoryException:
                 attempts += 1
@@ -201,9 +196,11 @@ def process_imgs(sid):
                 app.sessions[sid].report_counting_error(
                     app.sessions[sid].imgPath, CUDAMemoryException
                 )
+    pauser.set_resume_timer()
+    return "OK"
 
 
-def process_img(i, file, sid, n_files):
+def count_eggs_in_img(i, file, sid, n_files):
     file, index = file["file_name"], file["index"]
     if file and allowed_file(file):
         filename = secure_filename(file)

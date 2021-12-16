@@ -7,7 +7,7 @@ import os
 from threading import Event, Thread
 
 from project.lib.web.auth_helper import AuthDecoder
-from project.lib.web.exceptions import CUDAMemoryException
+from project.lib.web.exceptions import CUDAMemoryException, ImageIgnoredException
 from project.lib.web.gpu_task import GPUTask
 from project.lib.web.gpu_task_types import GPUTaskTypes
 from .. import app
@@ -59,6 +59,8 @@ class TaskFinalizer(Thread):
             }
         else:
             results = self.results
+            if "ignored" in results["metadata"] and results["metadata"]["ignored"]:
+                results["predictions"] = [ImageIgnoredException]
         app.gpu_manager.register_completed_task(results, self.group_id)
 
 

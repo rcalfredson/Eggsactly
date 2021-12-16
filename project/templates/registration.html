@@ -2980,7 +2980,7 @@
                 input.setAttribute('disabled', true);
                 inputLbl.style.color = colors.grey;
                 $.ajax({
-                    url: '/manual-recount',
+                    url: '/count-eggs',
                     type: "POST",
                     data: JSON.stringify(dataToSend),
                     contentType: "application/json",

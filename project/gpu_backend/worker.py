@@ -58,7 +58,7 @@ class AuthHelper:
 load_dotenv()
 server_uri = os.environ["MAIN_SERVER_URI"]
 key_holder = AuthHelper(os.environ["PRIVATE_KEY_PATH"])
-reconnect_attempt_delay = int(os.environ['GPU_WORKER_RECONNECT_ATTEMPT_DELAY'])
+reconnect_attempt_delay = int(os.environ["GPU_WORKER_RECONNECT_ATTEMPT_DELAY"])
 request_headers = {"Authorization": f"access_token {key_holder.get_jwt()}"}
 active_tasks = {}
 networks = {}
@@ -166,9 +166,19 @@ def perform_task(attempt_ct=0):
             )
         img = normalize(img, 1, 99.8, axis=(0, 1))
         metadata = {}
+        predictions = []
         if task_type == GPUTaskTypes.arena:
             imgs = (img,)
         elif task_type == GPUTaskTypes.egg:
+            if "ignored" in task["data"] and task["data"]["ignored"]:
+                metadata["ignored"] = True
+                print("image marked as ignored; skipping")
+                post_req_start_t = timeit.default_timer()
+                post_results_to_server(
+                    task_key, {"predictions": [], "metadata": metadata}
+                )
+                clean_up_task(task_key, start_t, post_req_start_t)
+                return
             helper = SubImageHelper()
             helper.get_sub_images(img, task["data"])
             metadata["rotationAngle"] = helper.rotation_angle
@@ -179,7 +189,6 @@ def perform_task(attempt_ct=0):
             "time spent resizing and normalizing:",
             predict_start_t - resize_norm_start_t,
         )
-        predictions = []
         for img in imgs:
             try:
                 results = networks[task_type].predict_instances(img)[1]
@@ -206,11 +215,14 @@ def perform_task(attempt_ct=0):
         post_results_to_server(
             task_key, {"predictions": converted_predictions, "metadata": metadata}
         )
+        clean_up_task(task_key, start_t, post_req_start_t)
 
-        del active_tasks[task_key]
-        end_t = timeit.default_timer()
-        print("time spent making post request:", end_t - post_req_start_t)
-        print("total time for task:", end_t - start_t)
+
+def clean_up_task(task_key, start_t, post_req_start_t):
+    del active_tasks[task_key]
+    end_t = timeit.default_timer()
+    print("time spent making post request:", end_t - post_req_start_t)
+    print("total time for task:", end_t - start_t)
 
 
 def init_networks():

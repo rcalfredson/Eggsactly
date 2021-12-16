@@ -35,8 +35,6 @@ class GPUTaskGroup:
                     and len(result[k]) == 1
                 ):
                     notify_args[k] = result[k][0]
-                elif len(self.results) == 1 and type(result[k]) is dict:
-                    notify_args[k] = result[k]
                 else:
                     notify_args[k].append(result[k])
 
