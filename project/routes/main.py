@@ -16,6 +16,7 @@ import time
 from werkzeug.utils import secure_filename
 import zipfile
 
+from project.common import zipdir
 from project.lib.datamanagement.models import login_google_user
 from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser

@@ -205,7 +205,7 @@ def perform_task(attempt_ct=0):
         )
         for i, img in enumerate(imgs):
             try:
-                if GPUTaskTypes.egg:
+                if task_type == GPUTaskTypes.egg:
                     report_progress_to_server(task_key, i, len(imgs), task["img_path"])
                 results = networks[task_type].predict_instances(img)[1]
                 results["count"] = len(results["points"])

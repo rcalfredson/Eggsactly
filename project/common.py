@@ -1,6 +1,6 @@
 """Shared methods"""
 
-import glob, platform, random, string
+import glob, os, platform, random, string
 
 import cv2
 from PIL import Image
@@ -27,6 +27,15 @@ def globFiles(dirName, ext="png"):
     """Return files matching the given extension in the given directory."""
     query = dirName + "/*.%s" % ext
     return glob.glob(query) if IS_WINDOWS else insensitive_glob(query)
+
+
+def zipdir(path, ziph):
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            ziph.write(
+                os.path.join(root, file),
+                os.path.relpath(os.path.join(root, file), os.path.join(path, "..")),
+            )
 
 
 def X_is_running():
