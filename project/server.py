@@ -12,9 +12,6 @@ from project.lib.web.scheduler import Scheduler
 from project.routes import socket_events
 
 
-UPLOAD_FOLDER = "./uploads"
-
-
 def prune_old_sessions():
     current_time = time.time()
     for sid in list(app.sessions.keys()):
