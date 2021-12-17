@@ -1,5 +1,0 @@
-2020-11-21_img_0005.jpg
-mean of std devs: nan
-individual std devs:
-
-
