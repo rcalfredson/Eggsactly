@@ -1,7 +1,7 @@
 from abc import abstractmethod
 import enum
 from operator import itemgetter
-from project.util import *
+from project.lib.util import concat
 
 
 class Chamber:

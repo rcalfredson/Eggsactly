@@ -6,7 +6,7 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from ..lib.datamanagement.models import User, login_google_user
 from .. import db, app
-from ..users import users
+from project.lib.users import users
 
 auth = Blueprint("auth", __name__)
 with open("project/configs/privileged_ips.json") as f:

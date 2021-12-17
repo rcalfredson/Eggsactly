@@ -7,7 +7,7 @@ from pathlib import Path
 import time
 import zipfile
 
-from project.common import zipdir
+from project.lib.common import zipdir
 from project.lib.datamanagement.socket_io_auth import authenticated_only
 from project.lib.web.sessionManager import SessionManager
 

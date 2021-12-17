@@ -13,8 +13,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from project.chamber import CT
-from project.circleFinder import (
+from project.lib.image.chamber import CT
+from project.lib.image.circleFinder import (
     CircleFinder,
     rotate_around_point_highperf,
     rotate_image,
@@ -99,7 +99,7 @@ class SessionManager:
                 "error_type": err_type.__name__,
             },
         )
-        self.predictions[imgPath].append(err_type)
+        self.predictions[imgPath] = [err_type]
         time.sleep(2)
 
     def enqueue_arena_detection_task(self, img, img_path):
@@ -282,8 +282,6 @@ class SessionManager:
         font = drawing.loadFont(14)
         for imgPath in edited_counts:
             rel_path = os.path.normpath(os.path.join("./uploads", self.room, imgPath))
-            print('rel path:', rel_path)
-            print('alignment data:', self.alignment_data)
             img = rotate_image(
                 cv2.imread(rel_path), self.alignment_data[rel_path]["rotationAngle"]
             )

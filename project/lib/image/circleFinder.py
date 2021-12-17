@@ -1,29 +1,25 @@
+from csbdeep.utils import normalize
 import itertools
-import operator
 import os
 import math
 import threading
 import cv2
-import timeit
-from project.detectors.splinedist.config import Config
-from project.detectors.splinedist.models.model2d import SplineDist2D
-from skimage.measure import label
 from sklearn.linear_model import LinearRegression
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.stats import binned_statistic
 import torch
 
-from project.util import *
-from project.chamber import CT
-from csbdeep.utils import normalize
+from project.lib.image.chamber import CT
+from project.lib.util import distance, trueRegions
+from project.detectors.splinedist.config import Config
+from project.detectors.splinedist.models.model2d import SplineDist2D
 
 dirname = os.path.dirname(__file__)
 ARENA_IMG_RESIZE_FACTOR = 0.186
 UNET_SETTINGS = {
     "config_path": "project/configs/unet_reduced_backbone_arena_wells.json",
     "n_channel": 3,
-    "weights_path": os.path.join(dirname, "models/arena_pit_v2.pth"),
+    "weights_path": os.path.join(dirname, "../../models/arena_pit_v2.pth"),
 }
 unet_config = Config(UNET_SETTINGS["config_path"], UNET_SETTINGS["n_channel"])
 default_model = SplineDist2D(unet_config)

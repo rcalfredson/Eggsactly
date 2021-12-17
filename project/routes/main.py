@@ -16,13 +16,13 @@ import time
 from werkzeug.utils import secure_filename
 import zipfile
 
-from project.common import zipdir
+from project.lib.common import zipdir
 from project.lib.datamanagement.models import login_google_user
 from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
-from project.users import users
-from .. import app, socketIO, db
+from project.lib.users import users
+from .. import app, socketIO
 
 main = Blueprint("main", __name__)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
@@ -53,14 +53,11 @@ def index():
         is_local = current_user.is_local if hasattr(current_user, "is_local") else False
     name = current_user.name if hasattr(current_user, "name") else None
     user_info_endpoint = "/oauth2/v2/userinfo"
-    google_data = None
     result = login_google_user()
     return render_template(
-        "registration.jinja",
-        users=map(str.capitalize, sorted(users)),
+        "counting.html",
         name=result["name"] if result["name"] is not None else name,
         google_data=result["data"],
-        google_data_url=os.path.join(google.base_url, user_info_endpoint),
         is_local=is_local,
     )
 

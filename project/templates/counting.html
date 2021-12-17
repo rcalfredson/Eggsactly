@@ -510,6 +510,9 @@
                             'user');
                         userSelect.dispatchEvent(new Event('change'));
                     }
+                    if (loggedIn) {
+                        userDropdown.style.display = 'none';
+                    }
                 }
             }
         }
@@ -710,6 +713,7 @@
                 height: msg.height
             }
             annotations[msg.filename] = { 'error': msg.error_type };
+            clearLogMessageLoadingStatus();
             setupOrRedrawCanvas();
         });
         socket.on('counting-done', (msg) => {
@@ -1174,14 +1178,20 @@
             request.onreadystatechange = () => {
                 if (request.readyState === 4) {
                     let response = JSON.parse(request.response);
-                    ['login-link', 'signup-link', 'username-text'].forEach(
-                        elementName => {
-                            if (document.getElementById(elementName)) {
-                                document.getElementById(elementName).remove();
-                            }
-                        });
-                    document.getElementById('logout-link'
-                    ).style.removeProperty('display');
+                    if (response.success) {
+                        loggedIn = true;
+                        ['login-link', 'signup-link', 'username-text'].forEach(
+                            elementName => {
+                                if (document.getElementById(elementName)) {
+                                    document.getElementById(elementName).remove();
+                                }
+                            });
+                        document.getElementById('logout-link'
+                        ).style.removeProperty('display');
+                        if (document.getElementById('mask-list')) {
+                            socket.emit('mask-list', { sid })
+                        }
+                    }
                 }
             };
         }
@@ -4053,10 +4063,6 @@
         }
 
         var analyzedImagesButtons = function () {
-            userSelectOptions = [];
-            {% for user in users %}
-            userSelectOptions.push({ value: '{{user}}', text: 'User: {{user}}' })
-            {% endfor %}
             let allButtons = [
                 { id: 'download-imgs', text: 'Download annotated images', hidden: countingState === countingStates.pre },
                 {
