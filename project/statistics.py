@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.stats as st
 
-from util import p2stars
+from project.util import p2stars
 
 WELCH = True
 

@@ -552,7 +552,7 @@
         }
 
         function getFormattedDate() {
-            // source: https://stackoverflow.com/a/30948017
+            // adapted from: https://stackoverflow.com/a/30948017
             var d = new Date();
 
             d = d.getFullYear() + "-" +
@@ -560,7 +560,8 @@
                 ('0' + d.getDate()).slice(-2) + " " +
                 ('0' + d.getHours()).slice(-2) + ":" +
                 ('0' + d.getMinutes()).slice(-2) + ":" +
-                ('0' + d.getSeconds()).slice(-2);
+                ('0' + d.getSeconds()).slice(-2) + "." +
+                ('0' + d.getMilliseconds()).slice(-3);
 
             return d;
         }
@@ -654,7 +655,6 @@
         }
         socket.on('counting-progress', (msg) => {
             let ellipses = msg.overwrite !== true ? true : false;
-            console.log()
             if (typeof msg.ellipses === 'boolean') {
                 ellipses = msg.ellipses;
             }

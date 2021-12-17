@@ -1,6 +1,8 @@
 import argparse
+import logging
 import os
 import time
+import waitress
 
 
 from project.lib.web.downloadManager import DownloadManager
@@ -23,17 +25,26 @@ def prune_old_sessions():
             del app.sessions[sid]
 
 
-is_main = __name__ == "__main__"
-is_dev = os.environ["FLASK_ENV"] == "development"
-if is_dev or is_main:
-    app = create_app()
-    app.sessions = {}
-    app.downloadManager = DownloadManager()
-    app.network_loader = NetworkLoader(NET_ARCH)
-    app.gpu_manager = GPUManager()
-    socket_events.setup_event_handlers()
-    if is_main:
-        app.socketIO.run(app)
-    scheduler = Scheduler(1)
-    scheduler.schedule.every(5).minutes.do(prune_old_sessions)
-    scheduler.run_continuously()
+flask_env = os.environ["FLASK_ENV"]
+app = create_app()
+app.sessions = {}
+app.downloadManager = DownloadManager()
+app.network_loader = NetworkLoader(NET_ARCH)
+app.gpu_manager = GPUManager()
+socket_events.setup_event_handlers()
+scheduler = Scheduler(1)
+scheduler.schedule.every(5).minutes.do(prune_old_sessions)
+scheduler.run_continuously()
+if flask_env == 'production':
+    p = argparse.ArgumentParser(description="run the egg-counting server")
+    p.add_argument(
+        "--host", default="127.0.0.1", help="address where the server should run"
+    )
+    p.add_argument(
+        "--port", default="5000", help="port where the server should listen"
+    )
+    opts = p.parse_args()
+    logger = logging.getLogger('waitress')
+    logger.setLevel(logging.INFO)
+    waitress.serve(app, host=opts.host, port=opts.port)
+    
