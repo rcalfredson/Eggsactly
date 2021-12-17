@@ -5,13 +5,12 @@ from project.circleFinder import (
     rotate_image,
     subImagesFromBBoxes,
 )
-import cv2
 import math
 from project.chamber import CT
 import numpy as np
 
 
-class ManualSegmenter:
+class NodeBasedSegmenter:
     def __init__(self, image, alignment_data, chamber_type: str):
         self.image = image
         self.alignment_data = alignment_data

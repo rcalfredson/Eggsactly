@@ -45,6 +45,7 @@ def create_app():
     app.socketIO = socketIO
     from project.routes.auth import auth as auth_blueprint
     from project.routes.main import main as main_blueprint
+    from project.routes.tasks import tasks as tasks_blueprint
 
     google_blueprint = make_google_blueprint(
         client_id=app.google_client_id,
@@ -55,5 +56,6 @@ def create_app():
 
     app.register_blueprint(main_blueprint)
     app.register_blueprint(auth_blueprint)
+    app.register_blueprint(tasks_blueprint)
     app.register_blueprint(google_blueprint, url_prefix="/login")
     return app
