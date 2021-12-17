@@ -117,6 +117,20 @@ def request_work():
         time.sleep(reconnect_attempt_delay)
 
 
+def report_progress_to_server(group_id, region_index, tot_regions, img_path):
+    requests.request(
+        "POST",
+        f"{server_uri}/tasks/gpu/report",
+        json={
+            "group_id": group_id,
+            "region_index": region_index,
+            "tot_regions": tot_regions,
+            "img_path": img_path,
+        },
+        headers=request_headers,
+    )
+
+
 def post_results_to_server(task_key, result):
     requests.request(
         "POST",
@@ -189,8 +203,10 @@ def perform_task(attempt_ct=0):
             "time spent resizing and normalizing:",
             predict_start_t - resize_norm_start_t,
         )
-        for img in imgs:
+        for i, img in enumerate(imgs):
             try:
+                if GPUTaskTypes.egg:
+                    report_progress_to_server(task_key, i, len(imgs), task["img_path"])
                 results = networks[task_type].predict_instances(img)[1]
                 results["count"] = len(results["points"])
                 results["outlines"] = get_interpolated_points(results["coord"])

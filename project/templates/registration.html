@@ -148,7 +148,7 @@
         let lastHelpBoxWasMinimized;
         let alignmentHelpDialog = {};
         let logUpdates = [];
-        let logUpdateDelayTimeout;
+        let inProgressMessageData = { ellipseStages: ['.', '..', '...'] };
         let upperPadding, leftPadding;
         let scalingFactor;
         let zoomScaleImgToMask;
@@ -565,15 +565,12 @@
             return d;
         }
 
-        function addToLogUpdates(message, //opts = {}) {
-        ) {
-            // const defaultOpts = {
-            //     amountToWaitBeforeDelayAck1: 5000,
-            //     amountToWaitBeforeDelayAck2: 10000,
-            //     customMessage: null
-            // };
-            // opts = {...defaultOpts, ...opts};
-            let messageTs = Date.now();
+        function addToLogUpdates(message, opts = {}) {
+            const defaultOpts = {
+                ellipses: true
+            }
+            opts = { ...defaultOpts, ...opts };
+            let messageId = crypto.randomUUID();
             if (logUpdates.length === 100) {
                 document.getElementById(`log-update-${logUpdates.shift()}`).remove();
             }
@@ -581,7 +578,8 @@
             let el = document.getElementById('updates-by-image');
             let addCSS = el.innerHTML.length === 0;
             el.appendChild(message);
-            message.setAttribute('id', `log-update-${messageTs}`);
+            message.setAttribute('id', `log-update-${messageId}`);
+            let origText = message.innerText;
             message.innerText = `${getFormattedDate()}: ${message.innerText}`
             if (addCSS) {
                 ['log-updates-title', 'download-log-updates'].forEach(divId => {
@@ -591,30 +589,36 @@
                 el.style.boxShadow = '0 0 1px 1px rgb(127, 156, 203) inset';
             }
             el.scrollTop = el.scrollHeight;
-            logUpdates.push(messageTs);
-            if (logUpdateDelayTimeout) {
-                clearTimeout(logUpdateDelayTimeout);
+            logUpdates.push(messageId);
+            if (opts.ellipses) {
+                clearLogMessageLoadingStatus();
+                inProgressMessageData.ellipseIndex = 0
+                inProgressMessageData.origText = message.innerText;
+                inProgressMessageData.elementId = message.id;
+                inProgressMessageData.intervalFunction = setInterval(() => {
+                    document.getElementById(
+                        inProgressMessageData.elementId
+                    ).innerText = inProgressMessageData.origText +
+                        inProgressMessageData.ellipseStages[
+                        inProgressMessageData.ellipseIndex
+                        ];
+                    inProgressMessageData.ellipseIndex += 1;
+                    if (inProgressMessageData.ellipseIndex ===
+                        inProgressMessageData.ellipseStages.length) {
+                        inProgressMessageData.ellipseIndex = 0;
+                    }
+
+                }, 400);
             }
-            // if (opts.amountToWaitBeforeDelayAck1 > 0) {
-            //     logUpdateDelayTimeout = setTimeout(() => {
-            //         acknowledgeLogDelay(opts.customMessage,
-            //             opts.amountToWaitBeforeDelayAck2
-            //         )
-            //     },
-            //         opts.amountToWaitBeforeDelayAck1);
-            // }
         }
 
-        function acknowledgeLogDelay(message, delay) {
-            if (countingState === countingStates.post) return;
-            let newPara = document.createElement('p');
-            newPara.style.color = 'red';
-            newPara.innerText = message || 'No response yet from server... Please wait.';
-            addToLogUpdates(newPara, {
-                amountToWaitBeforeDelayAck1: delay,
-                amountToWaitBeforeDelayAck2: -1,
-                customMessage: 'Sorry; failed to connect. Please try again later.'
-            });
+        function clearLogMessageLoadingStatus() {
+            if (inProgressMessageData.intervalFunction) {
+                clearInterval(inProgressMessageData.intervalFunction);
+                document.getElementById(
+                    inProgressMessageData.elementId).innerText =
+                    inProgressMessageData.origText;
+            }
         }
 
         function resetAllVariables() {
@@ -648,27 +652,29 @@
                 });
             }
         }
-
         socket.on('counting-progress', (msg) => {
+            let ellipses = msg.overwrite !== true ? true : false;
+            console.log()
+            if (typeof msg.ellipses === 'boolean') {
+                ellipses = msg.ellipses;
+            }
             if (msg.overwrite) {
-                let elementToOverwrite = document.getElementsByClassName('replaceable-counting-msg')[0];
+                let elementToOverwrite = document.getElementById('log-update-' +
+                    logUpdates[logUpdates.length - 1]);
                 if (elementToOverwrite) {
-                    elementToOverwrite.innerText = `${elementToOverwrite.innerText.split(': ')[0]}: ${msg.data}`;
+                    elementToOverwrite.innerText =
+                        `${elementToOverwrite.innerText.split(': ')[0]}: ${msg.data}`;
                 }
                 else {
                     let newPara = document.createElement('p');
-                    newPara.classList.add('replaceable-counting-msg');
                     newPara.innerText = msg.data;
-                    addToLogUpdates(newPara);
+                    addToLogUpdates(newPar, { ellipses });
                 }
                 return;
             }
-            let logOpts = msg.data.includes('Finished') ? {
-                amountToWaitBeforeDelayAck1: -1
-            } : {};
             let newPara = document.createElement('p');
             newPara.innerText = msg.data;
-            addToLogUpdates(newPara, logOpts);
+            addToLogUpdates(newPara, { ellipses });
         });
 
 
@@ -689,13 +695,14 @@
                 file_name: orderedImgNames[orderedImgNames.length - 1],
                 rotationAngle: msg.rotationAngle
             };
+            clearLogMessageLoadingStatus();
             setupOrRedrawCanvas();
         });
         socket.on('counting-error', (msg) => {
             let newPara = document.createElement('p');
             newPara.style.color = 'red';
             newPara.innerText = msg.data;
-            addToLogUpdates(newPara);
+            addToLogUpdates(newPara, { ellipses: false });
             orderedImgNames.push(msg.filename);
             countingState = countingStates.pre;
             unscaledImgBounds[msg.filename] = {
@@ -916,7 +923,7 @@
             input = document.getElementById('img-upload-1');
             inputLbl = document.getElementById('img-upload-lbl');
             inputDiv = document.getElementById('img-inputs');
-            inputReset = document.getElementById('img-upload-reset')
+            inputReset = document.getElementById('img-upload-reset');
             preview = document.querySelector('.preview');
             input.addEventListener('change', updateImageDisplay);
             inputReset.onclick = handleResetClick;

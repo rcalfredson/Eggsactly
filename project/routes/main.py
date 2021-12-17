@@ -134,12 +134,12 @@ def check_chamber_type_of_imgs(sid):
 
 def check_chamber_type_of_img(i, file, sid, n_files):
     if file and allowed_file(file):
+        filename = secure_filename(file)
         socketIO.emit(
             "counting-progress",
-            {"data": "Uploading image %i of %i" % (i + 1, n_files)},
+            {"data": "Uploading image %i of %i (%s)" % (i + 1, n_files, filename)},
             room=sid,
         )
-        filename = secure_filename(file)
         folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
         if not os.path.exists(folder_path):
             Path(folder_path).mkdir(exist_ok=True, parents=True)
@@ -151,7 +151,9 @@ def check_chamber_type_of_img(i, file, sid, n_files):
             {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},
             room=sid,
         )
-        app.sessions[sid].check_chamber_type_and_find_bounding_boxes(filePath)
+        app.sessions[sid].check_chamber_type_and_find_bounding_boxes(
+            filePath, i, n_files
+        )
 
 
 @main.route("/count-eggs", methods=["POST"])

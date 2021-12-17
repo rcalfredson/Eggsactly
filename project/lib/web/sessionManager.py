@@ -54,6 +54,7 @@ class SessionManager:
         self.cfs = {}
         self.predictions = {}
         self.basenames = {}
+        self.paths_to_indices = {}
         self.annotations = {}
         self.bboxes = {}
         self.alignment_data = {}
@@ -73,6 +74,7 @@ class SessionManager:
         self.bboxes = {}
         self.alignment_data = {}
         self.basenames = {}
+        self.paths_to_indices = {}
 
     def emit_to_room(self, evt_name, data):
         self.socketIO.emit(evt_name, data, room=self.room)
@@ -167,12 +169,13 @@ class SessionManager:
             self.report_counting_error(img_path, ImageAnalysisException)
         del self.cfs[img_path]
 
-    def check_chamber_type_and_find_bounding_boxes(self, img_path):
+    def check_chamber_type_and_find_bounding_boxes(self, img_path, i, n_files):
         imgBasename = os.path.basename(img_path)
         img_path = os.path.normpath(img_path)
         self.basenames[img_path] = imgBasename
         self.emit_to_room(
-            "counting-progress", {"data": "Segmenting image %s" % imgBasename}
+            "counting-progress",
+            {"data": "Segmenting image %i of %i" % (i + 1, n_files)},
         )
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
@@ -191,6 +194,7 @@ class SessionManager:
         imgBasename = os.path.basename(img_path)
         img_path = os.path.normpath(img_path)
         self.basenames[img_path] = imgBasename
+        self.paths_to_indices[img_path] = index
         self.alignment_data[img_path] = alignment_data
         if "nodes" in alignment_data:
             self.chamberTypes[img_path] = alignment_data["type"]
@@ -199,9 +203,7 @@ class SessionManager:
     def send_annotations_for_task(self, prediction_set, metadata, img_index):
         imgPath = self.img_paths[img_index]
         imgBasename = os.path.basename(imgPath)
-        self.alignment_data[imgPath]["rotationAngle"] = metadata.get(
-            "rotationAngle", 0
-        )
+        self.alignment_data[imgPath]["rotationAngle"] = metadata.get("rotationAngle", 0)
         if "bboxes" in metadata:
             self.bboxes[imgPath] = metadata["bboxes"]
         self.predictions[imgPath] = prediction_set

@@ -104,6 +104,26 @@ def get_task():
         return task_as_json(task)
 
 
+@tasks.route("/tasks/gpu/report", methods=["POST"])
+def report_task_progress():
+    info = request.get_json()
+    room = app.gpu_manager.task_groups[info["group_id"]].room
+    s = app.sessions[room]
+    path_map = s.paths_to_indices
+    img_index = int(path_map[info["img_path"]])
+    n_imgs = len(path_map)
+    s.emit_to_room(
+        "counting-progress",
+        {
+            "overwrite": True if info["region_index"] else False,
+            "ellipses": False,
+            "data": f"Counting eggs in image {img_index + 1} of {n_imgs}"
+            f" (region {info['region_index'] + 1} of {info['tot_regions']})",
+        },
+    )
+    return ("", 204)
+
+
 @tasks.route("/tasks/gpu/<group_id>", methods=["POST"])
 def receive_task_results(group_id):
     check_auth(request)
