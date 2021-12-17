@@ -23,7 +23,7 @@ class DownloadManager:
         ts = str(ts)
         self.sessions[ts] = {
             "session_manager": session_manager,
-            "folder": "temp/egg_counts_ALPHA_%s"
+            "folder": "downloads/egg_counts_ALPHA_%s"
             % datetime.today().strftime("%Y-%m-%d_%H-%M-%S"),
             "edited_counts": edited_counts,
         }

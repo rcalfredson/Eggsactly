@@ -56,7 +56,7 @@ def index():
     google_data = None
     result = login_google_user()
     return render_template(
-        "registration.html",
+        "registration.jinja",
         users=map(str.capitalize, sorted(users)),
         name=result["name"] if result["name"] is not None else name,
         google_data=result["data"],
@@ -80,7 +80,7 @@ def uploaded_file(sid, filename):
 
 @main.route("/csvResults/<filename>")
 def send_csv(filename):
-    fileToDownload = os.path.join("temp", filename)
+    fileToDownload = os.path.join("downloads", filename)
     if not os.path.isfile(fileToDownload):
         abort(404)
     return send_file(os.path.join("../", fileToDownload), as_attachment=True)
@@ -120,7 +120,7 @@ def handle_annot_img_upload():
 def handle_upload():
     pauser.set_resume_timer()
     sid = request.form["sid"]
-    for dir_name in ("uploads", "temp"):
+    for dir_name in ("uploads", "downloads"):
         remove_old_files(dir_name)
     check_chamber_type_of_imgs(sid)
     return "OK"

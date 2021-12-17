@@ -7,7 +7,6 @@ import waitress
 
 from project.lib.web.downloadManager import DownloadManager
 from project.lib.web.gpu_manager import GPUManager
-from project.lib.web.network_loader import NetworkLoader
 from project.lib.web.scheduler import Scheduler
 from project.routes import socket_events
 
@@ -29,7 +28,6 @@ flask_env = os.environ["FLASK_ENV"]
 app = create_app()
 app.sessions = {}
 app.downloadManager = DownloadManager()
-app.network_loader = NetworkLoader(NET_ARCH)
 app.gpu_manager = GPUManager()
 socket_events.setup_event_handlers()
 scheduler = Scheduler(1)

@@ -1,5 +1,5 @@
 #!/bin/bash
-export FLASK_APP=interface.py
+export FLASK_APP=project/interface.py
 export FLASK_ENV=development
 echo "FLASK APP"
 echo $FLASK_APP

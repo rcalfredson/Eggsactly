@@ -29,7 +29,7 @@ def setup_event_handlers():
     @app.socketIO.on("connect")
     def connected():
         app.sessions[request.sid] = SessionManager(
-            app.socketIO, request.sid, app.network_loader, app.gpu_manager
+            app.socketIO, request.sid, app.gpu_manager
         )
         app.socketIO.emit("sid-from-server", {"sid": request.sid}, room=request.sid)
 
