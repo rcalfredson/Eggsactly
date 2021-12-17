@@ -65,12 +65,6 @@ def index():
     )
 
 
-@main.route("/profile")
-@login_required
-def profile():
-    return render_template("profile.html", name=current_user.name)
-
-
 @main.route("/uploads/<sid>/<filename>")
 def uploaded_file(sid, filename):
     return send_from_directory(

@@ -14,7 +14,6 @@ from . import create_app
 
 
 UPLOAD_FOLDER = "./uploads"
-NET_ARCH = ("fcrn", "splinedist")[1]
 
 
 def prune_old_sessions():

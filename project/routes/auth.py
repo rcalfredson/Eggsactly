@@ -52,11 +52,6 @@ def get_local_users():
     return {"users": users if session["local-ip"] else []}
 
 
-@auth.route("/login")
-def login():
-    return render_template("login.html")
-
-
 @auth.route("/login/oauth/google")
 def login_oath_google():
     if hasattr(current_user, "google_login"):
@@ -113,10 +108,6 @@ def login_post():
         else redirect(url_for("main.index"))
     )
 
-
-@auth.route("/signup")
-def signup():
-    return render_template("signup.html")
 
 
 @auth.route("/signup", methods=["POST"])

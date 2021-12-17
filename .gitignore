@@ -151,3 +151,6 @@ privileged_ips.json
 # backend authentication
 project/auth_secrets/*
 !project/auth_secrets/.gitkeep
+
+# large object-detection models
+splinedist_unet_full_400epochs_NZXT-U_2021-08-12 08-39-05.733572.pth
