@@ -12,7 +12,6 @@ warnings.filterwarnings("error")
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
-import torch
 
 from project.chamber import CT
 from project.circleFinder import (
@@ -20,15 +19,17 @@ from project.circleFinder import (
     rotate_around_point_highperf,
     rotate_image,
 )
-from project.detectors.fcrn import model
+from project.lib.event import Listener
 from project.lib.image import drawing
-from project.lib.image.manual_segmenter import ManualSegmenter
+from project.lib.image.node_based_segmenter import NodeBasedSegmenter
 from project.lib.web.exceptions import (
     CUDAMemoryException,
     ImageAnalysisException,
     ImageIgnoredException,
     errorMessages,
 )
+from project.lib.web.gpu_manager import GPUManager
+from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.network_loader import NetworkLoader
 
 with open("project/models/modelRevDates.json", "r") as f:
@@ -38,29 +39,42 @@ with open("project/models/modelRevDates.json", "r") as f:
 class SessionManager:
     """Represent and process information while using the egg-counting web app."""
 
-    def __init__(self, socketIO, room, network_loader: NetworkLoader):
+    def __init__(
+        self, socketIO, room, network_loader: NetworkLoader, gpu_manager: GPUManager
+    ):
         """Create a new SessionData instance.
 
         Arguments:
           - socketIO: SocketIO server
+          - room: SocketIO room where messages get sent
+          - network_loader: NetworkLoader instance loaded with an egg-detection model
+          - gpu_manager: GPUManager instance where GPU tasks get added
         """
         self.chamberTypes = {}
+        self.cfs = {}
         self.predictions = {}
         self.basenames = {}
+        self.paths_to_indices = {}
         self.annotations = {}
+        self.bboxes = {}
         self.alignment_data = {}
         self.socketIO = socketIO
         self.room = room
         self.network_loader = network_loader
+        self.gpu_manager = gpu_manager
+        self.counting_task_group = None
         self.lastPing = time.time()
         self.textLabelHeight = 96
 
     def clear_data(self):
         self.chamberTypes = {}
+        self.cfs = {}
         self.predictions = {}
         self.annotations = {}
+        self.bboxes = {}
         self.alignment_data = {}
         self.basenames = {}
+        self.paths_to_indices = {}
 
     def emit_to_room(self, evt_name, data):
         self.socketIO.emit(evt_name, data, room=self.room)
@@ -93,225 +107,177 @@ class SessionManager:
         self.predictions[imgPath].append(err_type)
         time.sleep(2)
 
-    def segment_image_via_bboxes(self, img, img_path, alignment_data):
-        img = cv2.resize(
-            img,
-            (0, 0),
-            fx=alignment_data.get("scaling", 1),
-            fy=alignment_data.get("scaling", 1),
+    def enqueue_arena_detection_task(self, img, img_path):
+        self.cfs[img_path] = CircleFinder(
+            img, os.path.basename(img_path), allowSkew=True
         )
-        img = rotate_image(img, alignment_data["rotationAngle"])
-        self.bboxes = alignment_data["bboxes"]
-        bbox_translation = [
-            -el for el in alignment_data.get("imageTranslation", [0, 0])
-        ]
-        alignment_data["regionsToIgnore"] = []
-        translated_bboxes = []
-        for i, bbox in enumerate(self.bboxes):
-            new_bbox = [
-                bbox[0] + bbox_translation[0],
-                bbox[1] + bbox_translation[1],
-                bbox[2],
-                bbox[3],
-            ]
-            x_coords = [new_bbox[0], new_bbox[0] + bbox[2]]
-            y_coords = [new_bbox[1], new_bbox[1] + bbox[3]]
-            if new_bbox[0] < 0:
-                new_bbox[2] += new_bbox[0]
-                new_bbox[0] = 0
-            if y_coords[0] < 0:
-                new_bbox[2] += new_bbox[1]
-                new_bbox[1] = 0
-            translated_bboxes.append(list(map(round, new_bbox)))
-
-        self.rotation_angle = alignment_data["rotationAngle"]
-        self.bboxes = translated_bboxes
-        self.subImgs = CircleFinder.getSubImagesFromBBoxes(
-            img, translated_bboxes, alignment_data["regionsToIgnore"]
+        taskgroup = self.gpu_manager.add_task_group(
+            self.room, n_tasks=1, task_type=GPUTaskTypes.arena
         )
-        # for sub_img in self.subImgs:
-        #     cv2.imshow("debug sub-img", sub_img.astype(np.uint8))
-        #     print("scaling factor:", alignment_data.get("scaling", 1))
-        #     print('sub-image?', sub_img.astype(np.uint8))
-        #     cv2.waitKey(0)
-
-    def segment_image_via_alignment_data(self, img, img_path, alignment_data):
-        segmenter = ManualSegmenter(
-            img, alignment_data["nodes"], alignment_data["type"]
+        self.gpu_manager.add_task(taskgroup, img_path)
+        taskgroup.add_completion_listener(
+            Listener(self.segment_image_via_object_detection, (img_path,))
         )
-        self.subImgs, self.bboxes = segmenter.calc_bboxes_and_subimgs()
-        self.chamberTypes[img_path] = alignment_data["type"]
-        self.rotation_angle = segmenter.rotation_angle
 
-    def segment_image_via_object_detection(self, img, img_path):
-        self.cf = CircleFinder(img, os.path.basename(img_path), allowSkew=True)
-        if self.cf.skewed:
-            self.emit_to_room(
-                "counting-progress",
-                {
-                    "data": "Skew detected in image %s;"
-                    + " stopping analysis." % self.imgBasename
-                },
-            )
+    def enqueue_egg_counting_task(self, img_path, alignment_data):
+        self.gpu_manager.add_task(self.counting_task_group, img_path, alignment_data)
+
+    def segment_image_via_object_detection(self, img_path, predictions):
+        imgBasename = os.path.basename(img_path)
         try:
-            (
-                circles,
-                avgDists,
-                numRowsCols,
-                rotatedImg,
-                self.rotation_angle,
-            ) = self.cf.findCircles()
-
-            self.chamberTypes[img_path] = self.cf.ct
-            self.subImgs, self.bboxes = self.cf.getSubImages(
+            (circles, avgDists, numRowsCols, rotatedImg, rotationAngle) = self.cfs[
+                img_path
+            ].findCircles(debug=False, predictions=predictions)
+            if self.cfs[img_path].skewed:
+                self.emit_to_room(
+                    "counting-progress",
+                    {
+                        "data": "Skew detected in image %s;"
+                        + " stopping analysis." % imgBasename
+                    },
+                )
+                raise ImageAnalysisException
+            self.chamberTypes[img_path] = self.cfs[img_path].ct
+            self.subImgs, self.bboxes[img_path] = self.cfs[img_path].getSubImages(
                 rotatedImg, circles, avgDists, numRowsCols
             )
+            self.bboxes[img_path] = [
+                [round(el) for el in bbox] for bbox in self.bboxes[img_path]
+            ]
+            if img_path not in self.alignment_data:
+                self.alignment_data[img_path] = {"rotationAngle": rotationAngle}
+            else:
+                self.alignment_data[img_path]["rotationAngle"] = rotationAngle
+            self.emit_to_room(
+                "chamber-analysis",
+                {
+                    "rotationAngle": self.alignment_data[img_path]["rotationAngle"],
+                    "filename": imgBasename,
+                    "chamberType": self.cfs[img_path].ct,
+                    "bboxes": self.bboxes[img_path],
+                    "width": self.img.shape[1],
+                    "height": self.img.shape[0],
+                },
+            )
         except Exception as exc:
-            print("exception while finding circles:", exc)
+            print("exception while finding circles:", type(exc), exc)
             if self.is_CUDA_mem_error(exc):
                 raise CUDAMemoryException
             else:
-                raise ImageAnalysisException
+                self.report_counting_error(img_path, ImageAnalysisException)
         except RuntimeWarning:
-            raise ImageAnalysisException
+            self.report_counting_error(img_path, ImageAnalysisException)
+        del self.cfs[img_path]
 
-    def check_chamber_type_and_find_bounding_boxes(self, img_path):
+    def check_chamber_type_and_find_bounding_boxes(self, img_path, i, n_files):
         imgBasename = os.path.basename(img_path)
-        self.imgBasename = imgBasename
         img_path = os.path.normpath(img_path)
-        self.imgPath = img_path
-        self.predictions[img_path] = []
         self.basenames[img_path] = imgBasename
         self.emit_to_room(
-            "counting-progress", {"data": "Segmenting image %s" % imgBasename}
+            "counting-progress",
+            {"data": "Segmenting image %i of %i" % (i + 1, n_files)},
         )
         self.img = np.array(Image.open(img_path), dtype=np.float32)
         img = self.img
-        self.segment_image_via_object_detection(img, img_path)
-        self.bboxes = [[round(el) for el in bbox] for bbox in self.bboxes]
-        self.emit_to_room(
-            "chamber-analysis",
-            {
-                "rotationAngle": self.rotation_angle,
-                "filename": self.imgBasename,
-                "chamberType": self.cf.ct,
-                "bboxes": self.bboxes,
-                "width": self.img.shape[1],
-                "height": self.img.shape[0],
-            },
-        )
+        self.enqueue_arena_detection_task(img, img_path)
 
-    def segment_img_and_count_eggs(self, img_path, alignment_data=None, index=None):
-        imgBasename = os.path.basename(img_path)
-        self.imgBasename = imgBasename
-        img_path = os.path.normpath(img_path)
-        self.imgPath = img_path
-        self.predictions[img_path] = []
-        self.basenames[img_path] = imgBasename
-        self.emit_to_room(
-            "counting-progress", {"data": "Segmenting image %s" % imgBasename}
-        )
-        self.img = np.array(Image.open(img_path), dtype=np.float32)
-        img = self.img
-        if alignment_data is None:
-            self.segment_image_via_object_detection(img, img_path)
-        else:
-            self.alignment_data[img_path] = alignment_data
-            if "ignored" in alignment_data and alignment_data["ignored"]:
-                self.predictions[img_path].append(ImageIgnoredException)
-            else:
-                if "nodes" in alignment_data:
-                    self.segment_image_via_alignment_data(img, img_path, alignment_data)
-                elif "bboxes" in alignment_data:
-                    self.segment_image_via_bboxes(img, img_path, alignment_data)
-                self.emit_to_room(
-                    "counting-progress",
-                    {"data": "Counting eggs in image %s" % imgBasename},
+    def segment_img_and_count_eggs(self, img_path, alignment_data, index, n_files):
+        if int(index) == 0:
+            self.counting_task_group = self.gpu_manager.add_task_group(
+                self.room, n_tasks=n_files, task_type=GPUTaskTypes.egg
+            )
+            self.counting_task_group.add_completion_listener(
+                Listener(
+                    self.send_annotations_for_task_group,
                 )
-                num_sub_imgs = len(self.subImgs)
-                for i, subImg in enumerate(self.subImgs):
-                    self.emit_to_room(
-                        "counting-progress",
-                        {
-                            "overwrite": True,
-                            "data": f"Counting eggs in region {i+1} of {num_sub_imgs}",
-                        },
-                    )
-                    self.predictions[img_path].append(
-                        self.network_loader.predict_instances(subImg)
-                    )
-        self.emit_to_room("counting-progress", {"data": "Finished counting eggs"})
-        self.sendAnnotationsToClient(index, alignment_data)
+            )
+        imgBasename = os.path.basename(img_path)
+        img_path = os.path.normpath(img_path)
+        self.basenames[img_path] = imgBasename
+        self.paths_to_indices[img_path] = index
+        self.alignment_data[img_path] = alignment_data
+        if "nodes" in alignment_data:
+            self.chamberTypes[img_path] = alignment_data["type"]
+        self.enqueue_egg_counting_task(img_path, alignment_data)
 
-    def sendAnnotationsToClient(self, index, alignment_data):
-        if self.is_exception(self.predictions[self.imgPath][0]):
+    def send_annotations_for_task(self, prediction_set, metadata, img_index):
+        imgPath = self.img_paths[img_index]
+        imgBasename = os.path.basename(imgPath)
+        self.alignment_data[imgPath]["rotationAngle"] = metadata.get("rotationAngle", 0)
+        if "bboxes" in metadata:
+            self.bboxes[imgPath] = metadata["bboxes"]
+        self.predictions[imgPath] = prediction_set
+        alignment_data = self.alignment_data[imgPath]
+        if self.is_exception(self.predictions[imgPath][0]):
             self.emit_to_room(
                 "counting-annotations",
                 {
-                    "index": index,
-                    "filename": self.imgBasename,
+                    "index": str(img_index),
+                    "filename": imgBasename,
                     "rotationAngle": 0,
                     "data": json.dumps(
-                        {"error": self.predictions[self.imgPath][0].__name__}
+                        {"error": self.predictions[imgPath][0].__name__}
                     ),
                 },
             )
-            return
-        resultsData = []
-        bboxes = self.bboxes
-        do_rotate = (
-            type(alignment_data) is dict
-            and alignment_data["type"] == "custom"
-            and alignment_data["rotationAngle"] != 0
-        )
-        ct = self.chamberTypes[self.imgPath]
-        if alignment_data["type"] and alignment_data["type"] != ct:
-            ct = alignment_data["type"]
-        for i, prediction in enumerate(self.predictions[self.imgPath]):
-            if ct == CT.large.name:
-                iMod = i % 4
-                if iMod in (0, 3):
-                    x = bboxes[i][0] + 0.1 * bboxes[i][2]
-                    y = bboxes[i][1] + 0.15 * bboxes[i][3]
-                elif iMod == 1:
-                    x = bboxes[i][0] + 0.4 * bboxes[i][2]
-                    y = bboxes[i][1] + 0.2 * bboxes[i][3]
-                elif iMod == 2:
-                    x, y = (
-                        bboxes[i][0] + 0.2 * bboxes[i][2],
-                        bboxes[i][1] + 0.45 * bboxes[i][3],
-                    )
-            elif ct == CT.opto.name:
-                x = bboxes[i][0] + 0.5 * bboxes[i][2]
-                y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
-            else:  # position the label inside the upper left corner
-                x = bboxes[i][0]
-                y = bboxes[i][1]
-                if do_rotate:
-                    x, y = self.rotate_pt(x, y, -alignment_data["rotationAngle"])
-                x += 50 + (0 if prediction["count"] < 10 else 40)
-                y += self.textLabelHeight
+        else:
+            resultsData = []
+            bboxes = self.bboxes[imgPath]
+            do_rotate = (
+                type(alignment_data) is dict
+                and alignment_data["type"] == "custom"
+                and alignment_data["rotationAngle"] != 0
+            )
+            ct = self.chamberTypes[imgPath]
+            if alignment_data["type"] and alignment_data["type"] != ct:
+                ct = alignment_data["type"]
+            for i, prediction in enumerate(self.predictions[imgPath]):
+                if ct == CT.large.name:
+                    iMod = i % 4
+                    if iMod in (0, 3):
+                        x = bboxes[i][0] + 0.1 * bboxes[i][2]
+                        y = bboxes[i][1] + 0.15 * bboxes[i][3]
+                    elif iMod == 1:
+                        x = bboxes[i][0] + 0.4 * bboxes[i][2]
+                        y = bboxes[i][1] + 0.2 * bboxes[i][3]
+                    elif iMod == 2:
+                        x, y = (
+                            bboxes[i][0] + 0.2 * bboxes[i][2],
+                            bboxes[i][1] + 0.45 * bboxes[i][3],
+                        )
+                elif ct == CT.opto.name:
+                    x = bboxes[i][0] + 0.5 * bboxes[i][2]
+                    y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
+                else:  # position the label inside the upper left corner
+                    x = bboxes[i][0]
+                    y = bboxes[i][1]
+                    if do_rotate:
+                        x, y = self.rotate_pt(x, y, -alignment_data["rotationAngle"])
+                    x += 50 + (0 if prediction["count"] < 10 else 40)
+                    y += self.textLabelHeight
 
-            resultsData.append({**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}})
-        counting_data = {
-            "data": json.dumps(resultsData, separators=(",", ":")),
-            "filename": self.imgBasename,
-            "rotationAngle": self.rotation_angle
-            if hasattr(self, "rotation_angle")
-            else None,
-            "index": index,
-        }
-        self.emit_to_room(
-            "counting-annotations",
-            counting_data,
-        )
-        self.annotations[os.path.normpath(self.imgPath)] = resultsData
+                resultsData.append(
+                    {**prediction, **{"x": x, "y": y, "bbox": bboxes[i]}}
+                )
+            counting_data = {
+                "data": json.dumps(resultsData, separators=(",", ":")),
+                "filename": imgBasename,
+                "rotationAngle": self.alignment_data[imgPath]["rotationAngle"]
+                if "rotationAngle" in self.alignment_data[imgPath]
+                else None,
+                "index": str(img_index),
+            }
+            self.emit_to_room(
+                "counting-annotations",
+                counting_data,
+            )
+            self.annotations[os.path.normpath(imgPath)] = resultsData
 
-    def extends_past_img_bottom(self, bbox):
-        return bbox[1] + self.textLabelHeight + bbox[3] > self.img.shape[0]
-
-    def reaches_above_img_top(self, bbox):
-        return bbox[1] - self.textLabelHeight < 0
+    def send_annotations_for_task_group(self, predictions, metadata):
+        self.img_paths = list(self.basenames.keys())
+        for i, prediction_set in enumerate(predictions):
+            self.send_annotations_for_task(prediction_set, metadata[i], i)
+        self.emit_to_room("counting-done", {"is_retry": True})
 
     def rotate_pt(self, x, y, radians):
         img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))
@@ -321,7 +287,9 @@ class SessionManager:
         font = drawing.loadFont(14)
         for imgPath in edited_counts:
             rel_path = os.path.normpath(os.path.join("./uploads", self.room, imgPath))
-            img = rotate_image(cv2.imread(rel_path), self.rotation_angle)
+            img = rotate_image(
+                cv2.imread(rel_path), self.alignment_data[imgPath]["rotationAngle"]
+            )
             for i in edited_counts[imgPath]:
                 error_report_image_basename = ".".join(
                     os.path.basename(imgPath).split(".")[:-1]

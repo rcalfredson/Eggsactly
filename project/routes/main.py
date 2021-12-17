@@ -9,16 +9,16 @@ from flask import (
 )
 from flask_dance.contrib.google import google
 from flask_login import login_required, current_user
-import oauthlib
 import os
 from pathlib import Path
 import shutil
-import sqlalchemy
 import time
-from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
+import zipfile
 
-from project.lib.datamanagement.models import User, login_google_user
+from project.common import zipdir
+from project.lib.datamanagement.models import login_google_user
+from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 from project.users import users
@@ -46,9 +46,9 @@ def remove_old_files(folder):
 
 @main.route("/", methods=["GET", "POST"])
 def index():
-    origin_flag = request.args.get('origin')
-    if origin_flag in ('external', 'local'):
-        is_local = origin_flag == 'local'
+    origin_flag = request.args.get("origin")
+    if origin_flag in ("external", "local"):
+        is_local = origin_flag == "local"
     else:
         is_local = current_user.is_local if hasattr(current_user, "is_local") else False
     name = current_user.name if hasattr(current_user, "name") else None
@@ -116,15 +116,6 @@ def handle_annot_img_upload():
     return "OK"
 
 
-@main.route("/manual-recount", methods=["POST"])
-def manual_recount():
-    pauser.set_resume_timer()
-    process_imgs(request.json["sid"], data_type=AllowedDataTypes.json)
-    pauser.set_resume_timer()
-    socketIO.emit("counting-done", {"is_retry": True}, room=request.json["sid"])
-    return "OK"
-
-
 @main.route("/upload", methods=["POST"])
 def handle_upload():
     pauser.set_resume_timer()
@@ -135,98 +126,56 @@ def handle_upload():
     return "OK"
 
 
-class AllowedDataTypes(Enum):
-    file = 1
-    json = 2
-
-
 def check_chamber_type_of_imgs(sid):
-    MAX_ATTEMPTS_PER_IMG = 1
     file_list = request.files
     n_files = len(request.files)
     for i, file in enumerate(file_list):
-        attempts = 0
-        succeeded = False
-        while True:
-            try:
-                check_chamber_type_of_img(i, file, sid, n_files, attempts)
-                succeeded = True
-            except CUDAMemoryException:
-                attempts += 1
-                socketIO.emit(
-                    "counting-progress",
-                    {
-                        "data": "Ran out of system resources. Trying"
-                        " to reallocate and try again..."
-                    },
-                    room=sid,
-                )
-                pauser.end_high_impact_py_prog()
-            except ImageAnalysisException:
-                app.sessions[sid].report_counting_error(
-                    app.sessions[sid].imgPath, ImageAnalysisException
-                )
-                break
-            if succeeded:
-                break
-            elif attempts > MAX_ATTEMPTS_PER_IMG:
-                app.sessions[sid].report_counting_error(
-                    app.sessions[sid].imgPath, CUDAMemoryException
-                )
+        check_chamber_type_of_img(i, file, sid, n_files)
 
 
-def check_chamber_type_of_img(i, file, sid, n_files, attempts):
+def check_chamber_type_of_img(i, file, sid, n_files):
     if file and allowed_file(file):
-        # socketIO.emit("clear-display", room=sid)
+        filename = secure_filename(file)
         socketIO.emit(
             "counting-progress",
-            {"data": "Uploading image %i of %i" % (i + 1, n_files)},
+            {"data": "Uploading image %i of %i (%s)" % (i + 1, n_files, filename)},
             room=sid,
         )
-        filename = secure_filename(file)
         folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
         if not os.path.exists(folder_path):
             Path(folder_path).mkdir(exist_ok=True, parents=True)
         filePath = os.path.join(folder_path, filename)
-        if attempts == 0:
-            request.files[file].save(filePath)
+        request.files[file].save(filePath)
+        correct_via_exif(filePath)
         socketIO.emit(
             "counting-progress",
             {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},
             room=sid,
         )
-        app.sessions[sid].check_chamber_type_and_find_bounding_boxes(filePath)
+        app.sessions[sid].check_chamber_type_and_find_bounding_boxes(
+            filePath, i, n_files
+        )
 
 
-def process_imgs(sid, data_type):
+@main.route("/count-eggs", methods=["POST"])
+def count_eggs_in_batch():
+    sid = request.json["sid"]
+    pauser.set_resume_timer()
     MAX_ATTEMPTS_PER_IMG = 1
-
-    if data_type == AllowedDataTypes.file:
-        file_list = request.files
-        n_files = len(request.files)
-    elif data_type == AllowedDataTypes.json:
-        file_list = [
-            {
-                "index": entry,
-                "file_name": request.json["chamberData"][entry]["file_name"],
-            }
-            for entry in request.json["chamberData"]
-        ]
-        n_files = len(request.json["chamberData"])
-
+    file_list = [
+        {
+            "index": entry,
+            "file_name": request.json["chamberData"][entry]["file_name"],
+        }
+        for entry in request.json["chamberData"]
+    ]
+    n_files = len(request.json["chamberData"])
     for i, file in enumerate(file_list):
         attempts = 0
         succeeded = False
         while True:
             try:
-                process_img(
-                    i,
-                    file,
-                    sid,
-                    n_files,
-                    attempts,
-                    manual_recount=data_type == AllowedDataTypes.json,
-                )
+                count_eggs_in_img(i, file, sid, n_files)
                 succeeded = True
             except CUDAMemoryException:
                 attempts += 1
@@ -250,41 +199,21 @@ def process_imgs(sid, data_type):
                 app.sessions[sid].report_counting_error(
                     app.sessions[sid].imgPath, CUDAMemoryException
                 )
+    pauser.set_resume_timer()
+    return "OK"
 
 
-def process_img(i, file, sid, n_files, attempts, manual_recount=False):
-    if manual_recount:
-        file, index = file["file_name"], file["index"]
+def count_eggs_in_img(i, file, sid, n_files):
+    file, index = file["file_name"], file["index"]
     if file and allowed_file(file):
-        # socketIO.emit("clear-display", room=sid)
-        socketIO.emit(
-            "counting-progress",
-            {"data": "Uploading image %i of %i" % (i + 1, n_files)},
-            room=sid,
-        )
         filename = secure_filename(file)
         folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
         if not os.path.exists(folder_path):
             Path(folder_path).mkdir(exist_ok=True, parents=True)
         filePath = os.path.join(folder_path, filename)
-        if not manual_recount and attempts == 0:
-            request.files[file].save(filePath)
-            correct_via_exif(filePath)
-        socketIO.emit(
-            "counting-progress",
-            {"data": "Processing image %i of %i" % (i + 1, n_files)},
-            room=sid,
-        )
-        if manual_recount:
-            kwargs = {
-                "alignment_data": request.json["chamberData"][index],
-                "index": index,
-            }
-        else:
-            kwargs = {}
+        kwargs = {
+            "alignment_data": request.json["chamberData"][index],
+            "index": index,
+            "n_files": n_files,
+        }
         app.sessions[sid].segment_img_and_count_eggs(filePath, **kwargs)
-        socketIO.emit(
-            "counting-progress",
-            {"data": "Finished processing image %i of %i" % (i + 1, n_files)},
-            room=sid,
-        )
