@@ -1,0 +1,6 @@
+runtime: python39
+instance_class: B1
+env_variables:
+  FLASK_ENV: "production"
+  GPU_WORKER_TIMEOUT: 10
+  NUM_GPU_WORKERS: 1
