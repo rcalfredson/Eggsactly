@@ -7,7 +7,7 @@ from pathlib import Path
 import time
 import zipfile
 
-from project.common import zipdir
+from project.lib.common import zipdir
 from project.lib.datamanagement.socket_io_auth import authenticated_only
 from project.lib.web.sessionManager import SessionManager
 
@@ -29,7 +29,7 @@ def setup_event_handlers():
     @app.socketIO.on("connect")
     def connected():
         app.sessions[request.sid] = SessionManager(
-            app.socketIO, request.sid, app.network_loader, app.gpu_manager
+            app.socketIO, request.sid, app.gpu_manager
         )
         app.socketIO.emit("sid-from-server", {"sid": request.sid}, room=request.sid)
 

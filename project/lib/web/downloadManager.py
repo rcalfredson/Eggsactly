@@ -5,11 +5,10 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image, ImageFont, ImageDraw
+from PIL import Image, ImageDraw
 
-from project.circleFinder import rotate_image, rotate_around_point_highperf
+from project.lib.image.circleFinder import rotate_around_point_highperf
 from project.lib.image import drawing
-from project.util import putText, textStyle
 from project.lib.web.exceptions import errorMessages
 
 
@@ -23,7 +22,7 @@ class DownloadManager:
         ts = str(ts)
         self.sessions[ts] = {
             "session_manager": session_manager,
-            "folder": "temp/egg_counts_ALPHA_%s"
+            "folder": "downloads/egg_counts_ALPHA_%s"
             % datetime.today().strftime("%Y-%m-%d_%H-%M-%S"),
             "edited_counts": edited_counts,
         }

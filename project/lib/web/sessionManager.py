@@ -13,8 +13,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from project.chamber import CT
-from project.circleFinder import (
+from project.lib.image.chamber import CT
+from project.lib.image.circleFinder import (
     CircleFinder,
     rotate_around_point_highperf,
     rotate_image,
@@ -30,7 +30,6 @@ from project.lib.web.exceptions import (
 )
 from project.lib.web.gpu_manager import GPUManager
 from project.lib.web.gpu_task_types import GPUTaskTypes
-from project.lib.web.network_loader import NetworkLoader
 
 with open("project/models/modelRevDates.json", "r") as f:
     model_to_update_date = json.load(f)
@@ -39,15 +38,12 @@ with open("project/models/modelRevDates.json", "r") as f:
 class SessionManager:
     """Represent and process information while using the egg-counting web app."""
 
-    def __init__(
-        self, socketIO, room, network_loader: NetworkLoader, gpu_manager: GPUManager
-    ):
+    def __init__(self, socketIO, room, gpu_manager: GPUManager):
         """Create a new SessionData instance.
 
         Arguments:
           - socketIO: SocketIO server
           - room: SocketIO room where messages get sent
-          - network_loader: NetworkLoader instance loaded with an egg-detection model
           - gpu_manager: GPUManager instance where GPU tasks get added
         """
         self.chamberTypes = {}
@@ -60,7 +56,6 @@ class SessionManager:
         self.alignment_data = {}
         self.socketIO = socketIO
         self.room = room
-        self.network_loader = network_loader
         self.gpu_manager = gpu_manager
         self.counting_task_group = None
         self.lastPing = time.time()
@@ -104,7 +99,7 @@ class SessionManager:
                 "error_type": err_type.__name__,
             },
         )
-        self.predictions[imgPath].append(err_type)
+        self.predictions[imgPath] = [err_type]
         time.sleep(2)
 
     def enqueue_arena_detection_task(self, img, img_path):
@@ -288,7 +283,7 @@ class SessionManager:
         for imgPath in edited_counts:
             rel_path = os.path.normpath(os.path.join("./uploads", self.room, imgPath))
             img = rotate_image(
-                cv2.imread(rel_path), self.alignment_data[imgPath]["rotationAngle"]
+                cv2.imread(rel_path), self.alignment_data[rel_path]["rotationAngle"]
             )
             for i in edited_counts[imgPath]:
                 error_report_image_basename = ".".join(
@@ -338,7 +333,7 @@ class SessionManager:
         return inspect.isclass(my_var) and issubclass(my_var, Exception)
 
     def saveCSV(self, edited_counts, row_col_layout, ordered_counts):
-        resultsPath = "temp/egg_counts_ALPHA_%s.csv" % datetime.today().strftime(
+        resultsPath = "downloads/egg_counts_ALPHA_%s.csv" % datetime.today().strftime(
             "%Y-%m-%d_%H-%M-%S"
         )
         with open(resultsPath, "wt", newline="") as resultsFile:
@@ -347,8 +342,8 @@ class SessionManager:
             writer.writerow(
                 [
                     "Egg-detection model updated: "
-                    + model_to_update_date.get(
-                        os.path.basename(self.network_loader.model_path), "Unknown"
+                    + model_to_update_date["models"].get(
+                        model_to_update_date["latest"], "Unknown"
                     )
                 ]
             )

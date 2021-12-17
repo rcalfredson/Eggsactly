@@ -18,7 +18,6 @@ socketIO = SocketIO(app, manage_session=False)
 sessions = {}
 UPLOAD_FOLDER = "./uploads"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
-NET_ARCH = ("fcrn", "splinedist")[1]
 
 
 def create_app():

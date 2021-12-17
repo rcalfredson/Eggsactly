@@ -16,9 +16,9 @@ from .. import app
 load_dotenv()
 SAFE_TIMEOUT = int(os.environ["GPU_WORKER_TIMEOUT"]) - 1
 tasks = Blueprint("tasks", __name__)
-num_workers = 1
+num_workers = int(os.environ['NUM_GPU_WORKERS'])
 auth_decoder = AuthDecoder(
-    [f"project/configs/gpu_worker_{i+1}_id_rsa.pub" for i in range(num_workers)]
+    [f"project/auth/gpu_worker_{i+1}_id_rsa.pub" for i in range(num_workers)]
 )
 
 

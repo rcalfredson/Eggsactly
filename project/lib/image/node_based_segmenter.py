@@ -1,12 +1,12 @@
-from project.util import COL_G, distance, subimage, toInt
-from project.circleFinder import (
+from project.lib.util import distance
+from project.lib.image.circleFinder import (
     CircleFinder,
     rotate_around_point_highperf,
     rotate_image,
     subImagesFromBBoxes,
 )
 import math
-from project.chamber import CT
+from project.lib.image.chamber import CT
 import numpy as np
 
 
