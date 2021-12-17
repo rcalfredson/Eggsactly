@@ -1,13 +1,14 @@
-from project.lib.util import distance
+import math
+import numpy as np
+
+from project.lib.image.chamber import CT
 from project.lib.image.circleFinder import (
     CircleFinder,
     rotate_around_point_highperf,
     rotate_image,
     subImagesFromBBoxes,
 )
-import math
-from project.lib.image.chamber import CT
-import numpy as np
+from project.lib.util import distance
 
 
 class NodeBasedSegmenter:
@@ -379,7 +380,7 @@ class NodeBasedSegmenter:
             ],
         ]
 
-        bboxes, subImgs = CircleFinder(self.image, '').getLargeChamberBBoxesAndImages(
+        bboxes, subImgs = CircleFinder(self.image, "").getLargeChamberBBoxesAndImages(
             centers, self.px_to_mm
         )
         self.bboxes = bboxes

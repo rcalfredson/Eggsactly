@@ -5,12 +5,11 @@ import time
 import waitress
 
 
+from project import create_app
 from project.lib.web.downloadManager import DownloadManager
 from project.lib.web.gpu_manager import GPUManager
 from project.lib.web.scheduler import Scheduler
 from project.routes import socket_events
-
-from . import create_app
 
 
 UPLOAD_FOLDER = "./uploads"
@@ -32,16 +31,13 @@ socket_events.setup_event_handlers()
 scheduler = Scheduler(1)
 scheduler.schedule.every(5).minutes.do(prune_old_sessions)
 scheduler.run_continuously()
-if flask_env == 'production':
+if flask_env == "production":
     p = argparse.ArgumentParser(description="run the egg-counting server")
     p.add_argument(
         "--host", default="127.0.0.1", help="address where the server should run"
     )
-    p.add_argument(
-        "--port", default="5000", help="port where the server should listen"
-    )
+    p.add_argument("--port", default="5000", help="port where the server should listen")
     opts = p.parse_args()
-    logger = logging.getLogger('waitress')
+    logger = logging.getLogger("waitress")
     logger.setLevel(logging.INFO)
     waitress.serve(app, host=opts.host, port=opts.port)
-    

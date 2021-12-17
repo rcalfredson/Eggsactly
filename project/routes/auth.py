@@ -1,11 +1,12 @@
-from flask import Blueprint, flash, render_template, redirect, url_for, request, session
+from flask import Blueprint, flash, redirect, request, session, url_for
 from flask_dance.contrib.google import google
-from flask_login import login_user, current_user, login_required, logout_user
+from flask_login import current_user, login_required, login_user, logout_user
 import json
 import os
-from werkzeug.security import generate_password_hash, check_password_hash
-from ..lib.datamanagement.models import User, login_google_user
-from .. import db, app
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from project import app, db
+from project.lib.datamanagement.models import User, login_google_user
 from project.lib.users import users
 
 auth = Blueprint("auth", __name__)
@@ -109,7 +110,6 @@ def login_post():
     )
 
 
-
 @auth.route("/signup", methods=["POST"])
 def signup_post():
     modal = True if request.form.get("modal") else False
@@ -151,8 +151,8 @@ def signup_post():
 def logout():
     logout_user()
     kwargs = {}
-    if request.args.get('origin'):
-        kwargs = {'origin': request.args.get('origin')}
+    if request.args.get("origin"):
+        kwargs = {"origin": request.args.get("origin")}
     if app.blueprints["google"].token:
         del app.blueprints["google"].token
     return redirect(url_for("main.index", **kwargs))

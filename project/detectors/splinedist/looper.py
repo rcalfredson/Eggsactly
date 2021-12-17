@@ -1,12 +1,11 @@
-from typing import Optional
 import matplotlib
 import numpy as np
+import torch
+from typing import Optional
+
 from splinedist.config import Config
 from splinedist.models.database import SplineDistData2D, SplineDistDataStatic
 from splinedist.models.model2d import SplineDist2D
-import torch
-
-import timeit
 
 
 class Looper:
@@ -42,7 +41,6 @@ class Looper:
         self.left_col_plots = left_col_plots
 
         self.epochs = self.config.train_epochs
-        # when should validation prevent duplicates from getting in?
 
         self.data_kwargs = dict(
             n_params=self.config.n_params,
@@ -60,7 +58,9 @@ class Looper:
         if not self.validation:
             if self.config.train_steps_per_epoch is not None:
                 self.steps_per_epoch = self.config.train_steps_per_epoch
-                self.n_samples_per_epoch = self.config.train_steps_per_epoch * self.config.train_batch_size
+                self.n_samples_per_epoch = (
+                    self.config.train_steps_per_epoch * self.config.train_batch_size
+                )
             else:
                 self.steps_per_epoch = (
                     self.n_samples_per_epoch / self.config.train_batch_size
@@ -78,7 +78,10 @@ class Looper:
         else:
             if self.config.validation_steps_per_epoch is not None:
                 self.steps_per_epoch = self.config.validation_steps_per_epoch
-                self.n_samples_per_epoch = self.config.validation_steps_per_epoch * self.config.validation_batch_size
+                self.n_samples_per_epoch = (
+                    self.config.validation_steps_per_epoch
+                    * self.config.validation_batch_size
+                )
             else:
                 self.steps_per_epoch = (
                     self.n_samples_per_epoch / self.config.validation_batch_size
@@ -116,7 +119,6 @@ class Looper:
         self.running_loss.append(0)
         self.network.train(not self.validation)
         for j, datum in enumerate(self.data):
-            # start_t = timeit.default_timer()
             patches = torch.from_numpy(datum[0][0]).float().to(self.device)
             patches = patches.permute(0, 3, 1, 2)
             true_prob = torch.from_numpy(datum[1][0]).float().to(self.device)
@@ -131,7 +133,6 @@ class Looper:
                 loss.backward()
                 self.optimizer.step()
                 self.network.train(False)
-            # start_t = timeit.default_timer()
             for patch_i in range(patches.shape[0]):
                 _, predict_result = self.network.predict_instances(
                     patches[patch_i].permute(1, 2, 0).cpu()
@@ -140,7 +141,6 @@ class Looper:
                 self.abs_err.append(abs(self.err[-1]))
                 self.true_values.append(datum[2][patch_i])
                 self.predicted_values.append(len(predict_result["points"]))
-            # print("total predict time:", timeit.default_timer() - start_t)
 
             if not self.validation:
                 self.network.train(True)
@@ -154,14 +154,6 @@ class Looper:
 
             if j + 1 == self.steps_per_epoch:
                 break
-            # end_of_block = timeit.default_timer()
-            # if 'old_end_of_block' in locals():
-            #     time_diff = end_of_block - old_end_of_block
-            #     old_end_of_block = end_of_block
-            # else:
-            #     time_diff = end_of_block - start_t
-            #     old_end_of_block = start_t
-            # print(f'time needed for one step: {time_diff:.3f}')
         self.update_errors()
         if self.plots is not None:
             self.plot()

@@ -11,9 +11,10 @@ import requests
 import time
 import timeit
 import torch
-from project.lib.image.circleFinder import ARENA_IMG_RESIZE_FACTOR
+
 from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
+from project.lib.image.circleFinder import ARENA_IMG_RESIZE_FACTOR
 from project.lib.image.drawing import get_interpolated_points
 from project.lib.image.sub_image_helper import SubImageHelper
 from project.lib.os.pauser import PythonPauser

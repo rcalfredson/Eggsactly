@@ -1,9 +1,12 @@
 """Shared methods"""
 
-import glob, os, platform, random, string
-
 import cv2
+import glob
+import os
 from PIL import Image
+import platform
+import random
+import string
 
 IS_WINDOWS = platform.system() == "Windows"
 

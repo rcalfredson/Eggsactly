@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import auto, Enum
 
 class BackboneTypes(Enum):
     unet_full = auto()

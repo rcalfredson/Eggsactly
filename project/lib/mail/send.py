@@ -1,10 +1,7 @@
 # adapted from this post: https://stackoverflow.com/a/6270987
 
-# Import smtplib for the actual sending function
-import smtplib
-
-# Import the email modules we'll need
 from email.mime.text import MIMEText
+import smtplib
 
 
 def send_mail(recipients, subject, msg):

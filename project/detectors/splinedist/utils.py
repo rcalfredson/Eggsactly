@@ -1,17 +1,19 @@
-from datetime import datetime
 from csbdeep.utils import _raise
 import cv2
+from datetime import datetime
 import numpy as np
 import os
 import platform
-from scipy.ndimage.morphology import distance_transform_edt, binary_fill_holes
 from scipy.ndimage.measurements import find_objects
+from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from skimage.measure import regionprops
-from . import spline_generator as sg
-from .constants import DEVICE
 import torch
 from typing import Union
 import warnings
+
+from . import spline_generator as sg
+from .constants import DEVICE
+
 
 has_cv2_v4 = cv2.__version__.startswith("4")
 onload_ts = datetime.now()

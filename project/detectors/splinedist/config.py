@@ -1,10 +1,11 @@
 import json
 import os
+
 from .models.backbone_types import BackboneTypes
 from .utils import normalize_grid
 
 dirname = os.path.dirname(__file__)
-DEFAULT_CONFIG = os.path.join(dirname, '../../configs/unet_defaults.json')
+DEFAULT_CONFIG = os.path.join(dirname, "../../configs/unet_defaults.json")
 
 
 class Config:
@@ -24,7 +25,7 @@ class Config:
         self.lr_patience = self.set_conf_param("lr_patience")
         self.n_channel_in = n_channel_in
         self.n_dim = int(self.set_conf_param("n_dim"))
-        self.skip_empties = self.set_conf_param('skip_empties')
+        self.skip_empties = self.set_conf_param("skip_empties")
         self.n_params = 2 * int(self.set_conf_param("n_control_points"))
         self.train_background_reg = int(self.set_conf_param("train_background_reg"))
         self.train_batch_size = int(self.set_conf_param("train_batch_size"))
@@ -41,8 +42,8 @@ class Config:
         self.validation_steps_per_epoch = self.set_conf_param(
             "validation_steps_per_epoch"
         )
-        self.zoom_min = self.set_conf_param('zoom_min')
-        self.zoom_max = self.set_conf_param('zoom_max')
+        self.zoom_min = self.set_conf_param("zoom_min")
+        self.zoom_max = self.set_conf_param("zoom_max")
 
         # default config (can be overwritten by kwargs below)
         if self.backbone in (BackboneTypes.unet_full, BackboneTypes.unet_reduced):

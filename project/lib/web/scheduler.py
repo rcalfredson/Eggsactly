@@ -1,9 +1,9 @@
+import schedule
 import threading
 import time
 
-import schedule
 
-class Scheduler():
+class Scheduler:
     def __init__(self, interval):
         self.interval = interval
         self.schedule = schedule

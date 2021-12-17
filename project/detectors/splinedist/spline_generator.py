@@ -8,8 +8,8 @@ class SplineCurve:
             self.M = M
         else:
             raise RuntimeError(
-                'M must be greater or equal than the spline generator support size.')
-            return
+                "M must be greater or equal than the spline generator support size."
+            )
 
         self.splineGenerator = splineGenerator
         self.halfSupport = self.splineGenerator.support() / 2.0
@@ -28,7 +28,7 @@ class SplineCurveVectorized(SplineCurve):
 
 
 class SplineGenerator:
-    unimplementedMessage = 'This function is not implemented.'
+    unimplementedMessage = "This function is not implemented."
 
     def value(self, x):
         # This needs to be overloaded
@@ -136,9 +136,9 @@ class B3(SplineGenerator):
         elif -1 < x and x < 0:
             val = -2.0 - 3.0 * x
         elif 1 <= x and x <= 2:
-            val = (2.0 - x)
+            val = 2.0 - x
         elif -2 <= x and x <= -1:
-            val = (2.0 + x)
+            val = 2.0 + x
         return val
 
     def support(self):

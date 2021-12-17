@@ -1,14 +1,12 @@
-from enum import Enum
 from flask import (
     abort,
     Blueprint,
     render_template,
     request,
-    send_from_directory,
     send_file,
+    send_from_directory,
 )
-from flask_dance.contrib.google import google
-from flask_login import login_required, current_user
+from flask_login import current_user
 import os
 from pathlib import Path
 import shutil
@@ -16,13 +14,13 @@ import time
 from werkzeug.utils import secure_filename
 import zipfile
 
+from project import app, socketIO
 from project.lib.common import zipdir
 from project.lib.datamanagement.models import login_google_user
 from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
-from project.lib.users import users
-from .. import app, socketIO
+
 
 main = Blueprint("main", __name__)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
@@ -35,8 +33,10 @@ def allowed_file(filename):
 
 def remove_old_files(folder):
     now = time.time()
-    for f in os.listdir(folder):
-        f = os.path.join(folder, f)
+    for fname in os.listdir(folder):
+        if fname == ".gitkeep":
+            continue
+        f = os.path.join(folder, fname)
         if now - os.stat(f).st_mtime > 60 * 60:
             if os.path.isfile(f):
                 os.remove(f)

@@ -1,11 +1,12 @@
 import cv2
-import project.detectors.splinedist.spline_generator as sg
-from project.detectors.splinedist.utils import data_dir
 import numpy as np
 import os
 from pathlib import Path
 from PIL import ImageFont
 import random
+
+import project.detectors.splinedist.spline_generator as sg
+from project.detectors.splinedist.utils import data_dir
 
 phi = np.load(os.path.join(data_dir(), "phi_" + str(8) + ".npy"))
 

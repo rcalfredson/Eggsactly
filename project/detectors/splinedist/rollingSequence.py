@@ -1,5 +1,5 @@
 import numpy as np
-from collections import Counter
+
 
 class RollingSequence:
     """Helper class for creating batches for rolling sequence.
@@ -23,7 +23,6 @@ class RollingSequence:
         self.shuffle = bool(shuffle)
         self.index_gen = rng.permutation if self.shuffle else np.arange
         self.index_map = {}
-        # self.indices_returned = []
 
     def __len__(self):
         return self.length
@@ -36,7 +35,6 @@ class RollingSequence:
 
     def reset_index_map(self):
         self.index_map = {}
-        # self.indices_returned = []
 
     def __iter__(self):
         for i in range(len(self)):
@@ -52,8 +50,6 @@ class RollingSequence:
         while sl.stop > len(index):
             _loop += 1
             index = np.concatenate((index, self._index(_loop)))
-        # print(f"### - batch({i:02}) -> {tuple(index[sl])}", flush=True)
-        # self.indices_returned += list(index[sl])
         return index[sl]
 
     def __getitem__(self, i):

@@ -1,10 +1,10 @@
 from dotenv import load_dotenv
 from flask import Flask
 from flask_dance.contrib.google import make_google_blueprint
-from flask_socketio import SocketIO
-from flask_session import Session
-from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_session import Session
+from flask_socketio import SocketIO
+from flask_sqlalchemy import SQLAlchemy
 import os
 import warnings
 
@@ -21,12 +21,11 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
 
 
 def create_app():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
     load_dotenv()
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
     os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
     app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-    # app.secret_key = os.urandom(24)
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///db.sqlite"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.google_client_id = os.getenv("GOOGLE_CLIENT_ID")
@@ -35,6 +34,7 @@ def create_app():
     db.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.init_app(app)
+
     from .lib.datamanagement.models import User
 
     @login_manager.user_loader

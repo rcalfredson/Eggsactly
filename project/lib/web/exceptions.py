@@ -11,7 +11,7 @@ class ImageIgnoredException(Exception):
 
 
 errorMessages = {
-    ImageAnalysisException: "Image could not be analyzed.",
     CUDAMemoryException: "Error: system ran out of resources",
+    ImageAnalysisException: "Image could not be analyzed.",
     ImageIgnoredException: "Image marked as ignored.",
 }

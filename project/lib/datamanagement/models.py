@@ -1,11 +1,11 @@
-from flask_login import UserMixin
 from flask_dance.contrib.google import google
-from flask_login import login_user, current_user, login_required, logout_user
-from werkzeug.security import generate_password_hash
-import sqlalchemy
+from flask_login import current_user, login_user, UserMixin
 import oauthlib
 import os
-from ... import db, app
+import sqlalchemy
+from werkzeug.security import generate_password_hash
+
+from ... import app, db
 
 
 class User(UserMixin, db.Model):

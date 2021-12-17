@@ -8,6 +8,8 @@ Yang Lab code related to egg counting
 export FLASK_APP=project/server.py
 export FLASK_ENV=development
 flask run
+# in a separate tab
+python -m project.gpu_backend.worker
 ```
 
 

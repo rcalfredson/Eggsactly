@@ -1,18 +1,13 @@
-import timeit
-from splinedist.rollingSequence import RollingSequence
 from csbdeep.utils import _raise
 import numpy as np
 from skimage.segmentation import clear_border
+
 from splinedist.constants import DEVICE
 from splinedist.geometry.geom2d import spline_dist
+from splinedist.rollingSequence import RollingSequence
 from splinedist.rotation import sample_patches as sample_patches_rot
 from splinedist.sample_patches import get_valid_inds
 from splinedist.utils import edt_prob
-import torch
-import sys
-
-import matplotlib.pyplot as plt
-import cProfile
 
 
 class SplineDistDataBase(RollingSequence):
@@ -281,7 +276,11 @@ class SplineDistData2D(SplineDistDataBase):
 
         # random rotation sample_patches
         self.arrays = [
-            sample_patches_rot((self.Y[k], self.X[k]), patch_size=self.patch_size, skip_empties=self.skip_empties)
+            sample_patches_rot(
+                (self.Y[k], self.X[k]),
+                patch_size=self.patch_size,
+                skip_empties=self.skip_empties,
+            )
             for k in idx
         ]
         # np.set_printoptions(threshold=sys.maxsize)
@@ -327,7 +326,6 @@ class SplineDistData2D(SplineDistDataBase):
         if X.ndim == 3:  # input image has no channel axis
             X = np.expand_dims(X, -1)
 
-
         if not self.skip_dist_prob_calc:
             prob = np.stack([edt_prob(lbl[self.b]) for lbl in Y])
 
@@ -366,7 +364,7 @@ class SplineDistData2D(SplineDistDataBase):
             # pr.print_stats(sort="time")
             # end_time = timeit.default_timer()
             # print(
-                # f"time needed for post-proc calcs: {end_time - sample_patch_time:.3f}"
+            # f"time needed for post-proc calcs: {end_time - sample_patch_time:.3f}"
             # )
             # print(f"total time: {end_time - start_t:.3f}")
             # input()

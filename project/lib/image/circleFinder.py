@@ -1,18 +1,18 @@
 from csbdeep.utils import normalize
-import itertools
-import os
-import math
-import threading
 import cv2
-from sklearn.linear_model import LinearRegression
+import itertools
+import math
 import numpy as np
+import os
 from scipy.stats import binned_statistic
+from sklearn.linear_model import LinearRegression
+import threading
 import torch
 
-from project.lib.image.chamber import CT
-from project.lib.util import distance, trueRegions
 from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
+from project.lib.image.chamber import CT
+from project.lib.util import distance, trueRegions
 
 dirname = os.path.dirname(__file__)
 ARENA_IMG_RESIZE_FACTOR = 0.186

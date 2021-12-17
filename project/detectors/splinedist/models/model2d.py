@@ -1,13 +1,17 @@
 from collections import namedtuple
-import os
-import timeit
-
-from .backbone_types import BackboneTypes
 from csbdeep.data import Normalizer, NoNormalizer, Resizer, NoResizer
 from csbdeep.internals.predict import tile_iterator
-from csbdeep.utils import axes_check_and_normalize, axes_dict, _raise, move_image_axes
+from csbdeep.utils import _raise, axes_check_and_normalize, axes_dict, move_image_axes
 import math
 import numpy as np
+import os
+import torch
+from torch import nn
+import torch.nn.functional as F
+from tqdm import tqdm
+from typing import Tuple
+import warnings
+
 from .. import spline_generator as sg
 from ..config import Config
 from ..constants import DEVICE
@@ -16,12 +20,8 @@ from ..models.fcrn import FCRN_A
 from ..models.unet_block import UNet, UNetFromTF
 from ..nms import non_maximum_suppression
 from ..utils import _is_power_of_2, data_dir
-import torch
-import torch.nn.functional as F
-from torch import nn
-from tqdm import tqdm
-from typing import Tuple
-import warnings
+from .backbone_types import BackboneTypes
+
 
 EPS = torch.finfo(torch.float32).eps
 

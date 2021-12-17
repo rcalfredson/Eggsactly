@@ -6,17 +6,17 @@ import numpy as np
 import os
 from threading import Event, Thread
 
+from project import app
 from project.lib.web.auth_helper import AuthDecoder
 from project.lib.web.exceptions import CUDAMemoryException, ImageIgnoredException
 from project.lib.web.gpu_task import GPUTask
 from project.lib.web.gpu_task_types import GPUTaskTypes
-from .. import app
 
 
 load_dotenv()
 SAFE_TIMEOUT = int(os.environ["GPU_WORKER_TIMEOUT"]) - 1
 tasks = Blueprint("tasks", __name__)
-num_workers = int(os.environ['NUM_GPU_WORKERS'])
+num_workers = int(os.environ["NUM_GPU_WORKERS"])
 auth_decoder = AuthDecoder(
     [f"project/auth/gpu_worker_{i+1}_id_rsa.pub" for i in range(num_workers)]
 )

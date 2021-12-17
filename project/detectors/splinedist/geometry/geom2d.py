@@ -1,9 +1,9 @@
-import os
 import cv2
 import numpy as np
+import os
 from scipy.interpolate import interp1d
-from skimage.measure import regionprops
 from skimage.draw import polygon
+from skimage.measure import regionprops
 
 from .. import spline_generator as sg
 from ..matching import check_label_array

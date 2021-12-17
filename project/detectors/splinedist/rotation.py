@@ -3,8 +3,6 @@ import cv2
 import elasticdeform
 import numpy as np
 
-import matplotlib.pyplot as plt
-
 
 def split_by_channel(img):
     return tuple(img[..., i] for i in range(img.shape[-1]))

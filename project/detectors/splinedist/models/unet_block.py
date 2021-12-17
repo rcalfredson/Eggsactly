@@ -5,8 +5,6 @@ https://github.com/milesial/Pytorch-UNet/blob/master/unet/unet_model.py
 """
 
 
-import torch.nn.functional as F
-
 from .unet_parts import *
 
 
@@ -41,6 +39,7 @@ class UNet(nn.Module):
         x = self.up4(x, x1)
         # logits = self.outc(x)
         return x
+
 
 class UNetFromTF(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=True):

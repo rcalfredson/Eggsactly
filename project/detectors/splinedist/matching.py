@@ -3,7 +3,7 @@ import numpy as np
 
 
 def label_are_sequential(y):
-    """ returns true if y has only sequential labels from 1... """
+    """returns true if y has only sequential labels from 1..."""
     labels = np.unique(y)
     return (set(labels) - {0}) == set(range(1, 1 + labels.max()))
 

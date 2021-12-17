@@ -1,6 +1,6 @@
 import cv2
-from project.lib.image.circleFinder import CircleFinder, rotate_image
 
+from project.lib.image.circleFinder import CircleFinder, rotate_image
 from project.lib.image.node_based_segmenter import NodeBasedSegmenter
 
 

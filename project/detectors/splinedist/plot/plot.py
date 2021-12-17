@@ -1,7 +1,6 @@
-from __future__ import print_function, unicode_literals, absolute_import, division
 import numpy as np
 from warnings import warn
-from csbdeep.utils import normalize
+
 from ..utils import normalize_grid
 
 

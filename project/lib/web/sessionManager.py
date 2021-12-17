@@ -1,35 +1,31 @@
 import csv
+import cv2
 from datetime import datetime
 import inspect
 import json
-import os
-import time
-import traceback
-import warnings
-
-warnings.filterwarnings("error")
-
-import cv2
 import numpy as np
 from PIL import Image, ImageDraw
+import os
+import time
+import warnings
 
+from project.lib.event import Listener
+from project.lib.image import drawing
 from project.lib.image.chamber import CT
 from project.lib.image.circleFinder import (
     CircleFinder,
     rotate_around_point_highperf,
     rotate_image,
 )
-from project.lib.event import Listener
-from project.lib.image import drawing
-from project.lib.image.node_based_segmenter import NodeBasedSegmenter
 from project.lib.web.exceptions import (
     CUDAMemoryException,
-    ImageAnalysisException,
-    ImageIgnoredException,
     errorMessages,
+    ImageAnalysisException,
 )
 from project.lib.web.gpu_manager import GPUManager
 from project.lib.web.gpu_task_types import GPUTaskTypes
+
+warnings.filterwarnings("error")
 
 with open("project/models/modelRevDates.json", "r") as f:
     model_to_update_date = json.load(f)
