@@ -97,7 +97,7 @@ def zip_generator(ts):
     sm = app.downloadManager.sessions[ts]["session_manager"]
 
     for path in sm.basenames.values():
-        z.write_iter(os.path.splitext(path)[0] + ".png", img_as_bytes(sm.room, path))
+        z.write_iter(path, img_as_bytes(sm.room, path))
     for chunk in z:
         yield chunk
 

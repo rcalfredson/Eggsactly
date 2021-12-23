@@ -763,11 +763,15 @@
                 clearData: false,
                 convertToCanvas: true
             });
-            toggleMaskNotationMode();
+            document.getElementById(
+                chamberRealignmentData[currentImgIndex].customMode +
+                '-edit-button'
+            ).click();
             document.getElementById('mask-name').value = msg.maskName;
             chamberRealignmentData[currentImgIndex].maskName = msg.maskName;
             document.getElementById('reset-masks').setAttribute('disabled', true);
             document.getElementById('save-mask').setAttribute('disabled', true);
+            updateCountEggsButtonStatus();
         });
         socket.on('mask-list', (msg) => {
             maskNames = msg.names;
@@ -1450,14 +1454,15 @@
                 chamberRealignmentData[index].customMode === 'grid';
         }
 
-        function groupBoxesByPosition(boxes, mode) {
+        function groupBoxesByPosition(boxes, mode, imgIndex) {
             let groups = [];
             let groupPropName = `${mode}Num`;
             let posPropName = `${mode === 'row' ? 'y' : 'x'}Pos`;
             let sizePropName = mode === 'row' ? 'ht' : 'wd';
             boxes.forEach(box => {
                 if (groups.length === 0) {
-                    chamberRealignmentData[currentImgIndex].maskBBoxes[box.id][groupPropName] = 0;
+                    chamberRealignmentData[imgIndex].
+                        maskBBoxes[box.id][groupPropName] = 0;
                     groups.push([box])
                     return;
                 }
@@ -1465,11 +1470,11 @@
                 let j = groups[i].length - 1;
                 if (box[posPropName] - groups[i][j][posPropName] >
                     0.5 * groups[i][j][sizePropName]) {
-                    chamberRealignmentData[currentImgIndex].maskBBoxes[
+                    chamberRealignmentData[imgIndex].maskBBoxes[
                         box.id][groupPropName] = i + 1;
                     groups.push([box]);
                 } else {
-                    chamberRealignmentData[currentImgIndex].maskBBoxes[
+                    chamberRealignmentData[imgIndex].maskBBoxes[
                         box.id][groupPropName] = i;
                     groups[i].push(box);
                 }
@@ -1487,8 +1492,10 @@
                     };
                 }
                 );
-            groupBoxesByPosition(boxesSimplified.sort((a, b) => a.yPos - b.yPos), 'row');
-            groupBoxesByPosition(boxesSimplified.sort((a, b) => a.xPos - b.xPos), 'col');
+            groupBoxesByPosition(boxesSimplified.sort((a, b) => a.yPos - b.yPos),
+                'row', imgIndex);
+            groupBoxesByPosition(boxesSimplified.sort((a, b) => a.xPos - b.xPos),
+                'col', imgIndex);
             let rowColLayout = [];
             let orderedCounts = [];
 
@@ -1514,17 +1521,17 @@
                     rowColLayout[i][j] = entry[0]
                 })
             });
-            results.rowsCols.push(rowColLayout);
-            results.orderedCounts.push(orderedCounts);
+            results.rowsCols[orderedImgNames[i]] = rowColLayout;
+            results.orderedCounts[orderedImgNames[i]] = orderedCounts;
             return results;
         }
 
         function collectRowColCountLayout() {
-            let results = { rowsCols: [], orderedCounts: [] };
+            let results = { rowsCols: {}, orderedCounts: {} };
             orderedImgNames.forEach((name, i) => {
                 if (!imageUsesCustomMasks(i)) {
-                    results.rowsCols.push(null);
-                    results.orderedCounts.push(null);
+                    results.rowsCols[name] = null;
+                    results.orderedCounts[name] = null;
                     return;
                 }
                 if (imageUsesCustomMasks(i) && !imageUsesGridBoxes(i)) {
@@ -1586,8 +1593,8 @@
                         orderedCounts[j][k] = combinedList[k].count
                     }
                 });
-                results.rowsCols.push(rowColLayout);
-                results.orderedCounts.push(orderedCounts);
+                results.rowsCols[name] = rowColLayout;
+                results.orderedCounts[name] = orderedCounts;
             });
             return results;
         }
@@ -1896,6 +1903,7 @@
             document.getElementById('mask-edit-instructions').innerHTML =
                 maskEditInstructions[chamberRealignmentData[currentImgIndex].customMode];
             currentMaskBBox = null;
+            updateCountEggsButtonStatus();
         }
 
         function toggleDisabledInHTMLCollection(collection, setToDisabled, idsToSkip = []) {
@@ -2755,13 +2763,6 @@
             addLockMaskButton();
             $('#help-pane').append('<hr>');
 
-            if (maskNotationButtonGroup.selected.split('-')[0] !==
-                chamberRealignmentData[currentImgIndex].customMode) {
-                document.getElementById(
-                    chamberRealignmentData[currentImgIndex].customMode +
-                    '-edit-button'
-                ).click();
-            }
         }
 
         function addDropdownElement(dropdownEl, optionName, withPrefix = true) {
@@ -2821,7 +2822,6 @@
                 dropdownMaskList.setAttribute('id', 'mask-list');
                 addDropdownElement(dropdownMaskList, 'Select existing mask', false);
                 buttonGroup.appendChild(dropdownMaskList);
-                let chosenMask = chamberRealignmentData[currentImgIndex].maskName;
                 dropdownMaskList.onchange = requestSavedMaskData;
                 document.getElementById('help-pane').appendChild(buttonGroup);
             }
@@ -2833,7 +2833,8 @@
                     });
                 }
                 if (maskNames.includes(chamberRealignmentData[currentImgIndex].maskName)) {
-                    document.getElementById('mask-list').value = chosenMask;
+                    document.getElementById('mask-list').value =
+                        chamberRealignmentData[currentImgIndex].maskName;
                 }
             }
         }
@@ -2907,6 +2908,7 @@
                                 document.getElementById(`${savedMask.customMode}-edit-button`).click();
                             }
                             document.getElementById('reset-masks').setAttribute('disabled', true);
+                            updateCountEggsButtonStatus();
                         }
                         maskCopyUpdater.registerUpdate();
                         return;
@@ -3724,6 +3726,9 @@
                 cursorOnCanvas = true;
             });
             backgroundRaster.onLoad = () => {
+                if (!imageUsesCustomMasks() && maskNotationButtonGroup) {
+                    maskNotationButtonGroup.selected = '';
+                }
                 if (numErrors + numModifications > 0 && countingState === countingStates.pre) {
                     updateRealignmentGuide();
                 }
@@ -4313,6 +4318,7 @@
             }
 
             moveBBoxCircles(rect);
+            markMaskAsEdited();
         }
 
         function updateGridlineForDeletion() {
@@ -4381,6 +4387,10 @@
                 }
             }
             innerRect.onMouseMove = (e) => {
+                if (!chamberRealignmentData[currentImgIndex].maskBBoxes ||
+                    !chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent]) {
+                    return;
+                }
                 let myBox = chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent];
                 if (myBox.data.state === 'resizing'
                     || pointerDown) {
@@ -4397,7 +4407,8 @@
                 currentMaskBBox = innerRect.data.parent;
             }
             innerRect.onMouseLeave = (e) => {
-                if (!chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent]) {
+                if (!chamberRealignmentData[currentImgIndex].maskBBoxes ||
+                    !chamberRealignmentData[currentImgIndex].maskBBoxes[e.target.data.parent]) {
                     return;
                 }
                 if (pointerDown) {
@@ -4485,7 +4496,7 @@
                     transformImageOnly(evt);
                     return;
                 }
-                if (editMode === 'mask' &&
+                if (countingState === countingStates.pre && editMode === 'mask' &&
                     maskNotationButtonGroup.selected === 'freehand-edit-button'
                     && !shiftKeyDown) {
                     createOrAdjustMaskBBox(evt);

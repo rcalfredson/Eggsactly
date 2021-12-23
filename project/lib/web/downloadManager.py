@@ -155,7 +155,8 @@ class DownloadManager:
                 img_entity = EggLayingImage.query.filter_by(
                     session_id=sm.room, basename=self.path_base
                 ).first()
-                img_entity.annotated_img = cv2.imencode(".png", img)[1]
+                img_entity.annotated_img = cv2.imencode(
+                    f".{os.path.splitext(self.path_base)[1]}", img)[1]
                 db.session.commit()
             elif backend_type == BackendTypes.local:
                 cv2.imwrite(

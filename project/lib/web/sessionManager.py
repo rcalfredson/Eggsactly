@@ -208,7 +208,11 @@ class SessionManager:
         self.basenames[img_path] = imgBasename
         self.paths_to_indices[img_path] = index
         self.alignment_data[img_path] = alignment_data
-        if "nodes" in alignment_data:
+        if not img_path in self.chamberTypes or (
+            "type" in alignment_data
+            and img_path in self.chamberTypes
+            and self.chamberTypes[img_path] != alignment_data["type"]
+        ):
             self.chamberTypes[img_path] = alignment_data["type"]
         self.enqueue_egg_counting_task(img_path, alignment_data)
 
@@ -389,7 +393,8 @@ class SessionManager:
             ]
         )
         for i, imgPath in enumerate(self.predictions):
-            writer.writerow([os.path.basename(imgPath)])
+            img_basename = os.path.basename(imgPath)
+            writer.writerow([img_basename])
             first_pred = self.predictions[imgPath][0]
             if self.is_exception(first_pred):
                 writer.writerows([[errorMessages[first_pred]], []])
@@ -403,13 +408,15 @@ class SessionManager:
                         edited_counts[base_path][region_index]
                     )
 
-            if row_col_layout[i]:
-                for j, row in enumerate(row_col_layout[i]):
+            if row_col_layout[img_basename]:
+                for j, row in enumerate(row_col_layout[img_basename]):
                     num_entries_added = 0
                     row_entries = []
                     for col in range(row[-1] + 1):
                         if col in row:
-                            row_entries.append(ordered_counts[i][j][num_entries_added])
+                            row_entries.append(
+                                ordered_counts[img_basename][j][num_entries_added]
+                            )
                             num_entries_added += 1
                         else:
                             row_entries.append("")
