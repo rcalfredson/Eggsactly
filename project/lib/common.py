@@ -52,7 +52,6 @@ def X_is_running():
 
 
 def background_color(img):
-    print("image type:", type(img))
     if type(img) != Image.Image:
         pil_img = Image.fromarray(img)
     else:

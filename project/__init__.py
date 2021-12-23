@@ -8,11 +8,32 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import warnings
 
+from project.lib.web.backend_types import BackendTypes
+
+load_dotenv()
 db = SQLAlchemy()
 app = Flask(__name__)
 login_manager = LoginManager()
-app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
+backend_type = BackendTypes[os.getenv("EGG_COUNTING_BACKEND_TYPE")]
+print("backend type:", backend_type)
+if backend_type == BackendTypes.gcp:
+    # sql_addr = (
+    #     f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
+    #     f"{os.environ['GOOGLE_SQL_DB_PVT_IP']}/data"
+    # )
+    sql_addr = "sqlite:///db.sqlite"
+    flask_session_type = "sqlalchemy"
+elif backend_type == BackendTypes.local:
+    sql_addr = "sqlite:///db.sqlite"
+    flask_session_type = "filesystem"
+app.config["BACKEND_TYPE"] = backend_type
+app.config["SQLALCHEMY_DATABASE_URI"] = sql_addr
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db.init_app(app)
+app.config["SESSION_TYPE"] = flask_session_type
+session = Session(app)
+if flask_session_type == "sqlalchemy":
+    session.app.session_interface.db.create_all()
 socketIO = SocketIO(app, manage_session=False)
 
 sessions = {}
@@ -22,16 +43,12 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
 
 def create_app():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
-    load_dotenv()
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
     os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
     app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///db.sqlite"
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.google_client_id = os.getenv("GOOGLE_CLIENT_ID")
     app.google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     app.secret_key = os.getenv("secret_key")
-    db.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.init_app(app)
 

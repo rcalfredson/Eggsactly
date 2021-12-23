@@ -2,6 +2,7 @@ import csv
 import cv2
 from datetime import datetime
 import inspect
+from io import BytesIO, StringIO
 import json
 import numpy as np
 from PIL import Image, ImageDraw
@@ -9,6 +10,8 @@ import os
 import time
 import warnings
 
+from project import backend_type, db
+from project.lib.datamanagement.models import EggLayingImage, ErrorReport
 from project.lib.event import Listener
 from project.lib.image import drawing
 from project.lib.image.chamber import CT
@@ -17,6 +20,7 @@ from project.lib.image.circleFinder import (
     rotate_around_point_highperf,
     rotate_image,
 )
+from project.lib.web.backend_types import BackendTypes
 from project.lib.web.exceptions import (
     CUDAMemoryException,
     errorMessages,
@@ -46,6 +50,7 @@ class SessionManager:
         self.cfs = {}
         self.predictions = {}
         self.basenames = {}
+        self.img_shapes = {}
         self.paths_to_indices = {}
         self.annotations = {}
         self.bboxes = {}
@@ -65,6 +70,7 @@ class SessionManager:
         self.bboxes = {}
         self.alignment_data = {}
         self.basenames = {}
+        self.img_shapes = {}
         self.paths_to_indices = {}
 
     def emit_to_room(self, evt_name, data):
@@ -87,8 +93,8 @@ class SessionManager:
         self.emit_to_room(
             "counting-error",
             {
-                "width": self.img.shape[1],
-                "height": self.img.shape[0],
+                "width": self.img_shapes[imgPath][1],
+                "height": self.img_shapes[imgPath][0],
                 "data": "%s counting eggs for image %s"
                 % (prefix, self.basenames[imgPath]),
                 "filename": self.basenames[imgPath],
@@ -146,8 +152,8 @@ class SessionManager:
                     "filename": imgBasename,
                     "chamberType": self.cfs[img_path].ct,
                     "bboxes": self.bboxes[img_path],
-                    "width": self.img.shape[1],
-                    "height": self.img.shape[0],
+                    "width": self.img_shapes[img_path][1],
+                    "height": self.img_shapes[img_path][0],
                 },
             )
         except Exception as exc:
@@ -160,16 +166,31 @@ class SessionManager:
             self.report_counting_error(img_path, ImageAnalysisException)
         del self.cfs[img_path]
 
+    @staticmethod
+    def open_image(img_path, dtype=np.float32):
+        if backend_type == BackendTypes.gcp:
+            path_split = img_path.split(os.path.sep)
+            img = BytesIO(
+                EggLayingImage.query.filter_by(
+                    session_id=path_split[-2], basename=path_split[-1]
+                )
+                .first()
+                .image
+            )
+        elif backend_type == BackendTypes.local:
+            img = img_path
+        return np.array(Image.open(img), dtype=dtype)
+
     def check_chamber_type_and_find_bounding_boxes(self, img_path, i, n_files):
-        imgBasename = os.path.basename(img_path)
         img_path = os.path.normpath(img_path)
+        imgBasename = os.path.basename(img_path)
         self.basenames[img_path] = imgBasename
         self.emit_to_room(
             "counting-progress",
             {"data": "Segmenting image %i of %i" % (i + 1, n_files)},
         )
-        self.img = np.array(Image.open(img_path), dtype=np.float32)
-        img = self.img
+        img = self.open_image(img_path)
+        self.img_shapes[img_path] = img.shape
         self.enqueue_arena_detection_task(img, img_path)
 
     def segment_img_and_count_eggs(self, img_path, alignment_data, index, n_files):
@@ -187,7 +208,11 @@ class SessionManager:
         self.basenames[img_path] = imgBasename
         self.paths_to_indices[img_path] = index
         self.alignment_data[img_path] = alignment_data
-        if "nodes" in alignment_data:
+        if not img_path in self.chamberTypes or (
+            "type" in alignment_data
+            and img_path in self.chamberTypes
+            and self.chamberTypes[img_path] != alignment_data["type"]
+        ):
             self.chamberTypes[img_path] = alignment_data["type"]
         self.enqueue_egg_counting_task(img_path, alignment_data)
 
@@ -243,7 +268,9 @@ class SessionManager:
                     x = bboxes[i][0]
                     y = bboxes[i][1]
                     if do_rotate:
-                        x, y = self.rotate_pt(x, y, -alignment_data["rotationAngle"])
+                        x, y = self.rotate_pt(
+                            x, y, -alignment_data["rotationAngle"], imgPath
+                        )
                     x += 50 + (0 if prediction["count"] < 10 else 40)
                     y += self.textLabelHeight
 
@@ -270,42 +297,46 @@ class SessionManager:
             self.send_annotations_for_task(prediction_set, metadata[i], i)
         self.emit_to_room("counting-done", {"is_retry": True})
 
-    def rotate_pt(self, x, y, radians):
-        img_center = list(reversed([el / 2 for el in self.img.shape[:2]]))
+    def rotate_pt(self, x, y, radians, img_path):
+        img_center = list(reversed([el / 2 for el in self.img_shapes[img_path][:2]]))
         return rotate_around_point_highperf((x, y), radians, img_center)
 
     def createErrorReport(self, edited_counts, user):
         font = drawing.loadFont(14)
         for imgPath in edited_counts:
             rel_path = os.path.normpath(os.path.join("./uploads", self.room, imgPath))
-            img = rotate_image(
-                cv2.imread(rel_path), self.alignment_data[rel_path]["rotationAngle"]
-            )
+            img = SessionManager.open_image(rel_path, dtype=np.uint8)
+            img = rotate_image(img, self.alignment_data[rel_path]["rotationAngle"])
             for i in edited_counts[imgPath]:
                 error_report_image_basename = ".".join(
                     os.path.basename(imgPath).split(".")[:-1]
                 ) + "_region_%s_actualCt_%s_user_%s" % (
                     i,
                     edited_counts[imgPath][i],
-                    user,
+                    user.id,
                 )
                 annot = self.annotations[rel_path][int(i)]
-                imgSection = img[
+                img_section = img[
                     annot["bbox"][1] : annot["bbox"][1] + annot["bbox"][3],
                     annot["bbox"][0] : annot["bbox"][0] + annot["bbox"][2],
                 ]
-                cv2.imwrite(
-                    os.path.join("error_cases", f"{error_report_image_basename}.png"),
-                    imgSection,
-                )
+                if backend_type == BackendTypes.local:
+                    cv2.imwrite(
+                        os.path.join(
+                            "error_cases", f"{error_report_image_basename}.png"
+                        ),
+                        img_section,
+                    )
+                outline_img_section = np.array(img_section)
                 for outline in self.predictions[rel_path][int(i)]["outlines"]:
                     reversed_outline = [list(reversed(el)) for el in outline]
-                    drawing.draw_line(imgSection, [reversed_outline])
-                imgSection = Image.fromarray(imgSection)
-                draw = ImageDraw.Draw(imgSection)
+                    drawing.draw_line(outline_img_section, [reversed_outline])
+                outline_img_section = Image.fromarray(outline_img_section)
+                draw = ImageDraw.Draw(outline_img_section)
+                original_ct = self.predictions[rel_path][int(i)]["count"]
                 draw.text(
                     (15, 15),
-                    f"Orig: {self.predictions[rel_path][int(i)]['count']}",
+                    f"Orig: {original_ct}",
                     font=font,
                     fill=drawing.orangeRed,
                 )
@@ -315,67 +346,86 @@ class SessionManager:
                     font=font,
                     fill=drawing.orangeRed,
                 )
-                cv2.imwrite(
-                    os.path.join(
-                        "error_cases",
-                        f"{error_report_image_basename}_outlines.png",
-                    ),
-                    np.array(imgSection),
-                )
+                outline_img_section = np.array(outline_img_section)
+                if backend_type == BackendTypes.local:
+                    cv2.imwrite(
+                        os.path.join(
+                            "error_cases",
+                            f"{error_report_image_basename}_outlines.png",
+                        ),
+                        outline_img_section,
+                    )
+                if backend_type == BackendTypes.gcp:
+                    img_section, outline_img_section = [
+                        cv2.imencode(".png", im)[1]
+                        for im in (img_section, outline_img_section)
+                    ]
+                    ErrorReport(
+                        image=img_section,
+                        outline_image=outline_img_section,
+                        img_path=imgPath,
+                        region_index=i,
+                        original_ct=original_ct,
+                        edited_ct=edited_counts[imgPath][i],
+                        user=user,
+                    )
+                    db.session.commit()
+
         self.emit_to_room("report-ready", {})
 
     @staticmethod
     def is_exception(my_var):
         return inspect.isclass(my_var) and issubclass(my_var, Exception)
 
-    def saveCSV(self, edited_counts, row_col_layout, ordered_counts):
-        resultsPath = "downloads/egg_counts_ALPHA_%s.csv" % datetime.today().strftime(
+    def sendCSV(self, edited_counts, row_col_layout, ordered_counts):
+        resultsBasename = "egg_counts_ALPHA_%s.csv" % datetime.today().strftime(
             "%Y-%m-%d_%H-%M-%S"
         )
-        with open(resultsPath, "wt", newline="") as resultsFile:
-            writer = csv.writer(resultsFile)
-            writer.writerow(["Egg Counter, ALPHA version"])
-            writer.writerow(
-                [
-                    "Egg-detection model updated: "
-                    + model_to_update_date["models"].get(
-                        model_to_update_date["latest"], "Unknown"
+        csvfile = StringIO()
+        writer = csv.writer(csvfile)
+        writer.writerow(["Egg Counter, ALPHA version"])
+        writer.writerow(
+            [
+                "Egg-detection model updated: "
+                + model_to_update_date["models"].get(
+                    model_to_update_date["latest"], "Unknown"
+                )
+            ]
+        )
+        for i, imgPath in enumerate(self.predictions):
+            img_basename = os.path.basename(imgPath)
+            writer.writerow([img_basename])
+            first_pred = self.predictions[imgPath][0]
+            if self.is_exception(first_pred):
+                writer.writerows([[errorMessages[first_pred]], []])
+                continue
+            base_path = os.path.basename(imgPath)
+            updated_counts = [el["count"] for el in self.predictions[imgPath]]
+            if base_path in edited_counts and len(edited_counts[base_path]) > 0:
+                writer.writerow(["Note: this image's counts have been amended by hand"])
+                for region_index in edited_counts[base_path]:
+                    updated_counts[int(region_index)] = int(
+                        edited_counts[base_path][region_index]
                     )
-                ]
-            )
-            for i, imgPath in enumerate(self.predictions):
-                writer.writerow([os.path.basename(imgPath)])
-                first_pred = self.predictions[imgPath][0]
-                if self.is_exception(first_pred):
-                    writer.writerows([[errorMessages[first_pred]], []])
-                    continue
-                base_path = os.path.basename(imgPath)
-                updated_counts = [el["count"] for el in self.predictions[imgPath]]
-                if base_path in edited_counts and len(edited_counts[base_path]) > 0:
-                    writer.writerow(
-                        ["Note: this image's counts have been amended by hand"]
-                    )
-                    for region_index in edited_counts[base_path]:
-                        updated_counts[int(region_index)] = int(
-                            edited_counts[base_path][region_index]
-                        )
 
-                if row_col_layout[i]:
-                    for j, row in enumerate(row_col_layout[i]):
-                        num_entries_added = 0
-                        row_entries = []
-                        for col in range(row[-1] + 1):
-                            if col in row:
-                                row_entries.append(
-                                    ordered_counts[i][j][num_entries_added]
-                                )
-                                num_entries_added += 1
-                            else:
-                                row_entries.append("")
-                        writer.writerow(row_entries)
-                else:
-                    CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
-                        [updated_counts], 0, writer
-                    )
-                writer.writerow([])
-        self.emit_to_room("counting-csv", {"data": os.path.basename(resultsPath)})
+            if row_col_layout[img_basename]:
+                for j, row in enumerate(row_col_layout[img_basename]):
+                    num_entries_added = 0
+                    row_entries = []
+                    for col in range(row[-1] + 1):
+                        if col in row:
+                            row_entries.append(
+                                ordered_counts[img_basename][j][num_entries_added]
+                            )
+                            num_entries_added += 1
+                        else:
+                            row_entries.append("")
+                    writer.writerow(row_entries)
+            else:
+                CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
+                    [updated_counts], 0, writer
+                )
+            writer.writerow([])
+        self.emit_to_room(
+            "counting-csv", {"data": csvfile.getvalue(), "basename": resultsBasename}
+        )

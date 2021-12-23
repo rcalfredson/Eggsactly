@@ -16,6 +16,8 @@ psutil
 PyJWT
 python-dotenv
 requests
+schedule
+scikit-learn
 scikit-image
 scipy
 SQLAlchemy
