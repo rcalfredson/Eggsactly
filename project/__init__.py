@@ -17,11 +17,10 @@ login_manager = LoginManager()
 backend_type = BackendTypes[os.getenv("EGG_COUNTING_BACKEND_TYPE")]
 print("backend type:", backend_type)
 if backend_type == BackendTypes.gcp:
-    # sql_addr = (
-    #     f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
-    #     f"{os.environ['GOOGLE_SQL_DB_PVT_IP']}/data"
-    # )
-    sql_addr = "sqlite:///db.sqlite"
+    sql_addr = (
+        f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
+        f"{os.environ['GOOGLE_SQL_DB_PVT_IP']}/data"
+    )
     flask_session_type = "sqlalchemy"
 elif backend_type == BackendTypes.local:
     sql_addr = "sqlite:///db.sqlite"
@@ -48,7 +47,7 @@ def create_app():
     app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
     app.google_client_id = os.getenv("GOOGLE_CLIENT_ID")
     app.google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-    app.secret_key = os.getenv("secret_key")
+    app.secret_key = os.getenv("SECRET_KEY")
     login_manager.login_view = "auth.login"
     login_manager.init_app(app)
 
