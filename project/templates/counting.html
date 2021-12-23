@@ -510,7 +510,7 @@
                             'user');
                         userSelect.dispatchEvent(new Event('change'));
                     }
-                    if (loggedIn) {
+                    if (loggedIn && document.getElementById('google-user-pic')) {
                         userDropdown.style.display = 'none';
                     }
                 }
@@ -723,12 +723,16 @@
             setupCanvas(false);
         });
         socket.on('counting-csv', (msg) => {
-            $('#updates').append(`<form id=csv-retrieve hidden action=/csvResults/${msg.data}><input hidden value='Download results' type=submit>` +
-                '</input></form>');
-            document.getElementById('csv-retrieve').submit();
-            document.getElementById('csv-retrieve').remove();
             document.getElementById('download-csv').removeAttribute('disabled');
             clearInterval(document.getElementById('download-csv').loadingInterval);
+            var element = document.createElement('a');
+            element.setAttribute('download', msg.basename);
+            element.setAttribute('href',
+                'data:text/csv;charset=utf-8,' +
+                encodeURIComponent(msg.data));
+            element.style.display = 'none';
+            element.click();
+            element.remove();
         });
         socket.on('counting-annotations', (msg) => {
             annotations[msg.filename] = JSON.parse(msg.data);

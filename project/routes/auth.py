@@ -36,7 +36,7 @@ def login_local_user():
     user = User.query.filter_by(name=name, is_local=True).first()
     if not user:
         user = User(
-            email=os.urandom(24),
+            email=str(os.urandom(24)),
             name=name,
             password=generate_password_hash(str(os.urandom(24)), method="sha256"),
             is_local=True,

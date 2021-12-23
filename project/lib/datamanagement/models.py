@@ -1,22 +1,94 @@
+from datetime import datetime, timedelta
 from flask_dance.contrib.google import google
 from flask_login import current_user, login_user, UserMixin
 import oauthlib
 import os
 import sqlalchemy
+import uuid
 from werkzeug.security import generate_password_hash
 
 from ... import app, db
+
+
+def delete_expired_rows(cls):
+    # adapted from code at this source:
+    # https://silvaneves.org/deleting-old-items-in-sqlalchemy.html
+
+    expiration_seconds = 20
+    limit = datetime.utcnow() - timedelta(seconds=expiration_seconds)
+    query_results = cls.query.filter(cls.timestamp <= limit)
+    for item in query_results:
+        db.session.delete(item)
+    db.session.commit()
 
 
 class User(UserMixin, db.Model):
     id = db.Column(
         db.Integer, primary_key=True
     )  # primary keys are required by SQLAlchemy
-    email = db.Column(db.String(100), unique=True)
-    password = db.Column(db.String(100))
-    name = db.Column(db.String(1000))
-    is_google = db.Column(db.Boolean())
-    is_local = db.Column(db.Boolean())
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    password = db.Column(db.String(100), nullable=False)
+    name = db.Column(db.String(1000), nullable=False)
+    is_google = db.Column(db.Boolean, nullable=False)
+    is_local = db.Column(db.Boolean, nullable=False)
+
+
+class SocketIOUser(db.Model):
+    id = db.Column(db.String(24), primary_key=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class ErrorReport(db.Model):
+    id = db.Column(
+        db.String(36),
+        primary_key=True,
+        unique=True,
+        default=lambda: str(uuid.uuid1()),
+    )
+    image = db.Column(db.LargeBinary, nullable=False)
+    outline_image = db.Column(db.LargeBinary, nullable=False)
+    img_path = db.Column(db.String(1000), nullable=False)
+    region_index = db.Column(db.Integer, nullable=False)
+    original_ct = db.Column(db.Integer, nullable=False)
+    edited_ct = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user = db.relationship(
+        "User", backref=db.backref("error_reports", lazy=True, cascade="all,delete")
+    )
+
+
+class EggRegionTemplate(db.Model):
+    id = db.Column(
+        db.String(36),
+        primary_key=True,
+        unique=True,
+        default=lambda: str(uuid.uuid1()),
+    )
+    data = db.Column(db.JSON, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    name = db.Column(db.String(1000), nullable=False)
+    user = db.relationship(
+        "User", backref=db.backref("templates", lazy=True, cascade="all,delete")
+    )
+
+
+class EggLayingImage(db.Model):
+    id = db.Column(
+        db.String(36),
+        primary_key=True,
+        unique=True,
+        default=lambda: str(uuid.uuid1()),
+    )
+    session_id = db.Column(
+        db.String(24), db.ForeignKey(SocketIOUser.id), nullable=False
+    )
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    image = db.Column(db.LargeBinary, nullable=False)
+    annotated_img = db.Column(db.LargeBinary, nullable=True)
+    basename = db.Column(db.String(1000), nullable=False)
+    user = db.relationship(
+        "SocketIOUser", backref=db.backref("images", lazy=True, cascade="all,delete")
+    )
 
 
 def login_google_user():

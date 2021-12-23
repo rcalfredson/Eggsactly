@@ -1,8 +1,10 @@
+from io import BytesIO
 from flask import (
     abort,
     Blueprint,
     render_template,
     request,
+    Response,
     send_file,
     send_from_directory,
 )
@@ -12,13 +14,18 @@ from pathlib import Path
 import shutil
 import time
 from werkzeug.utils import secure_filename
-import zipfile
+import zipstream
 
-from project import app, socketIO
-from project.lib.common import zipdir
-from project.lib.datamanagement.models import login_google_user
+from project import app, backend_type, db, socketIO
+from project.lib.datamanagement.models import (
+    delete_expired_rows,
+    EggLayingImage,
+    login_google_user,
+    SocketIOUser,
+)
 from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser
+from project.lib.web.backend_types import BackendTypes
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 
 
@@ -44,6 +51,13 @@ def remove_old_files(folder):
                 shutil.rmtree(f)
 
 
+def remove_old_sql_rows():
+    for cls in (SocketIOUser, EggLayingImage):
+        delete_expired_rows(cls)
+    with db.engine.begin() as conn:
+        conn.execute("VACUUM")
+
+
 @main.route("/", methods=["GET", "POST"])
 def index():
     origin_flag = request.args.get("origin")
@@ -52,7 +66,6 @@ def index():
     else:
         is_local = current_user.is_local if hasattr(current_user, "is_local") else False
     name = current_user.name if hasattr(current_user, "name") else None
-    user_info_endpoint = "/oauth2/v2/userinfo"
     result = login_google_user()
     return render_template(
         "counting.html",
@@ -64,55 +77,64 @@ def index():
 
 @main.route("/uploads/<sid>/<filename>")
 def uploaded_file(sid, filename):
-    return send_from_directory(
-        os.path.join("../", app.config["UPLOAD_FOLDER"], sid), filename
-    )
+    if backend_type == BackendTypes.gcp:
+        query = EggLayingImage.query.filter_by(
+            session_id=sid, basename=filename
+        ).first_or_404()
+        return send_file(
+            BytesIO(query.image),
+            mimetype=f"image/{os.path.splitext(filename)[0]}",
+            as_attachment=False,
+        )
+    elif backend_type == BackendTypes.local:
+        return send_from_directory(
+            os.path.join("../", app.config["UPLOAD_FOLDER"], sid), filename
+        )
 
 
-@main.route("/csvResults/<filename>")
-def send_csv(filename):
-    fileToDownload = os.path.join("downloads", filename)
-    if not os.path.isfile(fileToDownload):
-        abort(404)
-    return send_file(os.path.join("../", fileToDownload), as_attachment=True)
+def zip_generator(ts):
+    z = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
+    sm = app.downloadManager.sessions[ts]["session_manager"]
+
+    for path in sm.basenames.values():
+        z.write_iter(os.path.splitext(path)[0] + ".png", img_as_bytes(sm.room, path))
+    for chunk in z:
+        yield chunk
+
+
+def img_as_bytes(session_id, basename):
+    with app.app_context():
+        return BytesIO(
+            EggLayingImage.query.filter_by(session_id=session_id, basename=basename)
+            .first()
+            .annotated_img
+        )
 
 
 @main.route("/annot-img/<ts>", methods=["GET"])
 def return_zipfile(ts):
-    shutil.rmtree(app.downloadManager.sessions[ts]["folder"])
     zipfile_name = app.downloadManager.sessions[ts]["zipfile"]
-    del app.downloadManager.sessions[ts]
-    return send_file(os.path.join("../", zipfile_name), as_attachment=True)
-
-
-@main.route("/annot-img", methods=["POST"])
-def handle_annot_img_upload():
-    ts = request.form["time"]
-    sid = request.form["sid"]
-    for file in request.files.getlist("img"):
-        filename = secure_filename(request.form["imgName"])
-        filePath = os.path.join(app.downloadManager.sessions[ts]["folder"], filename)
-        file.save(filePath)
-        app.downloadManager.sessions[ts]["imgs_saved"] += 1
-    if (
-        app.downloadManager.sessions[ts]["imgs_saved"]
-        == app.downloadManager.sessions[ts]["total_imgs"]
-    ):
-        zipfName = "%s.zip" % (app.downloadManager.sessions[ts]["folder"])
-        zipf = zipfile.ZipFile(zipfName, "w", zipfile.ZIP_DEFLATED)
-        zipdir(app.downloadManager.sessions[ts]["folder"], zipf)
-        zipf.close()
-        app.downloadManager.sessions[ts]["zipfile"] = zipfName
-        socketIO.emit("zip-annots-ready", {"time": ts}, room=sid)
-    return "OK"
+    if backend_type == BackendTypes.gcp:
+        response = Response(zip_generator(ts), mimetype="application/zip")
+        response.headers["Content-Disposition"] = "attachment; filename={}".format(
+            zipfile_name
+        )
+        return response
+    elif backend_type == BackendTypes.local:
+        shutil.rmtree(app.downloadManager.sessions[ts]["folder"])
+        del app.downloadManager.sessions[ts]
+        return send_file(os.path.join("../", zipfile_name), as_attachment=True)
 
 
 @main.route("/upload", methods=["POST"])
 def handle_upload():
     pauser.set_resume_timer()
     sid = request.form["sid"]
-    for dir_name in ("uploads", "downloads"):
-        remove_old_files(dir_name)
+    if backend_type == BackendTypes.gcp:
+        remove_old_sql_rows()
+    elif backend_type == BackendTypes.local:
+        for dir_name in ("uploads", "downloads"):
+            remove_old_files(dir_name)
     check_chamber_type_of_imgs(sid)
     return "OK"
 
@@ -124,6 +146,33 @@ def check_chamber_type_of_imgs(sid):
         check_chamber_type_of_img(i, file, sid, n_files)
 
 
+def save_img_as_file(file, file_path):
+    folder_path = Path(file_path).parent
+    if not os.path.exists(folder_path):
+        Path(folder_path).mkdir(exist_ok=True, parents=True)
+    request.files[file].save(file_path)
+    correct_via_exif(path=file_path)
+
+
+def save_img_as_sql_blob(sid, file, file_path):
+    user = SocketIOUser.query.filter_by(id=sid).first()
+    if not user:
+        user = SocketIOUser(id=sid)
+        db.session.add(user)
+    data = correct_via_exif(
+        data=request.files[file].read(), format=os.path.splitext(file_path)[0]
+    )
+    EggLayingImage(image=data, basename=os.path.basename(file_path), user=user)
+    db.session.commit()
+
+
+def save_uploaded_img(sid, file, file_path):
+    if backend_type == BackendTypes.gcp:
+        save_img_as_sql_blob(sid, file, file_path)
+    elif backend_type == BackendTypes.local:
+        save_img_as_file(file, file_path)
+
+
 def check_chamber_type_of_img(i, file, sid, n_files):
     if file and allowed_file(file):
         filename = secure_filename(file)
@@ -133,18 +182,15 @@ def check_chamber_type_of_img(i, file, sid, n_files):
             room=sid,
         )
         folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
-        if not os.path.exists(folder_path):
-            Path(folder_path).mkdir(exist_ok=True, parents=True)
-        filePath = os.path.join(folder_path, filename)
-        request.files[file].save(filePath)
-        correct_via_exif(filePath)
+        file_path = os.path.join(folder_path, filename)
+        save_uploaded_img(sid, file, file_path)
         socketIO.emit(
             "counting-progress",
             {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},
             room=sid,
         )
         app.sessions[sid].check_chamber_type_and_find_bounding_boxes(
-            filePath, i, n_files
+            file_path, i, n_files
         )
 
 

@@ -7,12 +7,11 @@ from pathlib import Path
 import time
 import zipfile
 
+from project import app, backend_type
 from project.lib.common import zipdir
 from project.lib.datamanagement.socket_io_auth import authenticated_only
+from project.lib.web.backend_types import BackendTypes
 from project.lib.web.sessionManager import SessionManager
-
-
-from .. import app
 
 
 def setup_event_handlers():
@@ -70,7 +69,7 @@ def setup_event_handlers():
 
     @app.socketIO.on("prepare-csv")
     def prepare_csv(data):
-        app.sessions[data["sid"]].saveCSV(
+        app.sessions[data["sid"]].sendCSV(
             data["editedCounts"], data["rowColLayout"], data["orderedCounts"]
         )
 
@@ -81,7 +80,7 @@ def setup_event_handlers():
             app.socketIO.emit("report-ready", {"fail": "no_auth"}, room=data["sid"])
             return
         app.sessions[data["sid"]].createErrorReport(
-            data["editedCounts"], current_user.id
+            data["editedCounts"], current_user
         )
 
     @app.socketIO.on("prepare-annot-imgs-zip")
@@ -92,9 +91,10 @@ def setup_event_handlers():
         )
         app.downloadManager.createImagesForDownload(str(data["time"]))
         zipfName = "%s.zip" % (app.downloadManager.sessions[ts]["folder"])
-        zipf = zipfile.ZipFile(zipfName, "w", zipfile.ZIP_DEFLATED)
-        zipdir(app.downloadManager.sessions[ts]["folder"], zipf)
-        zipf.close()
+        if backend_type == BackendTypes.local:
+            zipf = zipfile.ZipFile(zipfName, "w", zipfile.ZIP_DEFLATED)
+            zipdir(app.downloadManager.sessions[ts]["folder"], zipf)
+            zipf.close()
         app.downloadManager.sessions[ts]["zipfile"] = zipfName
         app.socketIO.emit("zip-annots-ready", {"time": ts}, room=data["sid"])
 

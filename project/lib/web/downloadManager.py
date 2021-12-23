@@ -6,8 +6,11 @@ import os
 from pathlib import Path
 from PIL import Image, ImageDraw
 
+from project import backend_type, db
+from project.lib.datamanagement.models import EggLayingImage
 from project.lib.image import drawing
 from project.lib.image.circleFinder import rotate_around_point_highperf
+from project.lib.web.backend_types import BackendTypes
 from project.lib.web.exceptions import errorMessages
 
 
@@ -25,11 +28,12 @@ class DownloadManager:
             % datetime.today().strftime("%Y-%m-%d_%H-%M-%S"),
             "edited_counts": edited_counts,
         }
-        Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
+        if backend_type == BackendTypes.local:
+            Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
 
     def prepareAnnotatedImage(self, sm, ts, path):
         self.font = drawing.loadFont(80)
-        img = cv2.imread(path)
+        img = sm.open_image(path, dtype=np.uint8)
         check_counts = self.path_base in self.sessions[ts]["edited_counts"]
         if check_counts:
             been_edited = [
@@ -69,7 +73,6 @@ class DownloadManager:
                 box_coords[j] = [round(el) for el in box_coords[j]]
             xs = [el[0] for el in box_coords]
             ys = [el[1] for el in box_coords]
-            aabb = [[min(xs), min(ys)], [max(xs), max(ys)]]
 
             # draw rotated rectangle
             rect = cv2.minAreaRect(np.float32(box_coords))
@@ -147,4 +150,14 @@ class DownloadManager:
                 img = self.prepareImageWithError(path, sm.predictions[path][0])
             else:
                 img = self.prepareAnnotatedImage(sm, ts, path)
-            cv2.imwrite(os.path.join(self.sessions[ts]["folder"], self.path_base), img)
+
+            if backend_type == BackendTypes.gcp:
+                img_entity = EggLayingImage.query.filter_by(
+                    session_id=sm.room, basename=self.path_base
+                ).first()
+                img_entity.annotated_img = cv2.imencode(".png", img)[1]
+                db.session.commit()
+            elif backend_type == BackendTypes.local:
+                cv2.imwrite(
+                    os.path.join(self.sessions[ts]["folder"], self.path_base), img
+                )
