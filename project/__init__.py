@@ -42,7 +42,12 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
 
 
 def create_app():
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    warnings.filterwarnings("default", category=DeprecationWarning)
+    warnings.filterwarnings(
+        "default",
+        message="OpenBLAS WARNING - could not determine the L2 cache size on"
+        + " this system, assuming 256k",
+    )
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
     os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
     app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
