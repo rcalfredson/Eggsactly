@@ -22,10 +22,13 @@ UNET_SETTINGS = {
     "weights_path": os.path.join(dirname, "../../models/arena_pit_v2.pth"),
 }
 unet_config = Config(UNET_SETTINGS["config_path"], UNET_SETTINGS["n_channel"])
-default_model = SplineDist2D(unet_config)
-default_model.cuda()
-default_model.train(False)
-default_model.load_state_dict(torch.load(UNET_SETTINGS["weights_path"]))
+if torch.cuda.is_available():
+    default_model = SplineDist2D(unet_config)
+    default_model.cuda()
+    default_model.train(False)
+    default_model.load_state_dict(torch.load(UNET_SETTINGS["weights_path"]))
+else:
+    default_model = None
 
 
 def centroidnp(arr):

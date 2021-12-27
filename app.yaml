@@ -1,5 +1,5 @@
 runtime: python39
-instance_class: B1
+instance_class: B2
 env_variables:
   FLASK_ENV: "production"
   FLASK_APP: "project/interface.py"
