@@ -9,6 +9,8 @@ from werkzeug.security import generate_password_hash
 
 from ... import app, db
 
+LONGBLOG_LEN = (2 ** 32) - 1
+
 
 def delete_expired_rows(cls):
     # adapted from code at this source:
@@ -45,8 +47,8 @@ class ErrorReport(db.Model):
         unique=True,
         default=lambda: str(uuid.uuid1()),
     )
-    image = db.Column(db.LargeBinary, nullable=False)
-    outline_image = db.Column(db.LargeBinary, nullable=False)
+    image = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=False)
+    outline_image = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=False)
     img_path = db.Column(db.String(1000), nullable=False)
     region_index = db.Column(db.Integer, nullable=False)
     original_ct = db.Column(db.Integer, nullable=False)
@@ -83,8 +85,8 @@ class EggLayingImage(db.Model):
         db.String(24), db.ForeignKey(SocketIOUser.id), nullable=False
     )
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    image = db.Column(db.LargeBinary, nullable=False)
-    annotated_img = db.Column(db.LargeBinary, nullable=True)
+    image = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=False)
+    annotated_img = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=True)
     basename = db.Column(db.String(1000), nullable=False)
     user = db.relationship(
         "SocketIOUser", backref=db.backref("images", lazy=True, cascade="all,delete")
