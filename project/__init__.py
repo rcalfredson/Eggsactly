@@ -19,8 +19,9 @@ print("backend type:", backend_type)
 if backend_type == BackendTypes.gcp:
     sql_addr = (
         f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
-        f"{os.environ['GOOGLE_SQL_DB_PVT_IP']}/data"
+        f"/data?unix_socket=/cloudsql/egg-counting:us-east1:egg-counting-data"
     )
+    # sql_addr = "sqlite:///db.sqlite"
     flask_session_type = "sqlalchemy"
 elif backend_type == BackendTypes.local:
     sql_addr = "sqlite:///db.sqlite"

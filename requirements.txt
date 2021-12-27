@@ -8,6 +8,7 @@ Flask-Session
 Flask-SocketIO
 Flask-SQLAlchemy
 matplotlib
+mysqlclient
 numpy
 oauthlib
 opencv-python
