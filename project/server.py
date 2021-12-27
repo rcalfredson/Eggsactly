@@ -30,20 +30,19 @@ scheduler.schedule.every(5).minutes.do(prune_old_sessions)
 stop_scheduler = scheduler.run_continuously()
 print('before join?')
 print('hello?')
-server_running=True
-while server_running:
-    if flask_env == "production":
-        p = argparse.ArgumentParser(description="run the egg-counting server")
-        p.add_argument(
-            "--host", default="127.0.0.1", help="address where the server should run"
-        )
-        p.add_argument("--port", default="5000", help="port where the server should listen")
-        opts = p.parse_args()
-        logger = logging.getLogger("waitress")
-        logger.setLevel(logging.INFO)
-        print('starting waitress')
-        waitress.serve(app, host=opts.host, port=opts.port)
-        server_running = False
-        print('after this.')
-print('in the except block.')
+# server_running=True
+# while server_running:
+if flask_env == "production":
+    p = argparse.ArgumentParser(description="run the egg-counting server")
+    p.add_argument(
+        "--host", default="127.0.0.1", help="address where the server should run"
+    )
+    p.add_argument("--port", default="5000", help="port where the server should listen")
+    opts = p.parse_args()
+    logger = logging.getLogger("waitress")
+    logger.setLevel(logging.INFO)
+    print('starting waitress')
+    waitress.serve(app, host=opts.host, port=opts.port)
+    # server_running = False
+    print('after this.')
 stop_scheduler.set()
