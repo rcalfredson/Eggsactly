@@ -8,4 +8,4 @@ env_variables:
   EGG_COUNTING_BACKEND_TYPE: "gcp"
 basic_scaling:
   max_instances: 2
-entrypoint: python3 -m project.server
+entrypoint: python3 -m project.server --host 0.0.0.0
