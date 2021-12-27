@@ -25,9 +25,11 @@ class Scheduler:
             @classmethod
             def run(cls):
                 while not cease_continuous_run.is_set():
+                    print('top of the while loop')
                     schedule.run_pending()
                     time.sleep(self.interval)
+                print('the thread can be killed now.')
 
-        continuous_thread = ScheduleThread()
-        continuous_thread.start()
+        self.continuous_thread = ScheduleThread()
+        self.continuous_thread.start()
         return cease_continuous_run
