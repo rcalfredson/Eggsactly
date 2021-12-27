@@ -54,8 +54,8 @@ def remove_old_files(folder):
 def remove_old_sql_rows():
     for cls in (SocketIOUser, EggLayingImage):
         delete_expired_rows(cls)
-    with db.engine.begin() as conn:
-        conn.execute("VACUUM")
+    # with db.engine.begin() as conn:
+    #     conn.execute("VACUUM FULL")
 
 
 @main.route("/", methods=["GET", "POST"])
