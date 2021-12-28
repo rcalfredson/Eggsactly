@@ -27,7 +27,7 @@ app.gpu_manager = GPUManager()
 socket_events.setup_event_handlers()
 scheduler = Scheduler(1)
 scheduler.schedule.every(5).minutes.do(prune_old_sessions)
-scheduler.run_continuously()
+stop_scheduler = scheduler.run_continuously()
 if flask_env == "production":
     p = argparse.ArgumentParser(description="run the egg-counting server")
     p.add_argument(
@@ -38,3 +38,4 @@ if flask_env == "production":
     logger = logging.getLogger("waitress")
     logger.setLevel(logging.INFO)
     waitress.serve(app, host=opts.host, port=opts.port)
+stop_scheduler.set()
