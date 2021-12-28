@@ -6,7 +6,7 @@ from PIL import ImageFont
 import random
 
 import project.detectors.splinedist.spline_generator as sg
-from project.detectors.splinedist.utils import data_dir
+from project.detectors.splinedist.path_helpers import data_dir
 
 phi = np.load(os.path.join(data_dir(), "phi_" + str(8) + ".npy"))
 
@@ -42,7 +42,7 @@ def get_interpolated_points(data, n_points=30):
     M = np.shape(data)[2]
 
     SplineContour = sg.SplineCurveVectorized(
-        M, sg.B3(), True, np.transpose(data, [0, 2, 1]), useTorch=False
+        M, sg.B3(), True, np.transpose(data, [0, 2, 1])
     )
     more_coords = SplineContour.sampleSequential(phi)
     # choose 30 points evenly divided by the range.

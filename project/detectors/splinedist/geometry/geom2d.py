@@ -7,7 +7,8 @@ from skimage.measure import regionprops
 
 from .. import spline_generator as sg
 from ..matching import check_label_array
-from ..utils import data_dir, normalize_grid
+from ..path_helpers import data_dir
+from ..utils import normalize_grid
 
 has_cv2_v4 = cv2.__version__.startswith("4")
 
@@ -48,7 +49,7 @@ def polygons_to_label(coord, prob, points, shape=None, thr=-np.inf):
             continue
         coefs = coord[p[0], p[1]]
         coefs = np.transpose(coefs, (1, 0))
-        contour = sg.SplineCurveVectorized(M, sg.B3(), True, coefs, useTorch=False)
+        contour = sg.SplineCurveVectorized(M, sg.B3(), True, coefs)
         contour = contour.sampleSequential(phi)
 
         rr, cc = polygon(contour[:, 0], contour[:, 1], sh)

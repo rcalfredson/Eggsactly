@@ -1,9 +1,8 @@
 import numpy as np
-import torch
 
 
 class SplineCurve:
-    def __init__(self, M, splineGenerator, closed, coefs, useTorch=True):
+    def __init__(self, M, splineGenerator, closed, coefs):
         if M >= splineGenerator.support():
             self.M = M
         else:
@@ -15,15 +14,11 @@ class SplineCurve:
         self.halfSupport = self.splineGenerator.support() / 2.0
         self.closed = closed
         self.coefs = coefs
-        self.useTorch = useTorch
 
 
 class SplineCurveVectorized(SplineCurve):
     def sampleSequential(self, phi):
-        if self.useTorch:
-            contour_points = torch.matmul(phi, self.coefs)
-        else:
-            contour_points = np.matmul(phi, self.coefs)
+        contour_points = np.matmul(phi, self.coefs)
         return contour_points
 
 

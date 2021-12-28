@@ -38,6 +38,7 @@ NETWORK_CONSTS = {
     },
 }
 MAX_ATTEMPTS_PER_IMG = 2
+MAX_SQL_QUERIES_PER_IMG = 10
 
 
 class AuthHelper:
@@ -61,7 +62,6 @@ class AuthHelper:
 
 load_dotenv()
 create_app()
-app.app_context().push()
 server_uri = os.environ["MAIN_SERVER_URI"]
 key_holder = AuthHelper(os.environ["PRIVATE_KEY_PATH"])
 reconnect_attempt_delay = int(os.environ["GPU_WORKER_RECONNECT_ATTEMPT_DELAY"])
@@ -164,12 +164,38 @@ def perform_task(attempt_ct=0):
             print("task type:", task_type.name)
         print("num attempts:", attempt_ct + 1)
         decode_start_t = timeit.default_timer()
+        num_tries, img_entity = 0, None
 
-        img_entity = EggLayingImage.query.filter_by(
-            session_id=task["room"], basename=os.path.basename(task["img_path"])
-        ).first()
+        while not img_entity and num_tries < MAX_SQL_QUERIES_PER_IMG:
+            with app.app_context():
+                img_entity = EggLayingImage.query.filter_by(
+                    session_id=task["room"], basename=os.path.basename(task["img_path"])
+                ).first()
+            num_tries += 1
+            # when to issue the sleep? if we didn't find the image
+            # and there are no more tries left.
+            print("img entity:", img_entity)
+            if not img_entity and num_tries < MAX_SQL_QUERIES_PER_IMG:
+                # prevent the sleep
+                print("Couldn't find image; retrying...")
+                print("amount for sleep:", num_tries * 2)
+                time.sleep(num_tries * 2)
+
+        with app.app_context():
+            all_imgs = EggLayingImage.query.all()
+        print("all imgs in DB:")
+        for img in all_imgs:
+            print(img.basename)
+            print(img.session_id)
         if not img_entity:
-            print("Could't find image specified in task")
+            print("Couldn't find image specified in task")
+            print(
+                "Queried room",
+                task["room"],
+                "and basename",
+                os.path.basename(task["img_path"]),
+            )
+            input()
             return
         img = cv2.cvtColor(
             cv2.imdecode(

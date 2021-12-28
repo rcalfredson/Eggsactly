@@ -9,6 +9,10 @@ from project.lib.datamanagement.models import (
     ErrorReport,
 )
 
+query_suffix = (
+    ", combined with any other inputted query parameters relevant to"
+    + " this model type. If included, it overrides the value inputted for model_type."
+)
 p = argparse.ArgumentParser(
     description="look up a user's name and email via" + " their ID"
 )
@@ -16,6 +20,13 @@ p.add_argument(
     "model_type",
     help="model whose table should be shown (not case-sensitive)",
     type=str,
+)
+p.add_argument(
+    "--session_id",
+    help="runs an EggLayingImage query for a given session ID" + query_suffix,
+)
+p.add_argument(
+    "--basename", help="runs an EggLaying query for a given basename" + query_suffix
 )
 opts = p.parse_args()
 
@@ -26,10 +37,15 @@ model_type = {
     "eggregiontemplate": EggRegionTemplate,
     "errorreport": ErrorReport,
 }[opts.model_type.lower()]
-entities = model_type.query.all()
+# entities = model_type.query.all()
+if opts.session_id or opts.basename:
+    kwargs = {k: getattr(opts, k) for k in ('session_id', 'basename')}
+    entities = EggLayingImage.query.filter_by(**kwargs)
+else:
+    entities = model_type.query.all()
 for ent in entities:
     if model_type == EggLayingImage:
-        print('image data:', ent.image)
+        print("image data:", ent.image)
     elif model_type == EggRegionTemplate:
         print("Template ID:", ent.id)
         print("Template name:", ent.name)

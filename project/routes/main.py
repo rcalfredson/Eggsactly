@@ -245,7 +245,7 @@ def count_eggs_in_img(i, file, sid, n_files):
     if file and allowed_file(file):
         filename = secure_filename(file)
         folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
-        if not os.path.exists(folder_path):
+        if backend_type == BackendTypes.local and not os.path.exists(folder_path):
             Path(folder_path).mkdir(exist_ok=True, parents=True)
         filePath = os.path.join(folder_path, filename)
         kwargs = {

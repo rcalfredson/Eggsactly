@@ -1,0 +1,4 @@
+---
+applications:
+- name: egg-counting
+  memory: 1G

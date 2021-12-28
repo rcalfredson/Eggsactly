@@ -1,5 +1,6 @@
 from csbdeep.utils import normalize
 import cv2
+import importlib
 import itertools
 import math
 import numpy as np
@@ -7,10 +8,7 @@ import os
 from scipy.stats import binned_statistic
 from sklearn.linear_model import LinearRegression
 import threading
-import torch
 
-from project.detectors.splinedist.config import Config
-from project.detectors.splinedist.models.model2d import SplineDist2D
 from project.lib.image.chamber import CT
 from project.lib.util import distance, trueRegions
 
@@ -21,8 +19,13 @@ UNET_SETTINGS = {
     "n_channel": 3,
     "weights_path": os.path.join(dirname, "../../models/arena_pit_v2.pth"),
 }
-unet_config = Config(UNET_SETTINGS["config_path"], UNET_SETTINGS["n_channel"])
-if torch.cuda.is_available():
+torch_found = importlib.util.find_spec("torch") is not None
+if torch_found:
+    import torch
+    from project.detectors.splinedist.config import Config
+    from project.detectors.splinedist.models.model2d import SplineDist2D
+if torch_found and torch.cuda.is_available():
+    unet_config = Config(UNET_SETTINGS["config_path"], UNET_SETTINGS["n_channel"])
     default_model = SplineDist2D(unet_config)
     default_model.cuda()
     default_model.train(False)
@@ -151,7 +154,7 @@ class CircleFinder:
         img: np.ndarray,
         imgName: str,
         allowSkew: bool = False,
-        model: SplineDist2D = default_model,
+        model = default_model,
         predict_resize_factor: float = ARENA_IMG_RESIZE_FACTOR,
     ):
         """Create new CircleFinder instance.

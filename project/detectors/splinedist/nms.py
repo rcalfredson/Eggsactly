@@ -3,7 +3,8 @@ import os
 from time import time
 
 from . import spline_generator as sg
-from .utils import data_dir, normalize_grid
+from .path_helpers import data_dir
+from .utils import normalize_grid
 
 
 def non_maximum_suppression(
@@ -42,7 +43,7 @@ def non_maximum_suppression(
     M = np.shape(coord)[2]
 
     phi = np.load(os.path.join(data_dir(as_abs_path=True), "phi_" + str(M) + ".npy"))
-    SplineContour = sg.SplineCurveVectorized(M, sg.B3(), True, coord, useTorch=False)
+    SplineContour = sg.SplineCurveVectorized(M, sg.B3(), True, coord)
     coord = SplineContour.sampleSequential(phi)
     # print('session eval time:', timeit.default_timer() - start_time)
 

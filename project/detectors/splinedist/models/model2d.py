@@ -13,13 +13,15 @@ from typing import Tuple
 import warnings
 
 from .. import spline_generator as sg
+from ..splinecurve_vec_torch import SplineCurveVectorizedTorch
 from ..config import Config
 from ..constants import DEVICE
 from ..geometry.geom2d import dist_to_coord, polygons_to_label
 from ..models.fcrn import FCRN_A
 from ..models.unet_block import UNet, UNetFromTF
 from ..nms import non_maximum_suppression
-from ..utils import _is_power_of_2, data_dir
+from ..path_helpers import data_dir
+from ..utils import _is_power_of_2
 from .backbone_types import BackboneTypes
 
 
@@ -99,7 +101,7 @@ def generic_masked_loss(
 
         phi = np.load(os.path.join(data_dir(), "phi_" + str(M) + ".npy"))
         phi = torch.from_numpy(phi).float().to(DEVICE)
-        SplineContour = sg.SplineCurveVectorized(M, sg.B3(), True, c_pred)
+        SplineContour = SplineCurveVectorizedTorch(M, sg.B3(), True, c_pred)
         y_pred = SplineContour.sampleSequential(phi)
         y_pred = torch.reshape(
             y_pred, (y_pred.shape[0], y_pred.shape[1], y_pred.shape[2], -1)

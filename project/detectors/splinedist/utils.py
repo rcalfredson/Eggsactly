@@ -1,9 +1,7 @@
 from csbdeep.utils import _raise
 import cv2
-from datetime import datetime
 import numpy as np
 import os
-import platform
 from scipy.ndimage.measurements import find_objects
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from skimage.measure import regionprops
@@ -13,11 +11,10 @@ import warnings
 
 from . import spline_generator as sg
 from .constants import DEVICE
+from .path_helpers import data_dir
 
 
 has_cv2_v4 = cv2.__version__.startswith("4")
-onload_ts = datetime.now()
-dirname = os.path.dirname(__file__)
 
 
 def _is_power_of_2(i):
@@ -113,18 +110,6 @@ def wrapIndex(t, k, M, half_support):
         if t_left <= k - M <= t_right:
             wrappedT = t - (k - M)
     return wrappedT
-
-
-def data_dir(must_exist=True, as_abs_path=False):
-    prospective_dir = os.path.join(
-        "data_by_host", f"{platform.node()}_{onload_ts}".replace(":", "-")
-    )
-    if (must_exist and os.path.isdir(prospective_dir)) or not must_exist:
-        return prospective_dir
-    elif must_exist and not os.path.isdir(prospective_dir):
-        if as_abs_path:
-            return os.path.join(dirname, "constants")
-        return "./project/detectors/splinedist/constants/"
 
 
 def phi_generator(M, contoursize_max, debug=False):
