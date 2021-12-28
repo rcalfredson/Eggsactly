@@ -4,6 +4,7 @@ from csbdeep.utils import normalize
 import cv2
 import datetime
 from dotenv import load_dotenv
+import json
 import jwt
 import numpy as np
 import os
@@ -79,7 +80,12 @@ def request_work():
         if r.status_code >= 400 and r.status_code < 500:
             print("server rejected request. status:", r.status_code)
             return
-        task = r.json()
+        try:
+            task = r.json()
+        except json.decoder.JSONDecodeError:
+            print('Failed to decode the egg-counting server response')
+            print('Raw response:', r.text)
+            return
         if len(task.keys()) == 0:
             print("no work found")
             return
