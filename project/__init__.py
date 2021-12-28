@@ -8,6 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import warnings
 
+from project.lib.datamanagement.sql_backend_types import SQLBackendTypes
 from project.lib.web.backend_types import BackendTypes
 
 load_dotenv()
@@ -15,17 +16,20 @@ db = SQLAlchemy()
 app = Flask(__name__)
 login_manager = LoginManager()
 backend_type = BackendTypes[os.getenv("EGG_COUNTING_BACKEND_TYPE")]
-print("backend type:", backend_type)
+sql_addr_type = SQLBackendTypes[os.getenv('SQL_ADDR_TYPE')]
 if backend_type == BackendTypes.gcp:
-    # sql_addr = (
-    #     f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
-    #     f"/data?unix_socket=/cloudsql/egg-counting:us-east1:egg-counting-data"
-    # )
-    sql_addr = (
-        f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
-        f"{os.environ['GOOGLE_SQL_DB_PVT_IP']}/data"
-    )
-    # sql_addr = "sqlite:///db.sqlite"
+    if sql_addr_type == SQLBackendTypes.shortname:
+        sql_addr = (
+            f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
+            f"/data?unix_socket=/cloudsql/egg-counting:us-east1:egg-counting-data"
+        )
+    elif sql_addr_type == SQLBackendTypes.ip_addr:
+        sql_addr = (
+            f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
+            f"{os.environ['GOOGLE_SQL_DB_PVT_IP']}/data"
+        )
+    elif sql_addr_type == SQLBackendTypes.sqlite:
+        sql_addr = "sqlite:///db.sqlite"
     flask_session_type = "sqlalchemy"
 elif backend_type == BackendTypes.local:
     sql_addr = "sqlite:///db.sqlite"
