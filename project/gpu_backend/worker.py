@@ -13,8 +13,10 @@ import time
 import timeit
 import torch
 
+from project import app, create_app
 from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
+from project.lib.datamanagement.models import EggLayingImage
 from project.lib.image.circleFinder import ARENA_IMG_RESIZE_FACTOR
 from project.lib.image.drawing import get_interpolated_points
 from project.lib.image.sub_image_helper import SubImageHelper
@@ -58,6 +60,8 @@ class AuthHelper:
 
 
 load_dotenv()
+create_app()
+app.app_context().push()
 server_uri = os.environ["MAIN_SERVER_URI"]
 key_holder = AuthHelper(os.environ["PRIVATE_KEY_PATH"])
 reconnect_attempt_delay = int(os.environ["GPU_WORKER_RECONNECT_ATTEMPT_DELAY"])
@@ -83,8 +87,8 @@ def request_work():
         try:
             task = r.json()
         except json.decoder.JSONDecodeError:
-            print('Failed to decode the egg-counting server response')
-            print('Raw response:', r.text)
+            print("Failed to decode the egg-counting server response")
+            print("Raw response:", r.text)
             return
         if len(task.keys()) == 0:
             print("no work found")
@@ -161,14 +165,16 @@ def perform_task(attempt_ct=0):
         print("num attempts:", attempt_ct + 1)
         decode_start_t = timeit.default_timer()
 
+        img_entity = EggLayingImage.query.filter_by(
+            session_id=task["room"], basename=os.path.basename(task["img_path"])
+        ).first()
+        if not img_entity:
+            print("Could't find image specified in task")
+            return
         img = cv2.cvtColor(
             cv2.imdecode(
                 np.asarray(
-                    bytearray(
-                        requests.get(
-                            f"{server_uri}/{task['img_path']}", stream=True
-                        ).raw.read()
-                    ),
+                    bytearray(img_entity.image),
                     dtype="uint8",
                 ),
                 cv2.IMREAD_COLOR,

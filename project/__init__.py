@@ -21,7 +21,7 @@ if backend_type == BackendTypes.gcp:
     if sql_addr_type == SQLBackendTypes.shortname:
         sql_addr = (
             f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
-            f"/data?unix_socket=/cloudsql/egg-counting:us-east1:egg-counting-data"
+            f"/data?unix_socket=/cloudsql/{os.environ['GOOGLE_SQL_CONN_NAME']}"
         )
     elif sql_addr_type == SQLBackendTypes.ip_addr:
         sql_addr = (
@@ -50,7 +50,7 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "tif"}
 
 
 def create_app():
-    warnings.filterwarnings("default", category=DeprecationWarning)
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
     warnings.filterwarnings(
         "default",
         message="OpenBLAS WARNING - could not determine the L2 cache size on"
