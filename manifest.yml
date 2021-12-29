@@ -1,7 +1,7 @@
 ---
 applications:
 - name: egg-counting
-  memory: 1G
+  memory: 1.5G
   command: python -m project.server --host 0.0.0.0 --port 8080
   env:
     FLASK_ENV: production

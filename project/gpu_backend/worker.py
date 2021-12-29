@@ -172,21 +172,11 @@ def perform_task(attempt_ct=0):
                     session_id=task["room"], basename=os.path.basename(task["img_path"])
                 ).first()
             num_tries += 1
-            # when to issue the sleep? if we didn't find the image
-            # and there are no more tries left.
-            print("img entity:", img_entity)
             if not img_entity and num_tries < MAX_SQL_QUERIES_PER_IMG:
-                # prevent the sleep
                 print("Couldn't find image; retrying...")
                 print("amount for sleep:", num_tries * 2)
                 time.sleep(num_tries * 2)
 
-        with app.app_context():
-            all_imgs = EggLayingImage.query.all()
-        print("all imgs in DB:")
-        for img in all_imgs:
-            print(img.basename)
-            print(img.session_id)
         if not img_entity:
             print("Couldn't find image specified in task")
             print(
@@ -195,7 +185,6 @@ def perform_task(attempt_ct=0):
                 "and basename",
                 os.path.basename(task["img_path"]),
             )
-            input()
             return
         img = cv2.cvtColor(
             cv2.imdecode(
