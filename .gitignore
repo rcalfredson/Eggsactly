@@ -154,3 +154,6 @@ project/auth/secrets/*
 
 # large object-detection models
 splinedist_unet_full_400epochs_NZXT-U_2021-08-12 08-39-05.733572.pth
+
+# transient files
+requirements.txt.bak

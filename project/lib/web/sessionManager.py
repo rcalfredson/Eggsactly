@@ -135,7 +135,7 @@ class SessionManager:
                 )
                 raise ImageAnalysisException
             self.chamberTypes[img_path] = self.cfs[img_path].ct
-            self.subImgs, self.bboxes[img_path] = self.cfs[img_path].getSubImages(
+            self.bboxes[img_path] = self.cfs[img_path].getSubImageBBoxes(
                 rotatedImg, circles, avgDists, numRowsCols
             )
             self.bboxes[img_path] = [

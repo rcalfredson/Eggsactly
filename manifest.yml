@@ -2,3 +2,10 @@
 applications:
 - name: egg-counting
   memory: 1G
+  command: python -m project.server --host 0.0.0.0 --port 8080
+  env:
+    FLASK_ENV: production
+    GPU_WORKER_TIMEOUT: 10
+    NUM_GPU_WORKERS: 1
+    EGG_COUNTING_BACKEND_TYPE: gcp
+    SQL_ADDR_TYPE: ip_addr

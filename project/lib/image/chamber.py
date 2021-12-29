@@ -82,8 +82,8 @@ class OptoChamber(Chamber):
         self.dist_along_agarose = 86
         self.agarose_width = 3.5
 
-    def getSortedSubImgs(self, subImgs, bboxes):
-        sortedSubImgs, sortedBBoxes = [], []
+    def getSortedBBoxes(self, bboxes):
+        sortedBBoxes = []
         proposedIndices = concat(
             [
                 [i + 2 * self.numRows * j for j in range(self.numCols)]
@@ -91,9 +91,8 @@ class OptoChamber(Chamber):
             ]
         )
         for i in proposedIndices:
-            sortedSubImgs.append(subImgs[i])
             sortedBBoxes.append(bboxes[i])
-        return sortedSubImgs, sortedBBoxes
+        return sortedBBoxes
 
 
 class SixByFourChamber(Chamber):

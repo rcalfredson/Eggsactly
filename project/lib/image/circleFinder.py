@@ -154,7 +154,7 @@ class CircleFinder:
         img: np.ndarray,
         imgName: str,
         allowSkew: bool = False,
-        model = default_model,
+        model=default_model,
         predict_resize_factor: float = ARENA_IMG_RESIZE_FACTOR,
     ):
         """Create new CircleFinder instance.
@@ -244,7 +244,7 @@ class CircleFinder:
     def getLargeChamberBBoxesAndImages(self, centers, pxToMM, img=None):
         if type(img) == type(None):
             img = self.img
-        bboxes, subImgs = [], []
+        bboxes = []
         img = cv2.medianBlur(img, 5)
         img_for_circles = cv2.resize(
             cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (0, 0), fx=0.25, fy=0.25
@@ -289,10 +289,9 @@ class CircleFinder:
                         -halfRealCircleD,
                         0,
                     )
-                    subImgs = CircleFinder.sampleSubImageBasedOnBBox(
-                        subImgs, img, bboxes, acrossCircleD, 0
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(
+                        bboxes, acrossCircleD, 0
                     )
-                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
                 else:
                     bboxes = CircleFinder.addUpperLeftCornerToBBox(
                         bboxes,
@@ -301,11 +300,10 @@ class CircleFinder:
                         deltas[position]["y"],
                         rotation_angle,
                     )
-                    subImgs = CircleFinder.sampleSubImageBasedOnBBox(
-                        subImgs, img, bboxes, acrossCircleD, rotation_angle
+                    bboxes = CircleFinder.addWidthAndHeightToBBox(
+                        bboxes, acrossCircleD, rotation_angle
                     )
-                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
-        return bboxes, subImgs
+        return bboxes
 
     def getRelativePositionsOfAgaroseWells(self, i, center):
         leftmost, rightmost, uppermost, lowermost = None, None, None, None
@@ -385,30 +383,19 @@ class CircleFinder:
         return bboxes
 
     @staticmethod
-    def sampleSubImageBasedOnBBox(subImgs, img, bboxes, delta, rotation_angle):
-        subImgs.append(
-            img[
-                slice(
-                    round(bboxes[-1][1]),
-                    round(
-                        bboxes[-1][1]
-                        + delta * (math.cos(rotation_angle) + math.sin(rotation_angle))
-                    ),
-                ),
-                slice(
-                    round(bboxes[-1][0]),
-                    round(
-                        bboxes[-1][0]
-                        + delta * (-math.sin(rotation_angle) + math.cos(rotation_angle))
-                    ),
-                ),
-            ]
-        )
-        return subImgs
-
-    @staticmethod
-    def addWidthAndHeightToBBox(bboxes, subImgs):
-        bboxes[-1] += reversed(subImgs[-1].shape[0:2])
+    def addWidthAndHeightToBBox(bboxes, delta, rotation_angle):
+        bboxes[-1] += [
+            round(
+                bboxes[-1][0]
+                + delta * (-math.sin(rotation_angle) + math.cos(rotation_angle))
+            )
+            - round(bboxes[-1][0]),
+            round(
+                bboxes[-1][1]
+                + delta * (math.cos(rotation_angle) + math.sin(rotation_angle))
+            )
+            - round(bboxes[-1][1]),
+        ]
         return bboxes
 
     @staticmethod
@@ -423,7 +410,7 @@ class CircleFinder:
             )
         return sub_imgs
 
-    def getSubImages(self, img, centers, avgDists, numRowsCols):
+    def getSubImageBBoxes(self, img, centers, avgDists, numRowsCols):
         """Determine sub-images for the image based on the chamber type and the
         locations of detected arena wells.
 
@@ -436,20 +423,14 @@ class CircleFinder:
           - numRowsCols: tuple list of the number of rows and columns of wells.
 
         Returns:
-          - sortedSubImgs: list of the sub-images in Numpy array form (CV2-ready)
           - sortedBBoxes: list of the bounding boxes for each sub-image
         """
         subImgs, bboxes = [], []
 
-        def addWidthAndHeightToBBox():
-            bboxes[-1] += reversed(subImgs[-1].shape[0:2])
-
         self.getPixelToMMRatio()
         pxToMM = self.pxToMM
         if self.ct is CT.large.name:
-            bboxes, subImgs = self.getLargeChamberBBoxesAndImages(
-                centers, pxToMM, img=img
-            )
+            bboxes = self.getLargeChamberBBoxesAndImages(centers, pxToMM, img=img)
         else:
             for center in centers:
                 if self.ct is CT.opto.name:
@@ -459,26 +440,20 @@ class CircleFinder:
                             max(center[1] - int(8.5 * pxToMM), 0),
                         ]
                     )
-                    subImgs.append(
-                        img[
-                            bboxes[-1][1] : center[1] - int(4 * pxToMM),
-                            bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
-                        ]
-                    )
-                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                    bboxes[-1] += [
+                        center[0] + int(0.5 * avgDists[0]) - bboxes[-1][0],
+                        center[1] - int(4 * pxToMM) - bboxes[-1][1],
+                    ]
                     bboxes.append(
                         [
                             max(center[0] - int(0.5 * avgDists[0]), 0),
                             max(center[1] + int(4 * pxToMM), 0),
                         ]
                     )
-                    subImgs.append(
-                        img[
-                            bboxes[-1][1] : center[1] + int(8.5 * pxToMM),
-                            bboxes[-1][0] : center[0] + int(0.5 * avgDists[0]),
-                        ]
-                    )
-                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                    bboxes[-1] += [
+                        center[0] + int(0.5 * avgDists[0]) - bboxes[-1][0],
+                        center[1] + int(8.5 * pxToMM) - bboxes[-1][1],
+                    ]
                 else:
                     bboxes.append(
                         [
@@ -486,43 +461,33 @@ class CircleFinder:
                             max(center[1] - int(0.5 * avgDists[1]), 0),
                         ]
                     )
-                    subImgs.append(
-                        img[
-                            bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
-                            bboxes[-1][0] : center[0] - int(4 * pxToMM),
-                        ]
-                    )
-                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                    bboxes[-1] += [
+                        center[0] - int(4 * pxToMM) - bboxes[-1][0],
+                        center[1] + int(0.5 * avgDists[1]) - bboxes[-1][1],
+                    ]
                     bboxes.append(
                         [
                             max(center[0] + int(4 * pxToMM), 0),
                             max(center[1] - int(0.5 * avgDists[1]), 0),
                         ]
                     )
-                    subImgs.append(
-                        img[
-                            bboxes[-1][1] : center[1] + int(0.5 * avgDists[1]),
-                            bboxes[-1][0] : center[0] + int(8.5 * pxToMM),
-                        ]
-                    )
-                    bboxes = CircleFinder.addWidthAndHeightToBBox(bboxes, subImgs)
+                    bboxes[-1] += [
+                        center[0] + int(8.5 * pxToMM) - bboxes[-1][0],
+                        center[1] + int(0.5 * avgDists[1]) - bboxes[-1][1],
+                    ]
         if self.ct is CT.opto.name:
-            return CT.opto.value().getSortedSubImgs(subImgs, bboxes)
-        sortedSubImgs = []
+            return CT.opto.value().getSortedBBoxes(bboxes)
         sortedBBoxes = []
         for j in range(numRowsCols[0]):
             for i in range(numRowsCols[1]):
                 offset = 4 if self.ct is CT.large.name else 2
                 idx = numRowsCols[0] * offset * i + offset * j
-                sortedSubImgs.append(subImgs[idx])
-                sortedSubImgs.append(subImgs[idx + 1])
                 sortedBBoxes.append(bboxes[idx])
                 sortedBBoxes.append(bboxes[idx + 1])
                 if self.ct is CT.large.name:
                     for k in range(2, 4):
                         sortedBBoxes.append(bboxes[idx + k])
-                        sortedSubImgs.append(subImgs[idx + k])
-        return sortedSubImgs, sortedBBoxes
+        return sortedBBoxes
 
     def processDetections(self):
         """
