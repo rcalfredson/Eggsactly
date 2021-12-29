@@ -4,7 +4,6 @@ from flask_login import current_user, login_user, UserMixin
 import oauthlib
 import os
 import sqlalchemy
-import uuid
 from werkzeug.security import generate_password_hash
 
 from ... import app, db
@@ -42,10 +41,7 @@ class SocketIOUser(db.Model):
 
 class ErrorReport(db.Model):
     id = db.Column(
-        db.String(36),
-        primary_key=True,
-        unique=True,
-        default=lambda: str(uuid.uuid1()),
+        db.Integer, primary_key=True
     )
     image = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=False)
     outline_image = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=False)
@@ -61,10 +57,7 @@ class ErrorReport(db.Model):
 
 class EggRegionTemplate(db.Model):
     id = db.Column(
-        db.String(36),
-        primary_key=True,
-        unique=True,
-        default=lambda: str(uuid.uuid1()),
+        db.Integer, primary_key=True
     )
     data = db.Column(db.JSON, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
@@ -76,10 +69,7 @@ class EggRegionTemplate(db.Model):
 
 class EggLayingImage(db.Model):
     id = db.Column(
-        db.String(36),
-        primary_key=True,
-        unique=True,
-        default=lambda: str(uuid.uuid1()),
+        db.Integer, primary_key=True
     )
     session_id = db.Column(
         db.String(24), db.ForeignKey(SocketIOUser.id), nullable=False

@@ -43,9 +43,11 @@ if opts.session_id or opts.basename:
     entities = EggLayingImage.query.filter_by(**kwargs)
 else:
     entities = model_type.query.all()
+print('Number of entities:', len(entities))
 for ent in entities:
     if model_type == EggLayingImage:
-        print("image data:", ent.image)
+        print("Image ID:", ent.id)
+        print("Image name:", ent.basename)
     elif model_type == EggRegionTemplate:
         print("Template ID:", ent.id)
         print("Template name:", ent.name)
