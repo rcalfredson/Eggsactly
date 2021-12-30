@@ -40,9 +40,7 @@ class SocketIOUser(db.Model):
 
 
 class ErrorReport(db.Model):
-    id = db.Column(
-        db.Integer, primary_key=True
-    )
+    id = db.Column(db.Integer, primary_key=True)
     image = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=False)
     outline_image = db.Column(db.LargeBinary(length=LONGBLOG_LEN), nullable=False)
     img_path = db.Column(db.String(1000), nullable=False)
@@ -56,9 +54,7 @@ class ErrorReport(db.Model):
 
 
 class EggRegionTemplate(db.Model):
-    id = db.Column(
-        db.Integer, primary_key=True
-    )
+    id = db.Column(db.Integer, primary_key=True)
     data = db.Column(db.JSON, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     name = db.Column(db.String(1000), nullable=False)
@@ -68,9 +64,7 @@ class EggRegionTemplate(db.Model):
 
 
 class EggLayingImage(db.Model):
-    id = db.Column(
-        db.Integer, primary_key=True
-    )
+    id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(
         db.String(24), db.ForeignKey(SocketIOUser.id), nullable=False
     )
