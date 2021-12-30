@@ -8,8 +8,12 @@ import os
 from scipy.stats import binned_statistic
 from sklearn.linear_model import LinearRegression
 import threading
+from typing import Union
 
+from project import app
+from project.lib.datamanagement.models import EggLayingImage
 from project.lib.image.chamber import CT
+from project.lib.image.converter import byte_to_bgr
 from project.lib.util import distance, trueRegions
 
 dirname = os.path.dirname(__file__)
@@ -151,8 +155,9 @@ class CircleFinder:
 
     def __init__(
         self,
-        img: np.ndarray,
-        imgName: str,
+        img_name: str,
+        img_shape: Union[tuple, list],
+        room: str,
         allowSkew: bool = False,
         model=default_model,
         predict_resize_factor: float = ARENA_IMG_RESIZE_FACTOR,
@@ -160,8 +165,9 @@ class CircleFinder:
         """Create new CircleFinder instance.
 
         Arguments:
-          - img: the image to analyze, in Numpy array form
-          - imgName: the basename of the image
+          - img_name: the basename of the image
+          - img_shape: tuple of (image_height, image_width)
+          - room: ID of the user session (used for download image from DB if needed)
           - allowSkew: boolean which, if set to its default value of False, registers
                        an error if skew is detected in the image.
           - model: landmark-detection model to use. Currently, only SplineDist-based
@@ -171,8 +177,9 @@ class CircleFinder:
           - predict_resize_factor: factor by which the image is scaled before being
                                    inputted to the model.
         """
-        self.img = img
-        self.imgName = imgName
+        self.img_name = img_name
+        self.img_shape = img_shape
+        self.room = room
         self.skewed = None
         self.allowSkew = allowSkew
         self.model = model
@@ -241,9 +248,15 @@ class CircleFinder:
             el for sub_l in list(self.well_to_well_slopes.values()) for el in sub_l
         ]
 
-    def getLargeChamberBBoxesAndImages(self, centers, pxToMM, img=None):
-        if type(img) == type(None):
-            img = self.img
+    def getLargeChamberBBoxesAndImages(self, centers, pxToMM):
+        with app.app_context():
+            img = byte_to_bgr(
+                EggLayingImage.query.filter_by(
+                    session_id=self.room, basename=self.img_name
+                )
+                .first()
+                .image
+            )
         bboxes = []
         img = cv2.medianBlur(img, 5)
         img_for_circles = cv2.resize(
@@ -410,7 +423,7 @@ class CircleFinder:
             )
         return sub_imgs
 
-    def getSubImageBBoxes(self, img, centers, avgDists, numRowsCols):
+    def getSubImageBBoxes(self, centers, avgDists, numRowsCols):
         """Determine sub-images for the image based on the chamber type and the
         locations of detected arena wells.
 
@@ -425,12 +438,12 @@ class CircleFinder:
         Returns:
           - sortedBBoxes: list of the bounding boxes for each sub-image
         """
-        subImgs, bboxes = [], []
+        bboxes = []
 
         self.getPixelToMMRatio()
         pxToMM = self.pxToMM
         if self.ct is CT.large.name:
-            bboxes = self.getLargeChamberBBoxesAndImages(centers, pxToMM, img=img)
+            bboxes = self.getLargeChamberBBoxesAndImages(centers, pxToMM)
         else:
             for center in centers:
                 if self.ct is CT.opto.name:
@@ -532,10 +545,9 @@ class CircleFinder:
             )
 
         wells = list(itertools.product(self.wellCoords[0], self.wellCoords[1]))
-        self.img = np.array(self.img)
         self.numRowsCols = [len(self.wellCoords[i]) for i in range(1, -1, -1)]
         self.ct = getChamberTypeByRowsAndCols(self.numRowsCols)
-        diagDist = distance((0, 0), self.imageResized.shape[0:2])
+        diagDist = distance((0, 0), self.img_shape_resized[:2])
         for centroid in list(self.centroids):
             closestWell = min(wells, key=lambda xy: distance(xy, centroid))
             if distance(closestWell, centroid) > 0.02 * diagDist:
@@ -568,15 +580,15 @@ class CircleFinder:
             - distance(true_corners["bl"], true_corners["tl"])
         )
         if (
-            height_skew / self.imageResized.shape[0] > 0.01
-            or width_skew / self.imageResized.shape[1] > 0.01
+            height_skew / self.img_shape_resized[0] > 0.01
+            or width_skew / self.img_shape_resized[1] > 0.01
         ):
             self.skewed = True
         else:
             self.skewed = False
         if self.skewed and not self.allowSkew:
             print(
-                "Warning: skew detected in image %s. To analyze " % self.imgName
+                "Warning: skew detected in image %s. To analyze " % self.img_name
                 + "this image, use flag --allowSkew."
             )
             currentThread = threading.currentThread()
@@ -600,6 +612,11 @@ class CircleFinder:
                         dict(row=self.rowRegressions[j], col=self.colRegressions[i])
                     )
 
+    def resize_image_shape(self):
+        self.img_shape_resized = [
+            dim * self.predict_resize_factor for dim in self.img_shape
+        ]
+
     def resize_image(self):
         self.imageResized = cv2.resize(
             self.img,
@@ -611,7 +628,7 @@ class CircleFinder:
         image = normalize(self.imageResized, 1, 99.8, axis=(0, 1))
         self.imageResized = image.astype(np.float32)
 
-    def findCircles(self, debug=False, predictions=None):
+    def findCircles(self, debug=False, predictions=None, include_img=False):
         """Find the location of arena wells for the image in attribute `self.img`.
 
         Arguments:
@@ -631,7 +648,10 @@ class CircleFinder:
                         columns with the border of the image.
           - rotationAngle: angle in radians by which the image was rotated.
         """
-        self.resize_image()
+        self.resize_image_shape()
+        if include_img:
+            raise NotImplementedError()
+            self.resize_image()
         if predictions is None:
             _, predictions = self.model.predict_instances(self.imageResized)
         self.centroids = predictions["points"]
@@ -647,18 +667,20 @@ class CircleFinder:
                     COL_G,
                     cv2.MARKER_TRIANGLE_UP,
                 )
-            cv2.imshow(f"debug/{self.imgName}", imgCopy)
+            cv2.imshow(f"debug/{self.img_name}", imgCopy)
             cv2.waitKey(0)
         self.processDetections()
         rotationAngle = 0
-        rotatedImg = self.img
-        image_origin = tuple(np.array(self.imageResized.shape[1::-1]) / 2)
+        if include_img:
+            rotatedImg = self.img
+        image_origin = tuple(np.array(self.img_shape_resized[1::-1]) / 2)
         if self.ct is not CT.large.name:
             rotationAngle = 0.5 * (
                 math.atan(np.mean([el["slope"] for el in self.rowRegressions]))
                 - math.atan(np.mean([1 / el["slope"] for el in self.colRegressions]))
             )
-            rotatedImg = rotate_image(self.img, rotationAngle)
+            if include_img:
+                rotatedImg = rotate_image(self.img, rotationAngle)
             for i, centroid in enumerate(self.centroids):
                 self.centroids[i] = rotate_around_point_highperf(
                     centroid, rotationAngle, image_origin
@@ -677,14 +699,15 @@ class CircleFinder:
         wells = wells.reshape(self.numRowsCols[0] * self.numRowsCols[1], 2).astype(int)
         self.wells = wells
         self.avgDists = [np.mean(np.diff(self.wellCoords[i])) for i in range(2)]
-        self.rotatedImg, self.rotationAngle = rotatedImg, rotationAngle
-        return (
+        self.rotationAngle = rotationAngle
+
+        return [
             wells,
             self.avgDists,
             self.numRowsCols,
-            self.rotatedImg,
             self.rotationAngle,
-        )
+            rotatedImg if include_img else None,
+        ]
 
 
 def rotate_image(image, angle):

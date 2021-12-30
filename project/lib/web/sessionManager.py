@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import os
 import time
+import traceback
 import warnings
 
 from project import backend_type, db
@@ -104,9 +105,12 @@ class SessionManager:
         self.predictions[imgPath] = [err_type]
         time.sleep(2)
 
-    def enqueue_arena_detection_task(self, img, img_path):
+    def enqueue_arena_detection_task(self, img_path):
         self.cfs[img_path] = CircleFinder(
-            img, os.path.basename(img_path), allowSkew=True
+            os.path.basename(img_path),
+            self.img_shapes[img_path],
+            self.room,
+            allowSkew=True,
         )
         taskgroup = self.gpu_manager.add_task_group(
             self.room, n_tasks=1, task_type=GPUTaskTypes.arena
@@ -122,7 +126,7 @@ class SessionManager:
     def segment_image_via_object_detection(self, img_path, predictions):
         imgBasename = os.path.basename(img_path)
         try:
-            (circles, avgDists, numRowsCols, rotatedImg, rotationAngle) = self.cfs[
+            (circles, avgDists, numRowsCols, rotationAngle, _) = self.cfs[
                 img_path
             ].findCircles(debug=False, predictions=predictions)
             if self.cfs[img_path].skewed:
@@ -136,7 +140,7 @@ class SessionManager:
                 raise ImageAnalysisException
             self.chamberTypes[img_path] = self.cfs[img_path].ct
             self.bboxes[img_path] = self.cfs[img_path].getSubImageBBoxes(
-                rotatedImg, circles, avgDists, numRowsCols
+                circles, avgDists, numRowsCols
             )
             self.bboxes[img_path] = [
                 [round(el) for el in bbox] for bbox in self.bboxes[img_path]
@@ -157,7 +161,8 @@ class SessionManager:
                 },
             )
         except Exception as exc:
-            print("exception while finding circles:", type(exc), exc)
+            print("exception while finding circles:")
+            traceback.print_exc()
             if self.is_CUDA_mem_error(exc):
                 raise CUDAMemoryException
             else:
@@ -191,7 +196,7 @@ class SessionManager:
         )
         img = self.open_image(img_path)
         self.img_shapes[img_path] = img.shape
-        self.enqueue_arena_detection_task(img, img_path)
+        self.enqueue_arena_detection_task(img_path)
 
     def segment_img_and_count_eggs(self, img_path, alignment_data, index, n_files):
         if int(index) == 0:

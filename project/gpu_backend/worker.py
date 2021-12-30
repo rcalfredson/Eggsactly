@@ -18,6 +18,7 @@ from project.detectors.splinedist.config import Config
 from project.detectors.splinedist.models.model2d import SplineDist2D
 from project.lib.datamanagement.models import EggLayingImage
 from project.lib.image.circleFinder import ARENA_IMG_RESIZE_FACTOR
+from project.lib.image.converter import byte_to_bgr
 from project.lib.image.drawing import get_interpolated_points
 from project.lib.image.sub_image_helper import SubImageHelper
 from project.lib.os.pauser import PythonPauser
@@ -186,16 +187,7 @@ def perform_task(attempt_ct=0):
                 os.path.basename(task["img_path"]),
             )
             return
-        img = cv2.cvtColor(
-            cv2.imdecode(
-                np.asarray(
-                    bytearray(img_entity.image),
-                    dtype="uint8",
-                ),
-                cv2.IMREAD_COLOR,
-            ),
-            cv2.COLOR_RGB2BGR,
-        )
+        img = byte_to_bgr(img_entity.image)
         print("time spent decoding:", timeit.default_timer() - decode_start_t)
         resize_norm_start_t = timeit.default_timer()
         if task_type == GPUTaskTypes.arena:
