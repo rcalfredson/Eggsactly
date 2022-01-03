@@ -108,13 +108,22 @@ def getChamberTypeByRowsAndCols(numRowsCols):
 
     Arguments:
       - numRowsCols: list of the form [numRows, numCols]
+
+    Output:
+      - ct: Chamber class for the given type
+      - inverted: boolean indicating whether rows and columns were flipped
+                  to find the chamber type.
     """
     for ct in CT:
         if (
             numRowsCols[0] == ct.value().numRows
             and numRowsCols[1] == ct.value().numCols
+        ) or (
+            numRowsCols[0] == ct.value().numCols
+            and numRowsCols[1] == ct.value().numRows
         ):
-            return ct.name
+            return ct.name, numRowsCols[0] == ct.value().numCols
+    return None, False
 
 
 def subImagesFromGridPoints(img, xs, ys):
@@ -189,8 +198,8 @@ class CircleFinder:
         """Calculate the image's ratio of pixels to mm, averaged between the result
         for rows and for columns."""
         self.pxToMM = 0.5 * (
-            self.avgDists[1] / CT[self.ct].value().rowDist
-            + self.avgDists[0] / CT[self.ct].value().colDist
+            self.avgDists[0 if self.inverted else 1] / CT[self.ct].value().rowDist
+            + self.avgDists[1 if self.inverted else 0] / CT[self.ct].value().colDist
         )
 
     def findAgaroseWells(self, img, centers, pxToMM, cannyParam1=40, cannyParam2=35):
@@ -439,14 +448,15 @@ class CircleFinder:
           - sortedBBoxes: list of the bounding boxes for each sub-image
         """
         bboxes = []
-
         self.getPixelToMMRatio()
         pxToMM = self.pxToMM
         if self.ct is CT.large.name:
             bboxes = self.getLargeChamberBBoxesAndImages(centers, pxToMM)
         else:
             for center in centers:
-                if self.ct is CT.opto.name:
+                if (self.ct is CT.opto.name and not self.inverted) or (
+                    self.ct is not CT.opto.name and self.inverted
+                ):
                     bboxes.append(
                         [
                             max(center[0] - int(0.5 * avgDists[0]), 0),
@@ -467,7 +477,9 @@ class CircleFinder:
                         center[0] + int(0.5 * avgDists[0]) - bboxes[-1][0],
                         center[1] + int(8.5 * pxToMM) - bboxes[-1][1],
                     ]
-                else:
+                elif (self.ct is CT.opto.name and self.inverted) or (
+                    self.ct is not CT.opto.name and not self.inverted
+                ):
                     bboxes.append(
                         [
                             max(center[0] - int(8.5 * pxToMM), 0),
@@ -491,10 +503,10 @@ class CircleFinder:
         if self.ct is CT.opto.name:
             return CT.opto.value().getSortedBBoxes(bboxes)
         sortedBBoxes = []
-        for j in range(numRowsCols[0]):
-            for i in range(numRowsCols[1]):
+        for j in range(numRowsCols[1 if self.inverted else 0]):
+            for i in range(numRowsCols[0 if self.inverted else 1]):
                 offset = 4 if self.ct is CT.large.name else 2
-                idx = numRowsCols[0] * offset * i + offset * j
+                idx = numRowsCols[1 if self.inverted else 0] * offset * i + offset * j
                 sortedBBoxes.append(bboxes[idx])
                 sortedBBoxes.append(bboxes[idx + 1])
                 if self.ct is CT.large.name:
@@ -546,7 +558,7 @@ class CircleFinder:
 
         wells = list(itertools.product(self.wellCoords[0], self.wellCoords[1]))
         self.numRowsCols = [len(self.wellCoords[i]) for i in range(1, -1, -1)]
-        self.ct = getChamberTypeByRowsAndCols(self.numRowsCols)
+        self.ct, self.inverted = getChamberTypeByRowsAndCols(self.numRowsCols)
         diagDist = distance((0, 0), self.img_shape_resized[:2])
         for centroid in list(self.centroids):
             closestWell = min(wells, key=lambda xy: distance(xy, centroid))
@@ -696,9 +708,11 @@ class CircleFinder:
             self.wellCoords[i] = np.round(
                 np.divide(self.wellCoords[i], self.predict_resize_factor)
             ).astype(int)
+        self.avgDists = [np.mean(np.diff(self.wellCoords[i])) for i in range(2)]
+        if self.inverted:
+            wells = np.transpose(wells, (1, 0, 2))
         wells = wells.reshape(self.numRowsCols[0] * self.numRowsCols[1], 2).astype(int)
         self.wells = wells
-        self.avgDists = [np.mean(np.diff(self.wellCoords[i])) for i in range(2)]
         self.rotationAngle = rotationAngle
 
         return [

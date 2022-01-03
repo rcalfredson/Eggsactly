@@ -52,6 +52,7 @@ class SessionManager:
         self.predictions = {}
         self.basenames = {}
         self.img_shapes = {}
+        self.inverted = {}
         self.paths_to_indices = {}
         self.annotations = {}
         self.bboxes = {}
@@ -72,6 +73,7 @@ class SessionManager:
         self.alignment_data = {}
         self.basenames = {}
         self.img_shapes = {}
+        self.inverted = {}
         self.paths_to_indices = {}
 
     def emit_to_room(self, evt_name, data):
@@ -169,6 +171,7 @@ class SessionManager:
                 self.report_counting_error(img_path, ImageAnalysisException)
         except RuntimeWarning:
             self.report_counting_error(img_path, ImageAnalysisException)
+        self.inverted[img_path] = self.cfs[img_path].inverted
         del self.cfs[img_path]
 
     @staticmethod
@@ -267,8 +270,12 @@ class SessionManager:
                             bboxes[i][1] + 0.45 * bboxes[i][3],
                         )
                 elif ct == CT.opto.name:
-                    x = bboxes[i][0] + 0.5 * bboxes[i][2]
-                    y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
+                    if self.inverted[imgPath]:
+                        x = bboxes[i][0] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][2]
+                        y = bboxes[i][1] + 0.5 * bboxes[i][3]
+                    else:
+                        x = bboxes[i][0] + 0.5 * bboxes[i][2]
+                        y = bboxes[i][1] + (1.4 if i % 10 < 5 else -0.1) * bboxes[i][3]
                 else:  # position the label inside the upper left corner
                     x = bboxes[i][0]
                     y = bboxes[i][1]
@@ -428,7 +435,7 @@ class SessionManager:
                     writer.writerow(row_entries)
             else:
                 CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
-                    [updated_counts], 0, writer
+                    [updated_counts], 0, writer, self.inverted[imgPath]
                 )
             writer.writerow([])
         self.emit_to_room(

@@ -1,5 +1,6 @@
 from abc import abstractmethod
 import enum
+import numpy as np
 from operator import itemgetter
 
 from project.lib.util import concat
@@ -17,7 +18,7 @@ class Chamber:
         self.rowDist, self.colDist = 0, 0
 
     @abstractmethod
-    def writeLineFormatted(self, eggCounts, i, writer):
+    def writeLineFormatted(self, eggCounts, i, writer, inverted=False):
         """Write egg counts to file for an entire experimental image (i.e., a
         collection of egg-laying regions)
 
@@ -26,21 +27,23 @@ class Chamber:
           - i: index of the image for which to write counts
           - writer: csv.writer instance for the open file.
         """
-        for j in range(
-            self.numRows
-            * (
-                self.numRepeatedRowsPerCol
-                if hasattr(self, "numRepeatedRowsPerCol")
-                else 1
+        n_rows = self.numRows * (
+            self.numRepeatedRowsPerCol if hasattr(self, "numRepeatedRowsPerCol") else 1
+        )
+        n_cols = self.numCols * (
+            self.numRepeatedColsPerRow if hasattr(self, "numRepeatedColsPerRow") else 2
+        )
+        if inverted:
+            inverted_counts = (
+                np.array(eggCounts[i], dtype=object).reshape((n_rows, n_cols)).T
             )
-        ):
-            colCt = self.numCols * (
-                self.numRepeatedColsPerRow
-                if hasattr(self, "numRepeatedColsPerRow")
-                else 2
-            )
-            row = eggCounts[i][slice(j * colCt, j * colCt + colCt)]
-            writer.writerow(row)
+            for row in inverted_counts:
+                writer.writerow(row.tolist())
+        else:
+            for j in range(n_rows):
+
+                row = eggCounts[i][slice(j * n_cols, j * n_cols + n_cols)]
+                writer.writerow(row)
 
     @staticmethod
     def readCounts(reader, chamberTypes):
