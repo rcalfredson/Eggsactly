@@ -9,7 +9,7 @@ import zipfile
 
 from project import app, backend_type, db
 from project.lib.common import zipdir
-from project.lib.datamanagement.models import EggRegionTemplate
+from project.lib.datamanagement.models import EggRegionTemplate, SocketIOUser
 from project.lib.datamanagement.socket_io_auth import authenticated_only
 from project.lib.web.backend_types import BackendTypes
 from project.lib.web.sessionManager import SessionManager
@@ -32,6 +32,13 @@ def setup_event_handlers():
             app.socketIO, request.sid, app.gpu_manager
         )
         app.socketIO.emit("sid-from-server", {"sid": request.sid}, room=request.sid)
+
+    @app.socketIO.on("disconnect")
+    def disconnected():
+        socket_session = SocketIOUser.query.filter_by(id=request.sid).first()
+        if socket_session:
+            db.session.delete(socket_session)
+        db.session.commit()
 
     @app.socketIO.on("save-custom-mask")
     @authenticated_only

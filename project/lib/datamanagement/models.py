@@ -15,7 +15,7 @@ def delete_expired_rows(cls):
     # adapted from code at this source:
     # https://silvaneves.org/deleting-old-items-in-sqlalchemy.html
 
-    expiration_seconds = 20
+    expiration_seconds = 60 * 60
     limit = datetime.utcnow() - timedelta(seconds=expiration_seconds)
     query_results = cls.query.filter(cls.timestamp <= limit)
     for item in query_results:
