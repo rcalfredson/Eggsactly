@@ -12,10 +12,11 @@ from project.lib.util import distance
 
 
 class NodeBasedSegmenter:
-    def __init__(self, image, alignment_data, chamber_type: str):
+    def __init__(self, image, alignment_data, chamber_type: str, inverted=False):
         self.image = image
         self.alignment_data = alignment_data
         self.chamber_type = CT[chamber_type]
+        self.inverted = inverted
         self.line_types = [f"{tp}_line" for tp in ("horiz", "vert")]
         self.lines = [
             {
@@ -104,10 +105,10 @@ class NodeBasedSegmenter:
 
     def calc_px_to_mm_ratio(self):
         if self.chamber_type == CT.opto:
-            line_to_measure = self.horiz_line
+            line_to_measure = self.vert_line if self.inverted else self.horiz_line
             ideal_dist = self.chamber_type.value().dist_along_agarose
         elif self.chamber_type in (CT.sixByFour, CT.fiveByThree):
-            line_to_measure = self.vert_line
+            line_to_measure = self.horiz_line if self.inverted else self.vert_line
             ideal_dist = self.chamber_type.value().dist_across_all_arenas
         elif self.chamber_type == CT.large:
             line_to_measure = self.vert_line
@@ -152,8 +153,8 @@ class NodeBasedSegmenter:
 
     def divide_img_opto_CT(self):
         latitude_divisions = []
-        self.latitudinal_line = self.vert_line
-        self.longitudinal_line = self.horiz_line
+        self.latitudinal_line = self.horiz_line if self.inverted else self.vert_line
+        self.longitudinal_line = self.vert_line if self.inverted else self.horiz_line
         num_latitude_divs = self.chamber_type.value().numRows
         num_longitude_divs = self.chamber_type.value().numCols
         self.total_ideal_latitudinal_dist = (
@@ -204,42 +205,16 @@ class NodeBasedSegmenter:
         bboxes = []
         outer_range = grid_vertices.shape[1] - 1
         inner_range = num_latitude_divs
+        self.agarose_width = self.chamber_type.value().agarose_width * self.px_to_mm
+        self.outward_buffer = 0.6 * self.px_to_mm
+        self.inward_buffer = 0.6 * self.px_to_mm
         for i in range(outer_range):
             for j in range(inner_range):
-                agarose_width = self.chamber_type.value().agarose_width * self.px_to_mm
-                outward_buffer = 0.6 * self.px_to_mm
-                x_delta = grid_vertices[j, i + 1][0] - grid_vertices[j, i][0]
-                inward_buffer = 0.6 * self.px_to_mm
-                bbox_1_xmin = grid_vertices[j * 2, i][0] - outward_buffer
-                bbox_1_ymin = grid_vertices[j * 2, i][1]
-                bbox_1_width = x_delta
-                bbox_1_height = agarose_width + inward_buffer
-                bbox_2_xmin = grid_vertices[j, i][0]
-                bbox_2_ymin = (
-                    grid_vertices[j * 2 + 1, i][1] - agarose_width - 0.5 * inward_buffer
-                )
-                bbox_2_width = x_delta
-                bbox_2_height = agarose_width + outward_buffer
-                bboxes.append(
-                    self.list_to_int(
-                        [
-                            bbox_1_xmin,
-                            bbox_1_ymin,
-                            bbox_1_width,
-                            bbox_1_height,
-                        ]
-                    )
-                )
-                bboxes.append(
-                    self.list_to_int(
-                        [
-                            bbox_2_xmin,
-                            bbox_2_ymin,
-                            bbox_2_width,
-                            bbox_2_height,
-                        ]
-                    )
-                )
+                for bbox in self.add_opto_bboxes(
+                    grid_vertices, longit_idx=i, latit_idx=j
+                ):
+                    bboxes.append(self.list_to_int(bbox))
+                    print(bboxes[-1])
         nr = self.chamber_type.value().numRows
         nc = self.chamber_type.value().numCols
         bboxes = np.reshape(np.array(bboxes), (nc, nr * 2, -1))
@@ -247,6 +222,44 @@ class NodeBasedSegmenter:
         bboxes = np.reshape(bboxes, (2 * nr * nc, -1))
         self.bboxes = bboxes.tolist()
         self.sub_imgs = subImagesFromBBoxes(self.image, self.bboxes)
+
+    def add_opto_bboxes(self, grid_vertices, longit_idx, latit_idx):
+        i = longit_idx
+        j = latit_idx
+        if self.inverted:
+            longit_delta = grid_vertices[j, i + 1][1] - grid_vertices[j, i][1]
+            bbox_1_xmin = grid_vertices[j * 2, i][0]
+            bbox_1_ymin = grid_vertices[j * 2, i][1] - self.outward_buffer
+            bbox_1_width = self.agarose_width + self.inward_buffer
+            bbox_1_height = longit_delta
+            bbox_2_xmin = (
+                grid_vertices[j * 2 + 1, i][0]
+                - self.agarose_width
+                - 0.5 * self.inward_buffer
+            )
+            bbox_2_ymin = grid_vertices[j, i][1]
+            bbox_2_width = self.agarose_width + self.outward_buffer
+            bbox_2_height = longit_delta
+        else:
+            x_delta = grid_vertices[j, i + 1][0] - grid_vertices[j, i][0]
+            bbox_1_xmin = grid_vertices[j * 2, i][0] - self.outward_buffer
+            bbox_1_ymin = grid_vertices[j * 2, i][1]
+            bbox_1_width = x_delta
+            bbox_1_height = self.agarose_width + self.inward_buffer
+            bbox_2_xmin = grid_vertices[j, i][0]
+            bbox_2_ymin = (
+                grid_vertices[j * 2 + 1, i][1]
+                - self.agarose_width
+                - 0.5 * self.inward_buffer
+            )
+            bbox_2_width = x_delta
+            bbox_2_height = self.agarose_width + self.outward_buffer
+        return [bbox_1_xmin, bbox_1_ymin, bbox_1_width, bbox_1_height,], [
+            bbox_2_xmin,
+            bbox_2_ymin,
+            bbox_2_width,
+            bbox_2_height,
+        ]
 
     def divide_img(self):
         if self.chamber_type == CT.large:
@@ -257,8 +270,8 @@ class NodeBasedSegmenter:
             return
         chamber = self.chamber_type.value()
         latitude_divisions = []
-        self.latitudinal_line = self.horiz_line
-        self.longitudinal_line = self.vert_line
+        self.latitudinal_line = self.vert_line if self.inverted else self.horiz_line
+        self.longitudinal_line = self.horiz_line if self.inverted else self.vert_line
         num_latitude_divs = chamber.numCols
         num_longitude_divs = chamber.numRows
         self.total_ideal_latitudinal_dist = (
@@ -314,15 +327,26 @@ class NodeBasedSegmenter:
         inner_range = grid_vertices.shape[0] - 1
         for i in range(outer_range):
             for j in range(inner_range):
-                y_delta = grid_vertices[j + 1, i][1] - grid_vertices[j, i][1]
-                bbox_1_xmin = grid_vertices[j, i * 2][0] - 3.5 * self.px_to_mm
-                bbox_1_ymin = grid_vertices[j, i * 2][1]
-                bbox_1_width = 4.0 * self.px_to_mm
-                bbox_1_height = y_delta
-                bbox_2_xmin = grid_vertices[j, i * 2 + 1][0] - 0.5 * self.px_to_mm
-                bbox_2_ymin = grid_vertices[j, i * 2][1]
-                bbox_2_width = 4.0 * self.px_to_mm
-                bbox_2_height = y_delta
+                if self.inverted:
+                    x_delta = grid_vertices[j + 1, i][0] - grid_vertices[j, i][0]
+                    bbox_1_xmin = grid_vertices[j, i * 2][0]
+                    bbox_1_ymin = grid_vertices[j, i * 2][1] - 3.5 * self.px_to_mm
+                    bbox_1_width = x_delta
+                    bbox_1_height = 4.0 * self.px_to_mm
+                    bbox_2_xmin = grid_vertices[j, i * 2][0]
+                    bbox_2_ymin = grid_vertices[j, i * 2 + 1][1] - 0.5 * self.px_to_mm
+                    bbox_2_width = x_delta
+                    bbox_2_height = 4.0 * self.px_to_mm
+                else:
+                    y_delta = grid_vertices[j + 1, i][1] - grid_vertices[j, i][1]
+                    bbox_1_xmin = grid_vertices[j, i * 2][0] - 3.5 * self.px_to_mm
+                    bbox_1_ymin = grid_vertices[j, i * 2][1]
+                    bbox_1_width = 4.0 * self.px_to_mm
+                    bbox_1_height = y_delta
+                    bbox_2_xmin = grid_vertices[j, i * 2 + 1][0] - 0.5 * self.px_to_mm
+                    bbox_2_ymin = grid_vertices[j, i * 2][1]
+                    bbox_2_width = 4.0 * self.px_to_mm
+                    bbox_2_height = y_delta
                 bboxes.append(
                     self.list_to_int(
                         [

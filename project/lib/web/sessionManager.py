@@ -222,6 +222,8 @@ class SessionManager:
             and self.chamberTypes[img_path] != alignment_data["type"]
         ):
             self.chamberTypes[img_path] = alignment_data["type"]
+        if alignment_data.get('inverted', False):
+            self.inverted[img_path] = True
         self.enqueue_egg_counting_task(img_path, alignment_data)
 
     def send_annotations_for_task(self, prediction_set, metadata, img_index):

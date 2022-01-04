@@ -928,7 +928,7 @@
                         document.getElementById('modalToggle').click();
                     }
                 }, 3000)
-            }, 2* 60 * 1000)
+            }, 2 * 60 * 1000)
         }
 
         var setUpFileUploadDialog = function () {
@@ -2989,6 +2989,7 @@
                     'bboxes',
                     'regionsToIgnore',
                     'nodes',
+                    'inverted',
                     'rotationAngle',
                     'imageTranslation',
                     'scaling',
@@ -3075,6 +3076,7 @@
                         (pt[0] - leftPadding) / scalingFactor,
                         (pt[1] - upperPadding) / scalingFactor
                     ];
+                    chamberRealignmentData[k].orientation
                 });
             });
 
@@ -3336,6 +3338,12 @@
                     0.5 * (boxBounds.br.y + boxBounds.ul.y)), '15pt');
                 updateHelpButtonText('Resume alignment');
             }
+            alignmentHelpDialog.fontSize = 16;
+            do {
+                alignmentHelpDialog.fontSize -= 1;
+                alignmentHelpDialog.text.fontSize = `${alignmentHelpDialog.fontSize}pt`;
+                alignmentHelpDialog.text.point = getHelpTextPos();
+            } while (!alignmentHelpDialog.text.isInside(alignmentHelpDialog.frame.bounds))
             bringHelpBoxElementsToFront();
             chamberRealignmentData[currentImgIndex].helpBoxMaximized = helpBoxIsMaximized();
         }
@@ -3387,11 +3395,19 @@
                     0.5 * alignmentHelpDialog.button.bounds.height
                 );
             let allottedWidth = 0.95 * alignmentHelpDialog.frame.bounds.width;
-            let egScaling = Math.min(0.95 * allottedHt / alignmentHelpDialog.exampleImage.height,
-                allottedWidth / alignmentHelpDialog.exampleImage.width);
-            if (alignmentHelpDialog.imgScaling) {
-                alignmentHelpDialog.exampleImage.scale(1 / alignmentHelpDialog.imgScaling)
+            if (backgroundRaster.bounds.height > backgroundRaster.bounds.width) {
+                chamberRealignmentData[currentImgIndex].inverted = true;
+                if (alignmentHelpDialog.exampleImage.bounds.width >
+                    alignmentHelpDialog.exampleImage.bounds.height) {
+                    alignmentHelpDialog.exampleImage.rotate(90);
+                    alignmentHelpDialog.exampleImage.scale(-1, 1);
+                }
+            } else {
+                chamberRealignmentData[currentImgIndex].inverted = false;
             }
+            let egScaling = Math.min(0.95 * allottedHt /
+                alignmentHelpDialog.exampleImage.bounds.height,
+                allottedWidth / alignmentHelpDialog.exampleImage.bounds.width);
             alignmentHelpDialog.imgScaling = egScaling;
             alignmentHelpDialog.exampleImage.scale(egScaling);
             alignmentHelpDialog.exampleImage.position = new paper.Point(

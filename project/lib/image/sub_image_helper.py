@@ -13,7 +13,10 @@ class SubImageHelper:
 
     def segment_image_via_alignment_data(self, img, alignment_data):
         segmenter = NodeBasedSegmenter(
-            img, alignment_data["nodes"], alignment_data["type"]
+            img,
+            alignment_data["nodes"],
+            alignment_data["type"],
+            alignment_data.get("inverted", False),
         )
         self.subImgs, self.bboxes = segmenter.calc_bboxes_and_subimgs()
         self.rotation_angle = segmenter.rotation_angle
