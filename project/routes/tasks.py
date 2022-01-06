@@ -111,7 +111,7 @@ def report_task_progress():
     s = app.sessions[room]
     path_map = s.paths_to_indices
     img_index = int(path_map[info["img_path"]])
-    n_imgs = len(path_map)
+    n_imgs = len(s.alignment_data)
     s.emit_to_room(
         "counting-progress",
         {

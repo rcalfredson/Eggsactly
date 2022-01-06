@@ -86,23 +86,36 @@
         let pathAmendId;
         let filesToUpload = {};
         let chamberTypes = {};
+        let indexAtLastChangeOfChamberType;
         let annotations = {};
         let orderedImgNames = [];
         let eggLayingRegions = [];
         let rotationAngles = {};
-        let unscaledImgBounds = {}
+        let unscaledImgBounds = {};
         let idsByOrigImgName = {};
         let lastPongTime;
         let numFailedPings = 0;
         let externalLoginWindow;
         let loginButton;
-        let countingState;
+        let countingState = {};
         let countingStates = { pre: 'pre', mid: 'mid', post: 'post' };
         let hasErrors;
         let numErrors = 0;
         let hasModifiedTypes;
         let numModifications = 0;
         let chamberRealignmentData = {};
+        const COUNTING_DATA_KEYS_TO_KEEP = [
+            'ignored',
+            'bboxes',
+            'regionsToIgnore',
+            'nodes',
+            'inverted',
+            'rotationAngle',
+            'imageTranslation',
+            'scaling',
+            'type',
+            'file_name'
+        ];
         let currentRealignmentMarkers = { lines: {}, circles: {} }
         let shapeBeingDragged = false;
         let editMode;
@@ -634,7 +647,9 @@
             orderedImgNames = [];
             eggLayingRegions = [];
             rotationAngles = {};
+            unscaledImgBounds = {}
             idsByOrigImgName = {};
+            countingState = {};
             chamberRealignmentData = {};
             zoom = 1.0;
             idsWithEdits = new Set();
@@ -693,13 +708,13 @@
                 width: msg.width,
                 height: msg.height
             }
-            countingState = countingStates.pre;
+            countingState[msg.filename] = countingStates.pre;
             chamberRealignmentData[orderedImgNames.length - 1] = {
                 file_name: orderedImgNames[orderedImgNames.length - 1],
                 rotationAngle: msg.rotationAngle
             };
             clearLogMessageLoadingStatus();
-            setupOrRedrawCanvas();
+            setupCanvas({ startAtBeginning: false });
         });
         socket.on('counting-error', (msg) => {
             let newPara = document.createElement('p');
@@ -707,20 +722,27 @@
             newPara.innerText = msg.data;
             addToLogUpdates(newPara, { ellipses: false });
             orderedImgNames.push(msg.filename);
-            countingState = countingStates.pre;
+            countingState[msg.filename] = countingStates.pre;
             unscaledImgBounds[msg.filename] = {
                 width: msg.width,
                 height: msg.height
             }
             annotations[msg.filename] = { 'error': msg.error_type };
             clearLogMessageLoadingStatus();
-            setupOrRedrawCanvas();
+            setupCanvas({ startAtBeginning: false });
         });
         socket.on('counting-done', (msg) => {
-            countingState = countingStates.post;
-            inputLbl.setAttribute('hidden', true);
-            clearAllUpdates();
-            setupCanvas(false);
+            msg.filenames.forEach(fn => {
+                countingState[fn] = countingStates.post;
+            })
+            if (document.getElementById('count-eggs-in-img-button') &&
+                document.getElementById('count-eggs-in-img-button').loadingInterval) {
+                clearInterval(document.getElementById('count-eggs-in-img-button'));
+            }
+            setupCanvas({
+                startAtBeginning: msg.filenames.length ===
+                    orderedImgNames.length
+            });
         });
         socket.on('counting-csv', (msg) => {
             document.getElementById('download-csv').removeAttribute('disabled');
@@ -737,11 +759,19 @@
         socket.on('counting-annotations', (msg) => {
             annotations[msg.filename] = JSON.parse(msg.data);
             rotationAngles[msg.filename] = msg.rotationAngle;
+            paper.project.clear();
             if (!msg.index) {
                 orderedImgNames.push(msg.filename)
             } else {
                 if (eggLayingRegions[msg.index] && eggLayingRegions[msg.index].text) {
-                    eggLayingRegions[msg.index].text.remove();
+                    try {
+                        eggLayingRegions[msg.index].text.remove();
+                    }
+                    catch (e) {
+                        if (e instanceof TypeError) {
+                            eggLayingRegions[msg.index].text = null;
+                        }
+                    }
                 }
                 delete eggLayingRegions[msg.index];
                 chamberRealignmentData[msg.index].rotationAngle = rotationAngles[msg.filename];
@@ -877,7 +907,8 @@
                     setGridNotationCursorVisibility();
                     bringGridlineToleranceBandsToFrontOrBack('front');
                     updateGridlineForDeletion();
-                } else if (countingState === countingStates.post &&
+                } else if (countingState[orderedImgNames[currentImgIndex]]
+                    === countingStates.post &&
                     evt.key === 'Control') {
                     hideEggOutlines();
                 }
@@ -889,7 +920,8 @@
                     updateBBoxOutlineForDeletion();
                     setGridNotationCursorVisibility();
                     updateGridlineForDeletion();
-                } else if (countingState === countingStates.post &&
+                } else if (countingState[orderedImgNames[currentImgIndex]]
+                    === countingStates.post &&
                     evt.key === 'Control') {
                     showEggOutlines();
                 }
@@ -1425,7 +1457,9 @@
             document.getElementById('current-img').innerText =
                 `Viewing image ${currentImgIndex + 1} of ${orderedImgNames.length}` +
                 `: ${orderedImgNames[currentImgIndex]}` +
-                (countingState !== countingStates.pre ? ' (Ctrl to hide egg outlines; shift + scroll to zoom) ' : '');
+                (countingState[orderedImgNames[currentImgIndex]]
+                    !== countingStates.pre ? ' (Ctrl to hide egg outlines; shift + scroll to zoom) '
+                    : '');
         }
 
         var appendToFilename = function (filename, addition) {
@@ -1624,6 +1658,10 @@
         }
 
         function updateCountEggsButtonStatus() {
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.post) {
+                document.getElementById('count-eggs-in-img-button').style.color =
+                    checkIfImageUntriaged(currentImgIndex) ? colors.lightGrey : 'black';
+            }
             document.getElementById('count-eggs-button').style.color =
                 indicesOfUntriagedImages().length == 0 ? 'black' : colors.lightGrey;
         }
@@ -2073,7 +2111,8 @@
         }
 
         function addGridlineNotation(evt) {
-            if (countingState !== countingStates.pre ||
+            if (countingState[orderedImgNames[currentImgIndex]]
+                !== countingStates.pre ||
                 !tempCursor ||
                 gridlinesLocked() ||
                 maskLocked()) {
@@ -2153,7 +2192,7 @@
 
         function addGridNotationCursor(evt) {
             let cursorSplitWidth = 2;
-            if (countingState !== countingStates.pre) return;
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) return;
             if (!document.getElementById('help-pane') || !document.getElementById('grid-edit-button')) return;
             if (maskNotationButtonGroup.selected !== 'grid-edit-button'
             ) {
@@ -2299,13 +2338,13 @@
         }
 
         function gridlinesLocked() {
-            if (countingState !== countingStates.pre ||
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre ||
                 !document.getElementById('lock-gridlines-button')) return false;
             return document.getElementById('lock-gridlines-button').innerHTML !== lockGridlinesText;
         }
 
         function editingFreehandMasks() {
-            if (countingState !== countingStates.pre ||
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre ||
                 !document.getElementById('grid-edit-button')) {
                 return false;
             }
@@ -2840,14 +2879,15 @@
         }
 
         function chamberTypeManuallyUpdated() {
-            return countingState !== countingStates.post &&
+            return countingState[orderedImgNames[currentImgIndex]] !== countingStates.post &&
                 hasAValue(chamberRealignmentData[currentImgIndex].type) &&
                 chamberTypes[orderedImgNames[currentImgIndex]] !==
                 chamberRealignmentData[currentImgIndex].type;
         }
 
         var setupErrorAnnotationButtonHandlers = function () {
-            if (countingState === countingStates.pre) {
+            if (countingState[orderedImgNames[currentImgIndex]] === countingStates.pre) {
+
                 document.getElementById('chamber-type-select').onchange = (evt) => {
                     if (evt.target.value == 'custom') {
                         clearAlignmentGuideHelpBox();
@@ -2929,9 +2969,11 @@
                         };
                         updateCountEggsButtonStatus();
                     }
-                    redrawCanvas();
+                    indexAtLastChangeOfChamberType = currentImgIndex;
+                    redrawCanvas({ startAtBeginning: false });
                 };
-                if (countingState !== countingStates.pre) return;
+                if (countingState[orderedImgNames[currentImgIndex]]
+                    !== countingStates.pre) return;
 
                 document.getElementById('ignore-img').onclick = () => {
                     let chamberTypeButton = document.getElementById('chamber-type-select');
@@ -2969,7 +3011,39 @@
             return pointText;
         }
 
-        function setupCountEggsButton() {
+        function setupCountEggsButtons() {
+            document.getElementById('count-eggs-in-img-button').onclick = () => {
+                if (checkIfImageUntriaged(currentImgIndex)) {
+                    document.getElementById('mode-marker').innerHTML = 'To submit this' +
+                        ' image for egg counting, either assign it a preset chamber type' +
+                        ' or load a custom mask on it.';
+                    setTimeout(() => {
+                        document.getElementById('mode-marker').innerHTML = '';
+                    }, 3000);
+                    return;
+                }
+                displayLoadingMessage(document.getElementById('count-eggs-in-img-button'));
+                countingState[orderedImgNames[currentImgIndex]] = countingStates.mid;
+                transformAlignmentGuidelinePoints(currentImgIndex);
+                let chamberData = {};
+
+                let dataToSend = {
+                    chamberData: {
+                        [currentImgIndex]:
+                            chamberRealignmentData[currentImgIndex]
+                    },
+                    sid
+                };
+                $.ajax({
+                    url: '/count-eggs',
+                    type: "POST",
+                    data: JSON.stringify(dataToSend),
+                    contentType: "application/json",
+                    success: function (data) {
+                        console.log('Success!');
+                    }
+                });
+            }
             document.getElementById('count-eggs-button').onclick = () => {
                 let untriaged = indicesOfUntriagedImages();
                 if (untriaged.length > 0) {
@@ -2984,23 +3058,17 @@
                     return;
                 }
                 transformAlignmentGuidelinePoints();
-                let keysToKeep = [
-                    'ignored',
-                    'bboxes',
-                    'regionsToIgnore',
-                    'nodes',
-                    'inverted',
-                    'rotationAngle',
-                    'imageTranslation',
-                    'scaling',
-                    'type',
-                    'file_name'
-                ];
+                let chamberData = reducePropsInInnerObjects(chamberRealignmentData,
+                    COUNTING_DATA_KEYS_TO_KEEP);
+                Object.keys(chamberRealignmentData).forEach(k => {
+                    if (countingState[orderedImgNames[k]] == countingStates.post) {
+                        delete chamberData[k];
+                    }
+                })
                 let dataToSend = {
-                    chamberData: reducePropsInInnerObjects(chamberRealignmentData, keysToKeep),
+                    chamberData: chamberData,
                     sid
                 };
-                countingState = countingStates.mid;
                 input.setAttribute('disabled', true);
                 inputLbl.style.color = colors.grey;
                 $.ajax({
@@ -3037,8 +3105,10 @@
                     Math.abs(ht * Math.sin(rotationAngle))));
         }
 
-        function transformAlignmentGuidelinePoints() {
-            Object.keys(chamberRealignmentData).forEach(k => {
+        function transformAlignmentGuidelinePoints(index = null) {
+            let iterArray = index === null ? Object.keys(chamberRealignmentData) :
+                [index];
+            iterArray.forEach(k => {
                 if (chamberRealignmentData[k].ignored) {
                     return;
                 }
@@ -3124,15 +3194,13 @@
         }
 
         var setButtonHandlers = function () {
-            if (countingState !== countingStates.pre) {
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
                 setupCsvDownloadButton();
                 setupImgDownloadButton();
                 setupErrorReportButton();
             }
             setupErrorAnnotationButtonHandlers();
-            if (countingState === countingStates.pre) {
-                setupCountEggsButton();
-            }
+            setupCountEggsButtons();
 
             if (orderedImgNames.length === 1) {
                 document.getElementById('prev-img').setAttribute('disabled', true);
@@ -3145,10 +3213,9 @@
                     shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
-                    setChamberTypeSelector();
+                    redrawCanvas({ startAtBeginning: false });
                     resetInputAmender();
                     setIgnoreSelector();
-                    redrawCanvas();
                     if (newImgIdx == 0) {
                         document.getElementById('prev-img').setAttribute('disabled', true);
                     } else {
@@ -3163,10 +3230,9 @@
                     shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
-                    setChamberTypeSelector();
+                    redrawCanvas({ startAtBeginning: false });
                     resetInputAmender()
                     setIgnoreSelector();
-                    redrawCanvas();
                     if (document.getElementById('next-img').disabled) {
                         document.getElementById('next-img').removeAttribute('disabled');
                     }
@@ -3189,7 +3255,7 @@
         }
 
         var setChamberTypeSelector = function () {
-            if (countingState !== countingStates.pre) {
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
                 return;
             }
             if (chamberRealignmentData[currentImgIndex] &&
@@ -3213,7 +3279,7 @@
         }
 
         var setIgnoreSelector = function () {
-            if (countingState !== countingStates.pre) return;
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) return;
             let chamberTypeButton = document.getElementById('chamber-type-select')
             if (!chamberRealignmentData[currentImgIndex] || !chamberRealignmentData[currentImgIndex].ignored) {
                 chamberTypeButton.removeAttribute('disabled');
@@ -3650,7 +3716,7 @@
             let innerRect = new paper.Path.Rectangle(rectangle, new paper.Size(2, 2));
             innerRect.fillColor = 'black';
             innerRect.opacity = 0;
-            if (countingState !== countingStates.pre) {
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
                 addHoverHandler(innerRect, currentImgIndex);
             }
             return { outline: rectPath, fill: innerRect, bbox: rescaledBBox }
@@ -3661,6 +3727,7 @@
         }
 
         function redrawCanvas(opts = {}) {
+            refreshNavButtons();
             let origNumErrors = numErrors;
             hasErrors = Object.keys(annotations).map((k) => {
                 return 'error' in annotations[k];
@@ -3677,7 +3744,8 @@
             numErrors = hasErrors.filter(Boolean).length;
             numModifications = hasModifiedTypes.filter(Boolean).length;
 
-            if (numErrors + numModifications > 0 && countingState === countingStates.pre) {
+            if (numErrors + numModifications > 0 &&
+                countingState[orderedImgNames[currentImgIndex]] === countingStates.pre) {
                 if (origNumErrors === 0) {
                     setupNavButtons();
 
@@ -3705,11 +3773,11 @@
             } else {
                 resetNavButtons();
             }
-            if (countingState !== countingStates.pre && !document.getElementById('download-csv')) {
+            if (countingStarted()) {
+                if (document.getElementById('download-csv')) document.getElementById('download-csv').remove();
                 $('#updates').prepend('<div><button type=button id=download-csv>Download results</button></div>');
             }
             setButtonHandlers();
-
             setCurrentImgName()
             setChamberTypeSelector();
             if (backgroundRaster) {
@@ -3732,7 +3800,6 @@
             $('#updates').append('<img id=pic src="/uploads/' +
                 `${sid}/${orderedImgNames[currentImgIndex]}?lastmod=${Date.now()}">`);
             let rotationAngle = rotationAngles[orderedImgNames[currentImgIndex]] || 0;
-            paper.project.clear();
             backgroundRaster = new paper.Raster('pic');
             pic = document.getElementById('pic');
             backgroundRaster.on('mouseleave', () => {
@@ -3745,14 +3812,17 @@
                 if (!imageUsesCustomMasks() && maskNotationButtonGroup) {
                     maskNotationButtonGroup.selected = '';
                 }
-                if (numErrors + numModifications > 0 && countingState === countingStates.pre) {
+                if (numErrors + numModifications > 0 &&
+                    countingState[orderedImgNames[currentImgIndex]] === countingStates.pre) {
                     updateRealignmentGuide();
                 }
-                if (imageUsesCustomMasks() && countingState !== countingStates.pre) {
+                if (imageUsesCustomMasks() &&
+                    countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
                     rotationAngle = 0;
                 }
 
-                if (imageUsesCustomMasks() && countingState === countingStates.pre) {
+                if (imageUsesCustomMasks() &&
+                    countingState[orderedImgNames[currentImgIndex]] === countingStates.pre) {
                     backgroundRaster.fitBounds(paper.view.viewSize);
                     backgroundRaster.position.x += chamberRealignmentData[
                         currentImgIndex].imageTranslation[0];
@@ -3764,12 +3834,15 @@
                     }
                 }
 
-                if (!imageUsesCustomMasks() || countingState !== countingStates.pre) {
+                if (!imageUsesCustomMasks() ||
+                    countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
                     backgroundRaster.fitBounds(paper.view.viewSize);
                 }
                 calcScalingFactor(0);
                 document.getElementById('pic').remove();
-                $('#updates').append('<div id=paper-finished-loading hidden></div>')
+                if (!document.getElementById('paper-finished-loading')) {
+                    $('#updates').append('<div id=paper-finished-loading hidden></div>')
+                }
                 calcPadding(0);
                 if ('error' in annotations[orderedImgNames[currentImgIndex]] ||
                     chamberRealignmentData[currentImgIndex].ignored ||
@@ -3804,7 +3877,8 @@
                             let drawnRectangles = drawRegionOutline(annotation);
                             let rectPath = drawnRectangles.outline;
                             let innerRect = drawnRectangles.fill;
-                            if (countingState !== countingStates.pre) {
+                            if (countingState[orderedImgNames[currentImgIndex]]
+                                !== countingStates.pre) {
                                 let x = (1 / zoomScaleImgToMask) *
                                     (annotation.x - zoomScaleImgToMask * backgroundRaster.width / 2) +
                                     zoomScaleImgToMask * backgroundRaster.width / 2;
@@ -3861,7 +3935,8 @@
                             reg.fill = drawnRectangles.fill;
 
 
-                            if (countingState !== countingStates.pre) {
+                            if (countingState[orderedImgNames[currentImgIndex]]
+                                !== countingStates.pre) {
                                 if (reg.beenEdited()) {
                                     drawTextForEditedCount(reg, reg.text.content);
                                 } else {
@@ -3902,9 +3977,7 @@
                         });
                     }
                 }
-                if (countingState === countingStates.pre) {
-                    updateCountEggsButtonStatus();
-                }
+                updateCountEggsButtonStatus();
                 origCenter = paper.view.center;
                 canvasLoaded = true;
             }
@@ -4061,12 +4134,25 @@
             return '<div class=divider></div>'
         }
 
-        var buttonString = function (id, text, hidden = false) {
-            let doms = [`<button id=${id} ${hidden ? 'hidden' : ''}>${text}</button>`]
+        var buttonString = function (id, text, hidden = false, disabled = false) {
+            let doms = [`<button id=${id} ${hidden ? 'hidden' : ''}` +
+                ` ${disabled ? 'disabled' : ''}>${text}</button>`];
             if (!hidden) {
                 doms.push(dividerString());
             }
             return doms
+        }
+
+        function countingFinished() {
+            return !Object.keys(countingState).some(k => {
+                return countingState[k] !== countingStates.post;
+            });
+        }
+
+        function countingStarted() {
+            return Object.keys(countingState).some(k => {
+                return countingState[k] === countingStates.post;
+            });
         }
 
         var errorAnnotationButtons = function () {
@@ -4079,25 +4165,28 @@
                 { value: 'custom', text: 'Custom masks' }
                 ]
             },
-            { id: 'count-eggs-button', text: 'Count eggs' }
+            { id: 'count-eggs-in-img-button', text: 'Count eggs' },
+            { id: 'count-eggs-button', text: 'Count eggs (all images)' }
             ];
-            if (countingState !== countingStates.pre) {
-                return allButtons.slice(2, 2);
+            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
+                allButtons[0].disabled = true;
+                allButtons[1].disabled = true;
+                allButtons[2].disabled = true;
             }
             return allButtons;
         }
 
         var analyzedImagesButtons = function () {
             let allButtons = [
-                { id: 'download-imgs', text: 'Download annotated images', hidden: countingState === countingStates.pre },
+                {
+                    id: 'download-imgs', text: 'Download annotated images',
+                    hidden: !countingStarted()
+                },
                 {
                     id: 'submit-error-report', text: 'Submit error report for all images',
                     hidden: true
                 },
             ];
-            if (countingState === countingStates.pre) {
-                return allButtons.slice(1);
-            }
             return allButtons;
         }
 
@@ -4115,6 +4204,14 @@
                 ' in a tool allowing you to mark two boundary lines on the image which' +
                 ' will allow it to be split into individual regions. Click X to continue.'
             document.getElementById('modalToggle').click();
+        }
+
+        function refreshNavButtons() {
+            getContextSpecificButtons().forEach(b => {
+                if (document.getElementById(b.id)) {
+                    document.getElementById(b.id).disabled = b.disabled;
+                }
+            })
         }
 
         function setupNavButtons() {
@@ -4137,7 +4234,8 @@
             $('#reset-view').click(reposition);
             getContextSpecificButtons().forEach(b => {
                 if (b.selectOptions) {
-                    $('#button-row').append(`<select id=${b.id} ${b.hidden ? 'hidden' : ''}></select>`);
+                    $('#button-row').append(`<select id=${b.id} ${b.hidden ? 'hidden' : ''}` +
+                        `${b.disabled ? 'disabled' : ''}></select>`);
                     selectDOM = document.getElementById(b.id);
                     let opt = document.createElement('option');
                     opt.value = null;
@@ -4152,19 +4250,25 @@
                     $('#button-row').append(dividerString());
                 }
                 else {
-                    let doms = buttonString(b.id, b.text, b.hidden);
+                    let doms = buttonString(b.id, b.text, b.hidden, b.disabled);
                     doms.forEach(d => {
                         $('#button-row').append(d);
                     })
                 }
             });
+            $('#viewer-nav').append('<br><div id=current-img-parent><p id=mode-marker>' +
+                '</p><p id=current-img></p>');
         }
 
-        function setupCanvas() {
+        function setupCanvas(opts = { startAtBeginning: true }) {
             setupNavButtons();
             $('#viewer-nav').append('<div class=divider></div>');
-            $('#updates').append('<br><div id=current-img-parent><p id=mode-marker></p><p id=current-img></p>');
             setCurrentImgName()
+            if (document.getElementById('viewer')) {
+                let viewer = document.getElementById('viewer');
+                viewer.style.height = `${viewer.offsetHeight}px`;
+                viewer.innerHTML = '';
+            }
             $('#updates').append('<div id=viewer></div>')
             $('#viewer').append('<canvas keepalive=true id=detectionResults></canvas>');
             canvas = document.getElementById('detectionResults');
@@ -4172,42 +4276,47 @@
             paper.setup(canvas);
             paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
             redrawCanvas({
-                startAtBeginning: true,
+                startAtBeginning: opts.startAtBeginning
             });
             setPointerHandlers();
             setDragHandler();
         }
 
-        function checkForAnnotatedCustomMaskImages(index, untriaged) {
-            if (!imageUsesCustomMasks(index)) return untriaged;
+        function checkForAnnotatedCustomMaskImages(index) {
+            if (!imageUsesCustomMasks(index)) return false;
             if (!imageUsesGridBoxes(index)) {
                 if (!chamberRealignmentData[index].maskBBoxes ||
                     Object.keys(chamberRealignmentData[index].maskBBoxes).length === 0) {
-                    untriaged.push(index + 1);
+                    return true;
                 }
             } else if (!chamberRealignmentData[index].gridlineBBoxes ||
                 !Object.keys(chamberRealignmentData[index].gridlineBBoxes).some(
                     el => {
                         return chamberRealignmentData[index].gridlineBBoxes[el].selected;
                     })) {
-                untriaged.push(index + 1);
+                return true;
             }
-            return untriaged;
+            return false;
+        }
+
+        function checkIfImageUntriaged(index) {
+            if (!hasErrors[index]) {
+                return false;
+            }
+            if (!chamberRealignmentData[index]) { return true; }
+            if (checkForAnnotatedCustomMaskImages(index)) {
+                return true;
+            }
+            if (!(chamberRealignmentData[index].ignored ||
+                !['', 'null'].includes(chamberRealignmentData[index].type))) {
+                return true;
+            }
         }
 
         function indicesOfUntriagedImages() {
             let untriaged = []
             for (let index = 0; index < orderedImgNames.length; index++) {
-                if (!hasErrors[index]) {
-                    continue;
-                }
-                if (!chamberRealignmentData[index]) {
-                    untriaged.push(index + 1)
-                    continue;
-                }
-                untriaged = checkForAnnotatedCustomMaskImages(index, untriaged)
-                if (!(chamberRealignmentData[index].ignored ||
-                    !['', 'null'].includes(chamberRealignmentData[index].type))) {
+                if (checkIfImageUntriaged(index)) {
                     untriaged.push(index + 1);
                 }
             }
@@ -4257,7 +4366,7 @@
         }
 
         function setEggOutlineOpacity(opacity) {
-            if (countingState === countingStates.pre) {
+            if (countingState[orderedImgNames[currentImgIndex]] === countingStates.pre) {
                 return;
             }
             Object.keys(eggLayingRegions[currentImgIndex]).forEach(region => {
@@ -4512,7 +4621,8 @@
                     transformImageOnly(evt);
                     return;
                 }
-                if (countingState === countingStates.pre && editMode === 'mask' &&
+                if (countingState[orderedImgNames[currentImgIndex]] === countingStates.pre
+                    && editMode === 'mask' &&
                     maskNotationButtonGroup.selected === 'freehand-edit-button'
                     && !shiftKeyDown) {
                     createOrAdjustMaskBBox(evt);

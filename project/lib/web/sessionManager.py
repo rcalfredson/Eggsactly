@@ -162,6 +162,8 @@ class SessionManager:
                     "height": self.img_shapes[img_path][0],
                 },
             )
+            self.inverted[img_path] = self.cfs[img_path].inverted
+            del self.cfs[img_path]
         except Exception as exc:
             print("exception while finding circles:")
             traceback.print_exc()
@@ -171,8 +173,6 @@ class SessionManager:
                 self.report_counting_error(img_path, ImageAnalysisException)
         except RuntimeWarning:
             self.report_counting_error(img_path, ImageAnalysisException)
-        self.inverted[img_path] = self.cfs[img_path].inverted
-        del self.cfs[img_path]
 
     @staticmethod
     def open_image(img_path, dtype=np.float32):
@@ -201,8 +201,10 @@ class SessionManager:
         self.img_shapes[img_path] = img.shape
         self.enqueue_arena_detection_task(img_path)
 
-    def segment_img_and_count_eggs(self, img_path, alignment_data, index, n_files):
-        if int(index) == 0:
+    def segment_img_and_count_eggs(
+        self, img_path, alignment_data, index, n_files, is_lowest_idx
+    ):
+        if is_lowest_idx:
             self.counting_task_group = self.gpu_manager.add_task_group(
                 self.room, n_tasks=n_files, task_type=GPUTaskTypes.egg
             )
@@ -213,21 +215,26 @@ class SessionManager:
             )
         imgBasename = os.path.basename(img_path)
         img_path = os.path.normpath(img_path)
+        if not hasattr(self, "img_paths"):
+            self.img_paths = {index: img_path}
+        else:
+            self.img_paths[index] = img_path
         self.basenames[img_path] = imgBasename
         self.paths_to_indices[img_path] = index
         self.alignment_data[img_path] = alignment_data
+        self.alignment_data[img_path]["index"] = index
         if not img_path in self.chamberTypes or (
             "type" in alignment_data
             and img_path in self.chamberTypes
             and self.chamberTypes[img_path] != alignment_data["type"]
         ):
             self.chamberTypes[img_path] = alignment_data["type"]
-        if alignment_data.get('inverted', False):
-            self.inverted[img_path] = True
+        if "inverted" in alignment_data:
+            self.inverted[img_path] = alignment_data["inverted"]
         self.enqueue_egg_counting_task(img_path, alignment_data)
 
-    def send_annotations_for_task(self, prediction_set, metadata, img_index):
-        imgPath = self.img_paths[img_index]
+    def send_annotations_for_task(self, prediction_set, metadata):
+        imgPath = self.img_paths[metadata["index"]]
         imgBasename = os.path.basename(imgPath)
         self.alignment_data[imgPath]["rotationAngle"] = metadata.get("rotationAngle", 0)
         if "bboxes" in metadata:
@@ -238,7 +245,7 @@ class SessionManager:
             self.emit_to_room(
                 "counting-annotations",
                 {
-                    "index": str(img_index),
+                    "index": str(metadata["index"]),
                     "filename": imgBasename,
                     "rotationAngle": 0,
                     "data": json.dumps(
@@ -297,7 +304,7 @@ class SessionManager:
                 "rotationAngle": self.alignment_data[imgPath]["rotationAngle"]
                 if "rotationAngle" in self.alignment_data[imgPath]
                 else None,
-                "index": str(img_index),
+                "index": str(metadata["index"]),
             }
             self.emit_to_room(
                 "counting-annotations",
@@ -306,10 +313,15 @@ class SessionManager:
             self.annotations[os.path.normpath(imgPath)] = resultsData
 
     def send_annotations_for_task_group(self, predictions, metadata):
-        self.img_paths = list(self.basenames.keys())
         for i, prediction_set in enumerate(predictions):
-            self.send_annotations_for_task(prediction_set, metadata[i], i)
-        self.emit_to_room("counting-done", {"is_retry": True})
+            self.send_annotations_for_task(
+                prediction_set,
+                metadata[i],
+            )
+        self.emit_to_room(
+            "counting-done",
+            {"is_retry": True, "filenames": [ent["filename"] for ent in metadata]},
+        )
 
     def rotate_pt(self, x, y, radians, img_path):
         img_center = list(reversed([el / 2 for el in self.img_shapes[img_path][:2]]))
@@ -437,7 +449,7 @@ class SessionManager:
                     writer.writerow(row_entries)
             else:
                 CT[self.chamberTypes[imgPath]].value().writeLineFormatted(
-                    [updated_counts], 0, writer, self.inverted[imgPath]
+                    [updated_counts], 0, writer, inverted=self.inverted[imgPath]
                 )
             writer.writerow([])
         self.emit_to_room(

@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import os
 
 from project.lib.image.chamber import CT
 from project.lib.image.circleFinder import (
@@ -12,11 +13,21 @@ from project.lib.util import distance
 
 
 class NodeBasedSegmenter:
-    def __init__(self, image, alignment_data, chamber_type: str, inverted=False):
+    def __init__(
+        self,
+        image,
+        img_path,
+        alignment_data,
+        chamber_type: str,
+        inverted: bool,
+        room,
+    ):
         self.image = image
+        self.img_path = os.path.basename(img_path)
         self.alignment_data = alignment_data
         self.chamber_type = CT[chamber_type]
         self.inverted = inverted
+        self.room = room
         self.line_types = [f"{tp}_line" for tp in ("horiz", "vert")]
         self.lines = [
             {
@@ -403,12 +414,11 @@ class NodeBasedSegmenter:
                 self.vert_line["points"]["end"][1],
             ],
         ]
-
-        bboxes, subImgs = CircleFinder(self.image, "").getLargeChamberBBoxesAndImages(
-            centers, self.px_to_mm
-        )
+        bboxes = CircleFinder(
+            self.img_path, self.image.shape, room=self.room
+        ).getLargeChamberBBoxesAndImages(centers, self.px_to_mm)
         self.bboxes = bboxes
-        self.sub_imgs = subImgs
+        self.sub_imgs = CircleFinder.getSubImagesFromBBoxes(self.image, bboxes)
 
     def calc_bboxes_and_subimgs(self):
         self.determine_vert_and_horiz_lines()

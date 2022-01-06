@@ -103,7 +103,7 @@ form p {
 
 #viewer-nav {
   display: block;
-  height: 30px;
+  overflow: auto;
   position: sticky;
   position: -webkit-sticky;
   top: 20px;
@@ -113,7 +113,7 @@ form p {
 }
 
 #current-img-parent {
-  display: block;
+  margin-top: 10px;
   pointer-events: none;
   position: sticky;
   position: -webkit-sticky;
@@ -220,6 +220,10 @@ form p {
   opacity: 0;
 }
 
+#updates button:disabled {
+  color: rgb(115, 109, 125)
+}
+
 
 form label, form button, #updates button, form input {
   background-color: #7F9CCB;
@@ -228,6 +232,7 @@ form label, form button, #updates button, form input {
   border: 1px ridge black;
   font-size: 0.8rem;
   height: auto;
+  margin-top: 5px;
 }
 
 form input:hover {

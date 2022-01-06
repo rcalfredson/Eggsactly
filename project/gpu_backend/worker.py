@@ -204,6 +204,8 @@ def perform_task(attempt_ct=0):
         if task_type == GPUTaskTypes.arena:
             imgs = (img,)
         elif task_type == GPUTaskTypes.egg:
+            metadata["filename"] = os.path.basename(task["img_path"])
+            metadata["index"] = task["data"]["index"]
             if "ignored" in task["data"] and task["data"]["ignored"]:
                 metadata["ignored"] = True
                 print("image marked as ignored; skipping")
@@ -214,7 +216,7 @@ def perform_task(attempt_ct=0):
                 clean_up_task(task_key, start_t, post_req_start_t)
                 return
             helper = SubImageHelper()
-            helper.get_sub_images(img, task["data"])
+            helper.get_sub_images(img, task["img_path"], task["data"], task["room"])
             metadata["rotationAngle"] = helper.rotation_angle
             metadata["bboxes"] = helper.bboxes
             imgs = helper.subImgs

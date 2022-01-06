@@ -12,6 +12,7 @@ from flask_login import current_user
 import os
 from pathlib import Path
 import shutil
+import sys
 import time
 from werkzeug.utils import secure_filename
 import zipstream
@@ -95,9 +96,10 @@ def uploaded_file(sid, filename):
 def zip_generator(ts):
     z = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
     sm = app.downloadManager.sessions[ts]["session_manager"]
-
     for path in sm.basenames.values():
-        z.write_iter(path, img_as_bytes(sm.room, path))
+        img = img_as_bytes(sm.room, path)
+        if img.getbuffer().nbytes > 0:
+            z.write_iter(path, img)
     for chunk in z:
         yield chunk
 
@@ -207,12 +209,21 @@ def count_eggs_in_batch():
         for entry in request.json["chamberData"]
     ]
     n_files = len(request.json["chamberData"])
-    for i, file in enumerate(file_list):
+    if len(request.json["chamberData"]) == 1:
+        lowest_idx = int(list(request.json["chamberData"])[0])
+    else:
+        lowest_idx = min(*[int(i) for i in request.json["chamberData"].keys()])
+    for file in file_list:
         attempts = 0
         succeeded = False
         while True:
             try:
-                count_eggs_in_img(i, file, sid, n_files)
+                count_eggs_in_img(
+                    file,
+                    sid,
+                    n_files,
+                    is_lowest_idx=int(file["index"]) == lowest_idx,
+                )
                 succeeded = True
             except CUDAMemoryException:
                 attempts += 1
@@ -240,7 +251,7 @@ def count_eggs_in_batch():
     return "OK"
 
 
-def count_eggs_in_img(i, file, sid, n_files):
+def count_eggs_in_img(file, sid, n_files, is_lowest_idx):
     file, index = file["file_name"], file["index"]
     if file and allowed_file(file):
         filename = secure_filename(file)
@@ -252,5 +263,6 @@ def count_eggs_in_img(i, file, sid, n_files):
             "alignment_data": request.json["chamberData"][index],
             "index": index,
             "n_files": n_files,
+            "is_lowest_idx": is_lowest_idx,
         }
         app.sessions[sid].segment_img_and_count_eggs(filePath, **kwargs)

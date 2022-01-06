@@ -5,18 +5,21 @@ from project.lib.image.node_based_segmenter import NodeBasedSegmenter
 
 
 class SubImageHelper:
-    def get_sub_images(self, img, alignment_data):
+    def get_sub_images(self, img, img_path, alignment_data, room):
         if "nodes" in alignment_data:
-            self.segment_image_via_alignment_data(img, alignment_data)
+
+            self.segment_image_via_alignment_data(img, img_path, alignment_data, room)
         elif "bboxes" in alignment_data:
             self.segment_image_via_bboxes(img, alignment_data)
 
-    def segment_image_via_alignment_data(self, img, alignment_data):
+    def segment_image_via_alignment_data(self, img, img_path, alignment_data, room):
         segmenter = NodeBasedSegmenter(
             img,
+            img_path,
             alignment_data["nodes"],
             alignment_data["type"],
             alignment_data.get("inverted", False),
+            room,
         )
         self.subImgs, self.bboxes = segmenter.calc_bboxes_and_subimgs()
         self.rotation_angle = segmenter.rotation_angle

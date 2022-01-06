@@ -31,13 +31,13 @@ class DownloadManager:
         if backend_type == BackendTypes.local:
             Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
 
-    def prepareAnnotatedImage(self, sm, ts, path):
+    def prepareAnnotatedImage(self, sm, ts, path, path_base):
         self.font = drawing.loadFont(80)
         img = sm.open_image(path, dtype=np.uint8)
-        check_counts = self.path_base in self.sessions[ts]["edited_counts"]
+        check_counts = path_base in self.sessions[ts]["edited_counts"]
         if check_counts:
             been_edited = [
-                i in self.sessions[ts]["edited_counts"][self.path_base]
+                i in self.sessions[ts]["edited_counts"][path_base]
                 for i in map(str, range(len(sm.annotations[path])))
             ]
         else:
@@ -116,7 +116,7 @@ class DownloadManager:
 
             if been_edited[i]:
                 draw_single_text(
-                    self.sessions[ts]["edited_counts"][self.path_base][str(i)],
+                    self.sessions[ts]["edited_counts"][path_base][str(i)],
                     edit_status="edited",
                 )
             draw_single_text(
@@ -125,9 +125,10 @@ class DownloadManager:
             )
         return np.array(img)
 
-    def prepareImageWithError(self, path, error_type):
+    def prepareImageWithError(self, path, sm, error_type):
         self.font = drawing.loadFont(140)
-        img = Image.fromarray(cv2.imread(path))
+        img = sm.open_image(path, dtype=np.uint8)
+        img = Image.fromarray(img)
         draw = ImageDraw.Draw(img)
         w, h = img.size
         msg = errorMessages[error_type]
@@ -143,22 +144,22 @@ class DownloadManager:
     def createImagesForDownload(self, ts):
         sm = self.sessions[ts]["session_manager"]
         for path in sm.predictions:
-            self.path_base = os.path.basename(path)
+            path_base = os.path.basename(path)
             if inspect.isclass(sm.predictions[path][0]) and issubclass(
                 sm.predictions[path][0], Exception
             ):
-                img = self.prepareImageWithError(path, sm.predictions[path][0])
+                img = self.prepareImageWithError(path, sm, sm.predictions[path][0])
             else:
-                img = self.prepareAnnotatedImage(sm, ts, path)
+                img = self.prepareAnnotatedImage(sm, ts, path, path_base)
 
             if backend_type == BackendTypes.gcp:
+
                 img_entity = EggLayingImage.query.filter_by(
-                    session_id=sm.room, basename=self.path_base
+                    session_id=sm.room, basename=path_base
                 ).first()
                 img_entity.annotated_img = cv2.imencode(
-                    f".{os.path.splitext(self.path_base)[1]}", img)[1]
+                    f".{os.path.splitext(path_base)[1]}", img
+                )[1].tobytes()
                 db.session.commit()
             elif backend_type == BackendTypes.local:
-                cv2.imwrite(
-                    os.path.join(self.sessions[ts]["folder"], self.path_base), img
-                )
+                cv2.imwrite(os.path.join(self.sessions[ts]["folder"], path_base), img)

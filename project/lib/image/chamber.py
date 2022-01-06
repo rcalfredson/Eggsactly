@@ -159,7 +159,7 @@ class LargeChamber(Chamber):
         counts = [x for _, x in sorted(zip(self.csvToClockwise, counts))]
         return counts
 
-    def writeLineFormatted(self, eggCounts, i, writer):
+    def writeLineFormatted(self, eggCounts, i, writer, **kwargs):
         """Write egg counts to file for an entire experimental image (i.e., a
         collection of egg-laying regions)
 
