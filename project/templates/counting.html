@@ -158,6 +158,11 @@
             'frame', 'text', 'button', 'buttonText',
             'exampleImage', 'exampleText', 'hoverSensor'
         ];
+        const CONSTANT_BUTTONS = [{ id: 'reset-view', text: 'Reset view' },
+        {
+            id: 'prev-img', text: 'Previous image',
+        },
+        { id: 'next-img', text: 'Next image' }];
         let lastHelpBoxWasMinimized;
         let alignmentHelpDialog = {};
         let logUpdates = [];
@@ -732,6 +737,7 @@
             setupCanvas({ startAtBeginning: false });
         });
         socket.on('counting-done', (msg) => {
+            paper.project.clear();
             msg.filenames.forEach(fn => {
                 countingState[fn] = countingStates.post;
             })
@@ -1476,6 +1482,11 @@
                     textIndex = 0;
                 }
             }, 400);
+        }
+
+        function imageUsesManualAlignment(index = currentImgIndex) {
+            return chamberRealignmentData[index] &&
+                chamberRealignmentData[index].hasOwnProperty('nodes');
         }
 
         function imageUsesCustomMasks(index = currentImgIndex) {
@@ -2485,7 +2496,7 @@
                 this.offsetByKerf(opts.ptsToOffset);
                 this.selected = false;
                 this.restoreRectPath();
-                this.id = this.rectPath.id;
+                this.id = this.rectPath.id.toString();
             }
 
             toggleSelected() {
@@ -2701,7 +2712,7 @@
                     chamberRealignmentData[currentImgIndex].gridlineBBoxes[newShape.id] = newShape;
 
                 });
-                delete chamberRealignmentData[currentImgIndex].gridlineBBoxes[box.rectPath.id];
+                delete chamberRealignmentData[currentImgIndex].gridlineBBoxes[key];
             });
             if (foundBisection) return;
             updateGridlineXYPositions();
@@ -2766,6 +2777,19 @@
                 freehandEditButton,
                 toggleMaskNotationMode
             );
+            if (`${chamberRealignmentData[currentImgIndex].customMode}-edit-button`
+                !== maskNotationButtonGroup.selected) {
+                document.getElementById(
+                    `${chamberRealignmentData[currentImgIndex].customMode}-edit-button`
+                ).classList.add('selected');
+                document.getElementById(
+                    (chamberRealignmentData[currentImgIndex].customMode === 'freehand' ?
+                        'grid' : 'freehand') +
+                    '-edit-button'
+                ).classList.remove('selected');
+                maskNotationButtonGroup.selected =
+                    `${chamberRealignmentData[currentImgIndex].customMode}-edit-button`;
+            }
         }
 
         function setUpMaskCreationInterface(opts = { draw: true }) {
@@ -2938,6 +2962,9 @@
                             }));
                         } else {
                             let savedMask = JSON.parse(localStorage.getItem('customMask'));
+                            Object.keys(savedMask.gridlineBBoxes).forEach(id => {
+                                savedMask.gridlineBBoxes[id].id = parseInt(id, 10);
+                            });
                             loadFreehandMaskOnImage(savedMask);
                             loadGridMaskOnImage(savedMask, {
                                 clearData: false,
@@ -3011,7 +3038,7 @@
             return pointText;
         }
 
-        function setupCountEggsButtons() {
+        function setupCountEggsInImageButton() {
             document.getElementById('count-eggs-in-img-button').onclick = () => {
                 if (checkIfImageUntriaged(currentImgIndex)) {
                     document.getElementById('mode-marker').innerHTML = 'To submit this' +
@@ -3025,12 +3052,13 @@
                 displayLoadingMessage(document.getElementById('count-eggs-in-img-button'));
                 countingState[orderedImgNames[currentImgIndex]] = countingStates.mid;
                 transformAlignmentGuidelinePoints(currentImgIndex);
-                let chamberData = {};
+                let chamberData = reducePropsInInnerObjects(chamberRealignmentData,
+                    COUNTING_DATA_KEYS_TO_KEEP);
 
                 let dataToSend = {
                     chamberData: {
                         [currentImgIndex]:
-                            chamberRealignmentData[currentImgIndex]
+                            chamberData[currentImgIndex]
                     },
                     sid
                 };
@@ -3043,6 +3071,31 @@
                         console.log('Success!');
                     }
                 });
+            }
+        }
+
+        function setupReanalyzeImageButton() {
+            document.getElementById('reanalyze-img-button').onclick = () => {
+                countingState[orderedImgNames[currentImgIndex]] = countingStates.pre;
+                if (!countingStarted() ||
+                    (orderedImgNames.length === 1 && document.getElementById('download-csv'))) {
+                    document.getElementById('download-csv').remove();
+                }
+                if (chamberRealignmentData[currentImgIndex].nodesInCanvasFrame) {
+                    chamberRealignmentData[currentImgIndex].nodes =
+                        JSON.parse(JSON.stringify(
+                            chamberRealignmentData[currentImgIndex].nodesInCanvasFrame));
+                }
+                redrawCanvas({ startAtBeginning: false });
+            }
+        }
+
+        function setupCountEggsButtons() {
+            if (document.getElementById('count-eggs-in-img-button')) {
+                setupCountEggsInImageButton();
+            }
+            if (document.getElementById('reanalyze-img-button')) {
+                setupReanalyzeImageButton();
             }
             document.getElementById('count-eggs-button').onclick = () => {
                 let untriaged = indicesOfUntriagedImages();
@@ -3090,7 +3143,7 @@
                 reducedObj[objKey] = {}
                 keysToKeep.forEach(k => {
                     if (!objectofObjects[objKey][k] &&
-                        objectofObjects[objKey][k] !== 0) return;
+                        ![false, 0].includes(objectofObjects[objKey][k])) return;
                     reducedObj[objKey][k] = objectofObjects[objKey][k];
                 })
             });
@@ -3112,8 +3165,10 @@
                 if (chamberRealignmentData[k].ignored) {
                     return;
                 }
-                calcScalingFactor(imageUsesCustomMasks(k) ? 0 : rotationAngles[orderedImgNames[k]], k);
-                calcPadding(imageUsesCustomMasks(k) ? 0 : rotationAngles[orderedImgNames[k]], k);
+                calcScalingFactor((imageUsesCustomMasks(k) || imageUsesManualAlignment(k))
+                    ? 0 : rotationAngles[orderedImgNames[k]], k);
+                calcPadding((imageUsesCustomMasks(k) || imageUsesManualAlignment(k))
+                    ? 0 : rotationAngles[orderedImgNames[k]], k);
 
                 if (chamberRealignmentData[k].imageTranslation) {
                     chamberRealignmentData[k].imageTranslation.forEach((el, i) => {
@@ -3140,14 +3195,18 @@
                     });
                     return;
                 }
-                Object.keys(chamberRealignmentData[k].nodes).forEach(node => {
-                    let pt = chamberRealignmentData[k].nodes[node];
-                    chamberRealignmentData[k].nodes[node] = [
-                        (pt[0] - leftPadding) / scalingFactor,
-                        (pt[1] - upperPadding) / scalingFactor
-                    ];
-                    chamberRealignmentData[k].orientation
-                });
+                if (chamberRealignmentData[k].nodes) {
+                    chamberRealignmentData[k].nodesInCanvasFrame =
+                        JSON.parse(JSON.stringify(chamberRealignmentData[k].nodes));
+
+                    Object.keys(chamberRealignmentData[k].nodes).forEach(node => {
+                        let pt = chamberRealignmentData[k].nodes[node];
+                        chamberRealignmentData[k].nodes[node] = [
+                            (pt[0] - leftPadding) / scalingFactor,
+                            (pt[1] - upperPadding) / scalingFactor
+                        ];
+                    });
+                }
             });
 
         }
@@ -3194,7 +3253,7 @@
         }
 
         var setButtonHandlers = function () {
-            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
+            if (countingStarted()) {
                 setupCsvDownloadButton();
                 setupImgDownloadButton();
                 setupErrorReportButton();
@@ -3255,9 +3314,6 @@
         }
 
         var setChamberTypeSelector = function () {
-            if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
-                return;
-            }
             if (chamberRealignmentData[currentImgIndex] &&
                 !['', 'null', undefined].includes(
                     chamberRealignmentData[currentImgIndex].type)) {
@@ -3326,7 +3382,6 @@
         }
 
         var updateRealignmentGuide = function () {
-            document.getElementById('help-pane').style.display = 'inline-block';
             if (chamberRealignmentData[currentImgIndex] &&
                 chamberRealignmentData[currentImgIndex].type === 'custom'
             ) {
@@ -3727,6 +3782,7 @@
         }
 
         function redrawCanvas(opts = {}) {
+            paper.project.clear();
             refreshNavButtons();
             let origNumErrors = numErrors;
             hasErrors = Object.keys(annotations).map((k) => {
@@ -4038,7 +4094,7 @@
                 eggLayingRegions[index][path.id].outline.strokeColor = colors.lightRed;
             }
             path.onMouseLeave = () => {
-                if (inputAmender) {
+                if (inputAmender || !eggLayingRegions[index][path.id]) {
                     return;
                 }
                 eggLayingRegions[index][path.id].outline.strokeWidth = 1;
@@ -4171,7 +4227,10 @@
             if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
                 allButtons[0].disabled = true;
                 allButtons[1].disabled = true;
-                allButtons[2].disabled = true;
+                allButtons[2] = {
+                    id: 'reanalyze-img-button',
+                    text: 'Re-analyze image',
+                };
             }
             return allButtons;
         }
@@ -4207,11 +4266,30 @@
         }
 
         function refreshNavButtons() {
-            getContextSpecificButtons().forEach(b => {
+            let buttonsToRefresh = getContextSpecificButtons()
+            buttonsToRefresh.forEach(b => {
                 if (document.getElementById(b.id)) {
                     document.getElementById(b.id).disabled = b.disabled;
+                    document.getElementById(b.id).hidden = b.hidden;
                 }
-            })
+                [{
+                    newButton: 'count-eggs-in-img-button',
+                    existingButton: 'reanalyze-img-button'
+
+                }, {
+                    newButton: 'reanalyze-img-button',
+                    existingButton: 'count-eggs-in-img-button'
+                }].forEach(btnPair => {
+                    if (b.id === btnPair.newButton &&
+                        !document.getElementById(btnPair.newButton)) {
+                        let buttonToReassign = document.getElementById(
+                            btnPair.existingButton
+                        );
+                        buttonToReassign.setAttribute('id', b.id);
+                        buttonToReassign.innerText = b.text;
+                    }
+                });
+            });
         }
 
         function setupNavButtons() {
@@ -4219,13 +4297,8 @@
                 document.getElementById('viewer-nav').remove();
             }
             $('#updates').prepend('<div id=viewer-nav></div>');
-            const constant_buttons = [{ id: 'reset-view', text: 'Reset view' },
-            {
-                id: 'prev-img', text: 'Previous image',
-            },
-            { id: 'next-img', text: 'Next image' }];
             $('#viewer-nav').append('<div id=button-row></div>');
-            constant_buttons.forEach(b => {
+            CONSTANT_BUTTONS.forEach(b => {
                 let doms = buttonString(b.id, b.text, b.hidden);
                 doms.forEach(d => {
                     $('#button-row').append(d);
@@ -4261,19 +4334,30 @@
         }
 
         function setupCanvas(opts = { startAtBeginning: true }) {
+            paper.install(window);
             setupNavButtons();
             $('#viewer-nav').append('<div class=divider></div>');
-            setCurrentImgName()
+            setCurrentImgName();
+            let viewer;
             if (document.getElementById('viewer')) {
-                let viewer = document.getElementById('viewer');
-                viewer.style.height = `${viewer.offsetHeight}px`;
-                viewer.innerHTML = '';
+                viewer = document.getElementById('viewer');
+            } else {
+                viewer = document.createElement('div');
+                viewer.id = 'viewer';
+                document.getElementById('updates').appendChild(viewer);
             }
-            $('#updates').append('<div id=viewer></div>')
-            $('#viewer').append('<canvas keepalive=true id=detectionResults></canvas>');
-            canvas = document.getElementById('detectionResults');
-            paper.install(window);
-            paper.setup(canvas);
+            viewer.style.height = `${viewer.offsetHeight}px`;
+            let canvasEl;
+            if (document.getElementById('detectionResults')) {
+                canvasEl = document.getElementById('detectionResults');
+            } else {
+                canvasEl = document.createElement('canvas');
+                canvasEl.setAttribute('keepalive', true);
+                canvasEl.id = 'detectionResults';
+            }
+            viewer.prepend(canvasEl);
+            paper.setup(canvasEl);
+            canvas = canvasEl;
             paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
             redrawCanvas({
                 startAtBeginning: opts.startAtBeginning
