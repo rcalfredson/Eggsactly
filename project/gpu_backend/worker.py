@@ -70,6 +70,11 @@ request_headers = {"Authorization": f"access_token {key_holder.get_jwt()}"}
 active_tasks = {}
 networks = {}
 pauser = PythonPauser()
+with open("project/models/modelRevDates.json", "r") as f:
+    model_to_update_date = json.load(f)
+    latest_model = model_to_update_date["models"].get(
+        model_to_update_date["latest"], "unknown"
+    )
 
 
 def request_work():
@@ -204,6 +209,7 @@ def perform_task(attempt_ct=0):
         if task_type == GPUTaskTypes.arena:
             imgs = (img,)
         elif task_type == GPUTaskTypes.egg:
+            metadata["model"] = latest_model
             metadata["filename"] = os.path.basename(task["img_path"])
             metadata["index"] = task["data"]["index"]
             if "ignored" in task["data"] and task["data"]["ignored"]:

@@ -51,6 +51,8 @@ class ErrorReport(db.Model):
     user = db.relationship(
         "User", backref=db.backref("error_reports", lazy=True, cascade="all,delete")
     )
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    egg_counting_model_id = db.Column(db.String(1000), nullable=False)
 
 
 class EggRegionTemplate(db.Model):

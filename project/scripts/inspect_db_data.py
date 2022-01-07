@@ -62,3 +62,5 @@ for ent in entities:
         print("Edited count:", ent.edited_ct)
         print("User ID:", ent.user_id)
         print("User:", ent.user)
+        print('Timestamp:', ent.timestamp)
+        print('Model used:', ent.egg_counting_model_id)

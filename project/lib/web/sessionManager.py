@@ -54,6 +54,7 @@ class SessionManager:
         self.img_shapes = {}
         self.inverted = {}
         self.paths_to_indices = {}
+        self.models_used_by_image = {}
         self.annotations = {}
         self.bboxes = {}
         self.alignment_data = {}
@@ -75,6 +76,7 @@ class SessionManager:
         self.img_shapes = {}
         self.inverted = {}
         self.paths_to_indices = {}
+        self.models_used_by_image = {}
 
     def emit_to_room(self, evt_name, data):
         self.socketIO.emit(evt_name, data, room=self.room)
@@ -240,6 +242,7 @@ class SessionManager:
         if "bboxes" in metadata:
             self.bboxes[imgPath] = metadata["bboxes"]
         self.predictions[imgPath] = prediction_set
+        self.models_used_by_image[imgPath] = metadata["model"]
         alignment_data = self.alignment_data[imgPath]
         if self.is_exception(self.predictions[imgPath][0]):
             self.emit_to_room(
@@ -394,6 +397,7 @@ class SessionManager:
                         original_ct=original_ct,
                         edited_ct=edited_counts[imgPath][i],
                         user=user,
+                        egg_counting_model_id=self.models_used_by_image[rel_path]
                     )
                     db.session.commit()
 
