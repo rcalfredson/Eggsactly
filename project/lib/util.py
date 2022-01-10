@@ -23,3 +23,5 @@ def distance(pnt1, pnt2):
 def trueRegions(a):
     r = np.ma.flatnotmasked_contiguous(np.ma.array(a, mask=~a))
     return [] if r is None else r
+
+COL_G = (0,255,0)

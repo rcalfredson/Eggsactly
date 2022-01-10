@@ -21,12 +21,14 @@ def correct_via_exif(data=None, path=None, format=None, read_only=False):
     if data is not None and path is not None:
         raise ValueError("either data or path must be specified, not both.")
     image = Image.open(BytesIO(data) if data is not None else path)
+    if type(format) is str and format.lower() == "jpg":
+        format = "jpeg"
     try:
         for orientation in ExifTags.TAGS.keys():
             if ExifTags.TAGS[orientation] == "Orientation":
                 break
 
-        exif = image._getexif()
+        exif = image.getexif()
 
         if exif[orientation] == 3:
             if not read_only:

@@ -162,7 +162,8 @@ def save_img_as_sql_blob(sid, file, file_path):
         user = SocketIOUser(id=sid)
         db.session.add(user)
     data = correct_via_exif(
-        data=request.files[file].read(), format=os.path.splitext(file_path)[0]
+        data=request.files[file].read(),
+        format=os.path.splitext(file_path)[1][1:],
     )
     EggLayingImage(image=data, basename=os.path.basename(file_path), user=user)
     db.session.commit()

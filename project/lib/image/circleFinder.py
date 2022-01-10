@@ -14,7 +14,7 @@ from project import app
 from project.lib.datamanagement.models import EggLayingImage
 from project.lib.image.chamber import CT
 from project.lib.image.converter import byte_to_bgr
-from project.lib.util import distance, trueRegions
+from project.lib.util import distance, trueRegions, COL_G
 
 dirname = os.path.dirname(__file__)
 ARENA_IMG_RESIZE_FACTOR = 0.186
@@ -670,7 +670,20 @@ class CircleFinder:
         self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
         if debug:
             print("what are centroids?", self.centroids)
-
+            with app.app_context():
+                self.imageResized = byte_to_bgr(
+                    EggLayingImage.query.filter_by(
+                        session_id=self.room, basename=self.img_name
+                    )
+                    .first()
+                    .image
+                )
+                self.imageResized = cv2.resize(
+                    self.imageResized,
+                    (0, 0),
+                    fx=self.predict_resize_factor,
+                    fy=self.predict_resize_factor,
+                )
             imgCopy = cv2.resize(np.array(self.imageResized), (0, 0), fx=0.5, fy=0.5)
             for centroid in self.centroids:
                 cv2.drawMarker(

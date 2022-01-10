@@ -137,8 +137,8 @@ class SessionManager:
                 self.emit_to_room(
                     "counting-progress",
                     {
-                        "data": "Skew detected in image %s;"
-                        + " stopping analysis." % imgBasename
+                        "data": "Skew detected in image %s;" % imgBasename
+                        + " stopping analysis."
                     },
                 )
                 raise ImageAnalysisException
@@ -397,7 +397,7 @@ class SessionManager:
                         original_ct=original_ct,
                         edited_ct=edited_counts[imgPath][i],
                         user=user,
-                        egg_counting_model_id=self.models_used_by_image[rel_path]
+                        egg_counting_model_id=self.models_used_by_image[rel_path],
                     )
                     db.session.commit()
 
