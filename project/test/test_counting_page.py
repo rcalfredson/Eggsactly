@@ -340,9 +340,9 @@ class EggCountingTester:
         ) + " occurred while testing the egg counting tool.\n\n"
         message += "\n".join(self.messages)
         send_mail(
-            recipients,
             "Egg counting test error",
             message,
+            recipients,
         )
 
     @staticmethod

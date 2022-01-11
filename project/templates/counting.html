@@ -166,6 +166,7 @@
         let lastHelpBoxWasMinimized;
         let alignmentHelpDialog = {};
         let logUpdates = [];
+        const ELLIPSE_LOG_UPDATE_TIMEOUT = 6 * 1000;
         let inProgressMessageData = { ellipseStages: ['.', '..', '...'] };
         let upperPadding, leftPadding;
         let scalingFactor;
@@ -618,6 +619,22 @@
                 inProgressMessageData.origText = message.innerText;
                 inProgressMessageData.elementId = message.id;
                 inProgressMessageData.intervalFunction = setInterval(() => {
+                    if (inProgressMessageData.ellipseStartTime &&
+                        Date.now() - inProgressMessageData.ellipseStartTime >
+                        ELLIPSE_LOG_UPDATE_TIMEOUT) {
+                        clearLogMessageLoadingStatus();
+                        let commErrorMsg = document.createElement('p');
+                        commErrorMsg.style.color = 'red';
+                        commErrorMsg.innerText = "Sorry, the system can't process images" +
+                            ' right now.\nPlease click "Reset" and start again, or revisit' +
+                            ' the site later.';
+                        addToLogUpdates(commErrorMsg, {
+                            ellipses: false
+                        });
+                        socket.emit('email-error-notification',
+                            {}
+                        )
+                    }
                     document.getElementById(
                         inProgressMessageData.elementId
                     ).innerText = inProgressMessageData.origText +
@@ -631,6 +648,7 @@
                     }
 
                 }, 400);
+                inProgressMessageData.ellipseStartTime = Date.now();
             }
         }
 
@@ -740,7 +758,9 @@
             paper.project.clear();
             msg.filenames.forEach(fn => {
                 countingState[fn] = countingStates.post;
-            })
+                window.addEventListener('beforeunload',
+                    beforeUnloadHandler);
+            });
             if (document.getElementById('count-eggs-in-img-button') &&
                 document.getElementById('count-eggs-in-img-button').loadingInterval) {
                 clearInterval(document.getElementById('count-eggs-in-img-button'));
@@ -885,10 +905,12 @@
             clearInterval(el.loadingInterval);
         });
         socket.on('zip-annots-ready', (msg) => {
-            $('#updates').append(`<form hidden id=annot-retrieve action=/annot-img/${msg.time}><input id=annot-retrieve-input hidden id= value='Download results' type=submit>` +
-                '</input></form>')
+            $('#updates').append(`<form hidden id=annot-retrieve action=/annot-img/${msg.id}><input id=annot-retrieve-input hidden id= value='Download results' type=submit>` +
+                '</input></form>');
             document.getElementById('annot-retrieve').submit();
             document.getElementById('annot-retrieve').remove();
+            window.addEventListener('beforeunload',
+                beforeUnloadHandler);
             document.getElementById('download-imgs').innerText = 'Download annotated images';
             document.getElementById('download-imgs').removeAttribute('disabled');
             clearInterval(document.getElementById('download-imgs').loadingInterval)
@@ -1457,6 +1479,11 @@
         function setModeMarker() {
             document.getElementById('mode-marker').innerHTML = numErrors > 0 ?
                 'Note: currently displaying <strong>only</strong> images that need manual alignment to be analyzed.' : '';
+        }
+
+        function beforeUnloadHandler(e) {
+            e.preventDefault();
+            e.returnValue = '';
         }
 
         var setCurrentImgName = function () {
@@ -3113,6 +3140,9 @@
                 transformAlignmentGuidelinePoints();
                 let chamberData = reducePropsInInnerObjects(chamberRealignmentData,
                     COUNTING_DATA_KEYS_TO_KEEP);
+                Object.keys(countingState).forEach(k => {
+                    countingState[k] = countingStates.pre;
+                });
                 Object.keys(chamberRealignmentData).forEach(k => {
                     if (countingState[orderedImgNames[k]] == countingStates.post) {
                         delete chamberData[k];
@@ -3133,7 +3163,6 @@
                         console.log('Success!');
                     }
                 });
-                clearAllUpdates();
             }
         }
 
@@ -3217,7 +3246,7 @@
                 displayLoadingMessage(evt.target);
                 let rowsColsCounts = collectRowColCountLayout();
                 socket.emit('prepare-csv', {
-                    time: Date.now(),
+                    time: new Date().toLocaleString(),
                     sid: sid,
                     editedCounts: collectEditedCounts(),
                     rowColLayout: rowsColsCounts.rowsCols,
@@ -3229,10 +3258,11 @@
         function setupImgDownloadButton() {
             document.getElementById('download-imgs').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
+                window.removeEventListener('beforeunload',
+                    beforeUnloadHandler)
                 displayLoadingMessage(evt.target)
-                let requestTs = Date.now();
                 socket.emit('prepare-annot-imgs-zip', {
-                    time: requestTs,
+                    time: new Date().toLocaleString(),
                     sid: sid,
                     editedCounts: collectEditedCounts()
                 });
@@ -3434,13 +3464,19 @@
 
         function resizeAlignmentGuideHelpBox() {
             if (helpBoxIsMaximized()) {
+                let lBoundProportion;
+                if (chamberRealignmentData[currentImgIndex].type === 'large') {
+                    lBoundProportion = 0;
+                } else {
+                    lBoundProportion = .2;
+                }
                 let horizLBound = backgroundRaster.position.x -
-                    0.20 * backgroundRaster.bounds.width;
+                    lBoundProportion * backgroundRaster.bounds.width;
                 let horizUBound = backgroundRaster.position.x +
                     0.49 * backgroundRaster.bounds.width;
                 let newHorizPosition = 0.5 * (horizLBound + horizUBound);
                 let vertLBound = backgroundRaster.position.y -
-                    0.20 * backgroundRaster.bounds.height;
+                    lBoundProportion * backgroundRaster.bounds.height;
                 let vertUBound = backgroundRaster.position.y +
                     0.49 * backgroundRaster.bounds.height;
                 let newVertPosition = 0.5 * (vertLBound + vertUBound);
@@ -4243,7 +4279,7 @@
                 },
                 {
                     id: 'submit-error-report', text: 'Submit error report for all images',
-                    hidden: true
+                    hidden: idsWithEdits.size === 0
                 },
             ];
             return allButtons;

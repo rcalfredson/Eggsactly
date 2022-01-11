@@ -1,10 +1,10 @@
 import cv2
-from datetime import datetime
 import inspect
 import numpy as np
 import os
 from pathlib import Path
 from PIL import Image, ImageDraw
+import time
 
 from project import backend_type, db
 from project.lib.datamanagement.models import EggLayingImage
@@ -20,24 +20,23 @@ class DownloadManager:
     def __init__(self):
         self.sessions = {}
 
-    def addNewSession(self, session_manager, ts, edited_counts):
-        ts = str(ts)
-        self.sessions[ts] = {
+    def addNewSession(self, session_manager, ts, id, edited_counts):
+        self.sessions[id] = {
             "session_manager": session_manager,
-            "folder": "downloads/egg_counts_ALPHA_%s"
-            % datetime.today().strftime("%Y-%m-%d_%H-%M-%S"),
+            "folder": "annotated_images_ALPHA_%s"
+            % ts,
             "edited_counts": edited_counts,
         }
         if backend_type == BackendTypes.local:
             Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
 
-    def prepareAnnotatedImage(self, sm, ts, path, path_base):
+    def prepareAnnotatedImage(self, sm, id, path, path_base):
         self.font = drawing.loadFont(80)
         img = sm.open_image(path, dtype=np.uint8)
-        check_counts = path_base in self.sessions[ts]["edited_counts"]
+        check_counts = path_base in self.sessions[id]["edited_counts"]
         if check_counts:
             been_edited = [
-                i in self.sessions[ts]["edited_counts"][path_base]
+                i in self.sessions[id]["edited_counts"][path_base]
                 for i in map(str, range(len(sm.annotations[path])))
             ]
         else:
@@ -78,7 +77,7 @@ class DownloadManager:
             rect = cv2.minAreaRect(np.float32(box_coords))
             box = cv2.boxPoints(rect)
             box = np.int0(box)
-            cv2.drawContours(img, [box], 0, (0, 191, 255), 2)
+            cv2.drawContours(img, [box], 0, (255, 191, 0), 2)
 
             for outline in sm.predictions[path][i]["outlines"]:
                 outline = [list(reversed(el)) for el in outline]
@@ -116,7 +115,7 @@ class DownloadManager:
 
             if been_edited[i]:
                 draw_single_text(
-                    self.sessions[ts]["edited_counts"][path_base][str(i)],
+                    self.sessions[id]["edited_counts"][path_base][str(i)],
                     edit_status="edited",
                 )
             draw_single_text(
@@ -141,8 +140,8 @@ class DownloadManager:
         )
         return np.array(img)
 
-    def createImagesForDownload(self, ts):
-        sm = self.sessions[ts]["session_manager"]
+    def createImagesForDownload(self, id):
+        sm = self.sessions[id]["session_manager"]
         for path in sm.predictions:
             path_base = os.path.basename(path)
             if inspect.isclass(sm.predictions[path][0]) and issubclass(
@@ -150,7 +149,7 @@ class DownloadManager:
             ):
                 img = self.prepareImageWithError(path, sm, sm.predictions[path][0])
             else:
-                img = self.prepareAnnotatedImage(sm, ts, path, path_base)
+                img = self.prepareAnnotatedImage(sm, id, path, path_base)
 
             if backend_type == BackendTypes.gcp:
 
@@ -158,8 +157,9 @@ class DownloadManager:
                     session_id=sm.room, basename=path_base
                 ).first()
                 img_entity.annotated_img = cv2.imencode(
-                    f".{os.path.splitext(path_base)[1]}", img
+                    f".{os.path.splitext(path_base)[1]}",
+                    cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 )[1].tobytes()
                 db.session.commit()
             elif backend_type == BackendTypes.local:
-                cv2.imwrite(os.path.join(self.sessions[ts]["folder"], path_base), img)
+                cv2.imwrite(os.path.join(self.sessions[id]["folder"], path_base), img)

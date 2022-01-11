@@ -21,6 +21,7 @@ from project.lib.image.circleFinder import (
     rotate_around_point_highperf,
     rotate_image,
 )
+from project.lib.util import dashed_datetime
 from project.lib.web.backend_types import BackendTypes
 from project.lib.web.exceptions import (
     CUDAMemoryException,
@@ -52,6 +53,7 @@ class SessionManager:
         self.predictions = {}
         self.basenames = {}
         self.img_shapes = {}
+        self.n_files = 0
         self.inverted = {}
         self.paths_to_indices = {}
         self.models_used_by_image = {}
@@ -73,6 +75,7 @@ class SessionManager:
         self.bboxes = {}
         self.alignment_data = {}
         self.basenames = {}
+        self.n_files = 0
         self.img_shapes = {}
         self.inverted = {}
         self.paths_to_indices = {}
@@ -168,6 +171,16 @@ class SessionManager:
             del self.cfs[img_path]
         except Exception as exc:
             print("exception while finding circles:")
+            self.emit_to_room(
+                "counting-progress",
+                {
+                    "data": "Checking chamber type of image"
+                    + f" {self.paths_to_indices[img_path] + 1} of "
+                    + str(len(self.paths_to_indices)),
+                    "ellipses": False,
+                    "overwrite": True,
+                },
+            )
             traceback.print_exc()
             if self.is_CUDA_mem_error(exc):
                 raise CUDAMemoryException
@@ -195,12 +208,10 @@ class SessionManager:
         img_path = os.path.normpath(img_path)
         imgBasename = os.path.basename(img_path)
         self.basenames[img_path] = imgBasename
-        self.emit_to_room(
-            "counting-progress",
-            {"data": "Segmenting image %i of %i" % (i + 1, n_files)},
-        )
         img = self.open_image(img_path)
         self.img_shapes[img_path] = img.shape
+        self.paths_to_indices[img_path] = i
+        self.n_files = n_files
         self.enqueue_arena_detection_task(img_path)
 
     def segment_img_and_count_eggs(
@@ -222,7 +233,6 @@ class SessionManager:
         else:
             self.img_paths[index] = img_path
         self.basenames[img_path] = imgBasename
-        self.paths_to_indices[img_path] = index
         self.alignment_data[img_path] = alignment_data
         self.alignment_data[img_path]["index"] = index
         if not img_path in self.chamberTypes or (
@@ -407,10 +417,8 @@ class SessionManager:
     def is_exception(my_var):
         return inspect.isclass(my_var) and issubclass(my_var, Exception)
 
-    def sendCSV(self, edited_counts, row_col_layout, ordered_counts):
-        resultsBasename = "egg_counts_ALPHA_%s.csv" % datetime.today().strftime(
-            "%Y-%m-%d_%H-%M-%S"
-        )
+    def sendCSV(self, edited_counts, row_col_layout, ordered_counts, time):
+        resultsBasename = "egg_counts_ALPHA_%s.csv" % dashed_datetime(time)
         csvfile = StringIO()
         writer = csv.writer(csvfile)
         writer.writerow(["Egg Counter, ALPHA version"])

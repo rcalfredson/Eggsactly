@@ -39,7 +39,7 @@ NETWORK_CONSTS = {
     },
 }
 MAX_ATTEMPTS_PER_IMG = 2
-MAX_SQL_QUERIES_PER_IMG = 10
+MAX_SQL_QUERIES_PER_IMG = 3
 
 
 class AuthHelper:
@@ -121,6 +121,8 @@ def request_work():
                     pauser.end_high_impact_py_prog()
                 else:
                     break
+            except FileNotFoundError:
+                break
             if succeeded:
                 break
         if succeeded:
@@ -134,11 +136,12 @@ def request_work():
         time.sleep(reconnect_attempt_delay)
 
 
-def report_progress_to_server(group_id, region_index, tot_regions, img_path):
+def report_progress_to_server(task_type, group_id, region_index, tot_regions, img_path):
     requests.request(
         "POST",
         f"{server_uri}/tasks/gpu/report",
         json={
+            "task_type": task_type,
             "group_id": group_id,
             "region_index": region_index,
             "tot_regions": tot_regions,
@@ -185,13 +188,16 @@ def perform_task(attempt_ct=0):
 
         if not img_entity:
             print("Couldn't find image specified in task")
+            img_basename = os.path.basename(task["img_path"])
             print(
                 "Queried room",
                 task["room"],
                 "and basename",
-                os.path.basename(task["img_path"]),
+                img_basename,
             )
-            return
+            raise FileNotFoundError(
+                (f"Couldn't find image {img_basename} for room {task['room']}")
+            )
         img = byte_to_bgr(img_entity.image)
         print("time spent decoding:", timeit.default_timer() - decode_start_t)
         resize_norm_start_t = timeit.default_timer()
@@ -234,7 +240,13 @@ def perform_task(attempt_ct=0):
         for i, img in enumerate(imgs):
             try:
                 if task_type == GPUTaskTypes.egg:
-                    report_progress_to_server(task_key, i, len(imgs), task["img_path"])
+                    report_progress_to_server(
+                        task_type.name, task_key, i, len(imgs), task["img_path"]
+                    )
+                elif task_type == GPUTaskTypes.arena:
+                    report_progress_to_server(
+                        task_type.name, task_key, 0, None, task["img_path"]
+                    )
                 results = networks[task_type].predict_instances(img)[1]
                 results["count"] = len(results["points"])
                 results["outlines"] = get_interpolated_points(results["coord"])

@@ -5,12 +5,15 @@ import json
 import os
 from pathlib import Path
 import time
+from uuid import uuid1
 import zipfile
 
 from project import app, backend_type, db
 from project.lib.common import zipdir
 from project.lib.datamanagement.models import EggRegionTemplate, SocketIOUser
 from project.lib.datamanagement.socket_io_auth import authenticated_only
+from project.lib.mail import send
+from project.lib.util import dashed_datetime
 from project.lib.web.backend_types import BackendTypes
 from project.lib.web.sessionManager import SessionManager
 
@@ -98,7 +101,10 @@ def setup_event_handlers():
     @app.socketIO.on("prepare-csv")
     def prepare_csv(data):
         app.sessions[data["sid"]].sendCSV(
-            data["editedCounts"], data["rowColLayout"], data["orderedCounts"]
+            data["editedCounts"],
+            data["rowColLayout"],
+            data["orderedCounts"],
+            data["time"],
         )
 
     @app.socketIO.on("submit-error-report")
@@ -111,18 +117,19 @@ def setup_event_handlers():
 
     @app.socketIO.on("prepare-annot-imgs-zip")
     def setup_imgs_download(data):
-        ts = str(data["time"])
+        ts = dashed_datetime(data["time"])
+        req_id = str(uuid1())
         app.downloadManager.addNewSession(
-            app.sessions[data["sid"]], ts, data["editedCounts"]
+            app.sessions[data["sid"]], ts, req_id, data["editedCounts"]
         )
-        app.downloadManager.createImagesForDownload(str(data["time"]))
-        zipfName = "%s.zip" % (app.downloadManager.sessions[ts]["folder"])
+        app.downloadManager.createImagesForDownload(req_id)
+        zipfName = "%s.zip" % (app.downloadManager.sessions[req_id]["folder"])
         if backend_type == BackendTypes.local:
             zipf = zipfile.ZipFile(zipfName, "w", zipfile.ZIP_DEFLATED)
-            zipdir(app.downloadManager.sessions[ts]["folder"], zipf)
+            zipdir(app.downloadManager.sessions[req_id]["folder"], zipf)
             zipf.close()
-        app.downloadManager.sessions[ts]["zipfile"] = zipfName
-        app.socketIO.emit("zip-annots-ready", {"time": ts}, room=data["sid"])
+        app.downloadManager.sessions[req_id]["zipfile"] = zipfName
+        app.socketIO.emit("zip-annots-ready", {"id": req_id}, room=data["sid"])
 
     @app.socketIO.on("mask-list")
     def get_mask_list(emit=True):
@@ -148,6 +155,15 @@ def setup_event_handlers():
             app.socketIO.emit("mask-list", {"names": names})
         else:
             return names
+
+    @app.socketIO.on("email-error-notification")
+    def email_error_notification(_):
+        send.send_mail(
+            "Egg counting server FAILURE",
+            "A user of the egg-counting tool just encountered an error that"
+            + " prevented them from analyzing their images. Please check the"
+            + " server logs for more information.",
+        )
 
     @app.socketIO.on("reset-session")
     def reset_session(data):

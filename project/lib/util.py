@@ -19,9 +19,14 @@ def distance(pnt1, pnt2):
     return np.linalg.norm(np.array(pnt1) - pnt2)
 
 
+def dashed_datetime(dt_in):
+    return dt_in.replace("/", "-").replace(" ", "").replace(":", "-").replace(",", "-")
+
+
 # returns slice objects for all contiguous true regions in the given array
 def trueRegions(a):
     r = np.ma.flatnotmasked_contiguous(np.ma.array(a, mask=~a))
     return [] if r is None else r
 
-COL_G = (0,255,0)
+
+COL_G = (0, 255, 0)

@@ -187,11 +187,6 @@ def check_chamber_type_of_img(i, file, sid, n_files):
         folder_path = os.path.join(app.config["UPLOAD_FOLDER"], sid)
         file_path = os.path.join(folder_path, filename)
         save_uploaded_img(sid, file, file_path)
-        socketIO.emit(
-            "counting-progress",
-            {"data": "Checking chamber type of image %i of %i" % (i + 1, n_files)},
-            room=sid,
-        )
         app.sessions[sid].check_chamber_type_and_find_bounding_boxes(
             file_path, i, n_files
         )

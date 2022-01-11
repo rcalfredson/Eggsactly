@@ -29,13 +29,16 @@ scheduler = Scheduler(1)
 scheduler.schedule.every(5).minutes.do(prune_old_sessions)
 stop_scheduler = scheduler.run_continuously()
 if flask_env == "production":
-    p = argparse.ArgumentParser(description="run the egg-counting server")
-    p.add_argument(
-        "--host", default="127.0.0.1", help="address where the server should run"
-    )
-    p.add_argument("--port", default="5000", help="port where the server should listen")
-    opts = p.parse_args()
-    logger = logging.getLogger("waitress")
-    logger.setLevel(logging.INFO)
-    waitress.serve(app, host=opts.host, port=opts.port)
+    server_host = "127.0.0.1"
+elif flask_env == "development":
+    server_host = "0.0.0.0"
+p = argparse.ArgumentParser(description="run the egg-counting server")
+p.add_argument(
+    "--host", default=server_host, help="address where the server should run"
+)
+p.add_argument("--port", default="5000", help="port where the server should listen")
+opts = p.parse_args()
+logger = logging.getLogger("waitress")
+logger.setLevel(logging.INFO)
+waitress.serve(app, host=opts.host, port=opts.port)
 stop_scheduler.set()
