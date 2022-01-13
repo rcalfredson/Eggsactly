@@ -3056,6 +3056,9 @@
         }
 
         function drawErrorText(errorType) {
+            if (errorMessages[errorType].length === 0) {
+                return;
+            }
             let pointText = new paper.PointText(new paper.Point(paper.view.center.x,
                 paper.view.center.y))
             pointText.content = errorMessages[errorType];
@@ -3818,7 +3821,6 @@
         }
 
         function redrawCanvas(opts = {}) {
-            paper.project.clear();
             refreshNavButtons();
             let origNumErrors = numErrors;
             hasErrors = Object.keys(annotations).map((k) => {
@@ -3889,11 +3891,13 @@
                     });
                 }
             }
-            $('#updates').append('<img id=pic src="/uploads/' +
-                `${sid}/${orderedImgNames[currentImgIndex]}?lastmod=${Date.now()}">`);
+            clearAlignmentGuideHelpBox();
+
             let rotationAngle = rotationAngles[orderedImgNames[currentImgIndex]] || 0;
-            backgroundRaster = new paper.Raster('pic');
-            pic = document.getElementById('pic');
+            paper.project.clear();
+
+            backgroundRaster = new paper.Raster('/uploads/' +
+                `${sid}/${orderedImgNames[currentImgIndex]}`);
             backgroundRaster.on('mouseleave', () => {
                 cursorOnCanvas = false;
             });
@@ -3931,7 +3935,6 @@
                     backgroundRaster.fitBounds(paper.view.viewSize);
                 }
                 calcScalingFactor(0);
-                document.getElementById('pic').remove();
                 if (!document.getElementById('paper-finished-loading')) {
                     $('#updates').append('<div id=paper-finished-loading hidden></div>')
                 }
@@ -3945,6 +3948,11 @@
                     if (!errorText) {
                         errorText = 'ManualAlignment';
                     }
+                    if (eggLayingRegions[currentImgIndex] &&
+                        eggLayingRegions[currentImgIndex].text) {
+                        eggLayingRegions[currentImgIndex].text.remove();
+                    }
+
                     let pointText = drawErrorText(errorText);
 
 

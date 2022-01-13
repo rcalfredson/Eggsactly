@@ -1,6 +1,5 @@
 import csv
 import cv2
-from datetime import datetime
 import inspect
 from io import BytesIO, StringIO
 import json
@@ -137,14 +136,24 @@ class SessionManager:
                 img_path
             ].findCircles(debug=False, predictions=predictions)
             if self.cfs[img_path].skewed:
+                three_or_more_rows_cols = any(
+                    [el > 2 for el in self.cfs[img_path].numRowsCols]
+                )
                 self.emit_to_room(
                     "counting-progress",
                     {
-                        "data": "Skew detected in image %s;" % imgBasename
-                        + " stopping analysis."
+                        "data": "Skew detected in image %s; " % imgBasename
+                        + ("stopping" if three_or_more_rows_cols else "continuing")
+                        + " analysis"
+                        + (
+                            "."
+                            if three_or_more_rows_cols
+                            else ", but be wary of possible bounding box misalignment."
+                        )
                     },
                 )
-                raise ImageAnalysisException
+                if three_or_more_rows_cols:
+                    raise ImageAnalysisException
             self.chamberTypes[img_path] = self.cfs[img_path].ct
             self.bboxes[img_path] = self.cfs[img_path].getSubImageBBoxes(
                 circles, avgDists, numRowsCols

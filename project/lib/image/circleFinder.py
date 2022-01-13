@@ -170,6 +170,7 @@ class CircleFinder:
         allowSkew: bool = False,
         model=default_model,
         predict_resize_factor: float = ARENA_IMG_RESIZE_FACTOR,
+        img=None
     ):
         """Create new CircleFinder instance.
 
@@ -188,6 +189,7 @@ class CircleFinder:
         """
         self.img_name = img_name
         self.img_shape = img_shape
+        self.img = img
         self.room = room
         self.skewed = None
         self.allowSkew = allowSkew
@@ -258,14 +260,17 @@ class CircleFinder:
         ]
 
     def getLargeChamberBBoxesAndImages(self, centers, pxToMM):
-        with app.app_context():
-            img = byte_to_bgr(
-                EggLayingImage.query.filter_by(
-                    session_id=self.room, basename=self.img_name
+        if getattr(self, 'img', None) is not None:
+            img = self.img
+        else:
+            with app.app_context():
+                img = byte_to_bgr(
+                    EggLayingImage.query.filter_by(
+                        session_id=self.room, basename=self.img_name
+                    )
+                    .first()
+                    .image
                 )
-                .first()
-                .image
-            )
         bboxes = []
         img = cv2.medianBlur(img, 5)
         img_for_circles = cv2.resize(
@@ -273,7 +278,9 @@ class CircleFinder:
         ).astype(np.uint8)
 
         self.findAgaroseWells(img_for_circles, centers, pxToMM)
-        if len(self.skew_slopes) == 0:
+        if len(self.skew_slopes) == 0 or set(range(4)) != set(
+            self.grouped_circles.keys()
+        ):
             self.findAgaroseWells(
                 img_for_circles, centers, pxToMM, cannyParam1=35, cannyParam2=30
             )
@@ -524,38 +531,57 @@ class CircleFinder:
 
         Check if the image is skewed, and flag it accordingly.
         """
-        self.yDetections = np.asarray([centroid[1] for centroid in self.centroids])
-        self.xDetections = np.asarray([centroid[0] for centroid in self.centroids])
         self.wellCoords = [[], []]
-        for detI, detections in enumerate((self.xDetections, self.yDetections)):
-            histResults = binned_statistic(detections, [], bins=40, statistic="count")
-            binHtsOrig = histResults.statistic
-            binClusters = trueRegions(binHtsOrig > 0)
-            for idx in (0, -1):
-                if len(binClusters) > 0 and np.sum(binHtsOrig[binClusters[idx]]) == 1:
-                    del binClusters[idx]
+        self.detections = [
+            np.asarray([centroid[i] for centroid in self.centroids]) for i in range(2)
+        ]
+        histResults = [
+            binned_statistic(detection_set, [], bins=40, statistic="count")
+            for detection_set in self.detections
+        ]
+        binHtsOrig = [res.statistic for res in histResults]
+        binClusters = [trueRegions(ht_set > 0) for ht_set in binHtsOrig]
+        use_bin_ht_test = any([len(cl) > 3 for cl in binClusters])
 
-            for i, trueRegion in enumerate(binClusters):
+        for detI, det_set in enumerate(self.detections):
+            hts = histResults[detI].statistic
+            clusters = binClusters[detI]
+            for idx in (0, -1):
+                if not use_bin_ht_test:
+                    continue
+                if len(clusters) > 0 and np.sum(hts[clusters[idx]]) == 1:
+                    del clusters[idx]
+
+            for i, trueRegion in enumerate(clusters):
                 self.wellCoords[detI].append(
                     int(
                         round(
                             np.mean(
                                 [
-                                    detections[
-                                        (histResults.binnumber - 1 >= trueRegion.start)
-                                        & (histResults.binnumber <= trueRegion.stop)
+                                    det_set[
+                                        (histResults[detI].binnumber - 1 >= trueRegion.start)
+                                        & (histResults[detI].binnumber <= trueRegion.stop)
                                     ]
                                 ]
                             )
                         )
                     )
                 )
+            for i, coord_set in enumerate(self.wellCoords):
+                new_coord_set = []
+                for c in coord_set:
+                    closest_dist_to_edge = min(
+                        c, self.img_shape_resized[0 if i else 1] - c
+                    )
+                    if closest_dist_to_edge >= 10:
+                        new_coord_set.append(c)
+                self.wellCoords[i] = new_coord_set
         for i in range(len(self.wellCoords)):
             self.wellCoords[i] = sorted(self.wellCoords[i])
             self.wellCoords[i] = reject_outliers_by_delta(
                 np.asarray(self.wellCoords[i])
             )
-
+        print('well coords:', self.wellCoords)
         wells = list(itertools.product(self.wellCoords[0], self.wellCoords[1]))
         self.numRowsCols = [len(self.wellCoords[i]) for i in range(1, -1, -1)]
         self.ct, self.inverted = getChamberTypeByRowsAndCols(self.numRowsCols)
@@ -564,8 +590,11 @@ class CircleFinder:
             closestWell = min(wells, key=lambda xy: distance(xy, centroid))
             if distance(closestWell, centroid) > 0.02 * diagDist:
                 self.centroids.remove(centroid)
+        print("num rows and cols:", self.numRowsCols)
         self.sortedCentroids = []
         for i, well in enumerate(wells):
+            print('well:', well)
+            print('compared with centroids:', self.centroids)
             closestDetection = min(self.centroids, key=lambda xy: distance(xy, well))
             if distance(closestDetection, well) > 0.02 * diagDist:
                 self.sortedCentroids.append((np.nan, np.nan))
@@ -577,6 +606,14 @@ class CircleFinder:
                 + (() if None in self.sortedCentroids else (-1,))
             )
         )
+        print("sc before del:", self.sortedCentroids)
+        sc = self.sortedCentroids
+        mask = np.isnan(np.squeeze(sc[:, :, 0]))
+        sec = np.where(mask.all(0))
+        third = np.where(mask.all(1))
+        sc = np.delete(np.delete(sc, sec, 1), third, 0)
+        self.sortedCentroids = sc
+        print("sorted centroids after delete:", self.sortedCentroids)
         self.rowRegressions = np.zeros(self.sortedCentroids.shape[1]).astype(object)
         self.colRegressions = np.zeros(self.sortedCentroids.shape[0]).astype(object)
         self.interpolateCentroids()
@@ -591,6 +628,9 @@ class CircleFinder:
             distance(true_corners["br"], true_corners["tr"])
             - distance(true_corners["bl"], true_corners["tl"])
         )
+        print('corners: tl tr bl br:')
+        print(true_corners["tl"], true_corners["tr"])
+        print(true_corners["bl"], true_corners["br"])
         if (
             height_skew / self.img_shape_resized[0] > 0.01
             or width_skew / self.img_shape_resized[1] > 0.01
@@ -610,8 +650,11 @@ class CircleFinder:
         """Find any centroids with NaN coordinates and interpolate their positions
         based on neighbors in their row and column.
         """
+        print('in interpolate centroids')
         for i, col in enumerate(self.sortedCentroids):
+            print('i:', i)
             for j, centroid in enumerate(col):
+                print('j:', j)
                 row = self.sortedCentroids[:, j]
                 regResult = calculateRegressions(row, col)
                 if j == 0:
@@ -662,7 +705,7 @@ class CircleFinder:
         """
         self.resize_image_shape()
         if include_img:
-            raise NotImplementedError()
+            # raise NotImplementedError()
             self.resize_image()
         if predictions is None:
             _, predictions = self.model.predict_instances(self.imageResized)
@@ -670,20 +713,21 @@ class CircleFinder:
         self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
         if debug:
             print("what are centroids?", self.centroids)
-            with app.app_context():
-                self.imageResized = byte_to_bgr(
-                    EggLayingImage.query.filter_by(
-                        session_id=self.room, basename=self.img_name
+            if not hasattr(self, 'imageResized'):
+                with app.app_context():
+                    self.imageResized = byte_to_bgr(
+                        EggLayingImage.query.filter_by(
+                            session_id=self.room, basename=self.img_name
+                        )
+                        .first()
+                        .image
                     )
-                    .first()
-                    .image
-                )
-                self.imageResized = cv2.resize(
-                    self.imageResized,
-                    (0, 0),
-                    fx=self.predict_resize_factor,
-                    fy=self.predict_resize_factor,
-                )
+                    self.imageResized = cv2.resize(
+                        self.imageResized,
+                        (0, 0),
+                        fx=self.predict_resize_factor,
+                        fy=self.predict_resize_factor,
+                    )
             imgCopy = cv2.resize(np.array(self.imageResized), (0, 0), fx=0.5, fy=0.5)
             for centroid in self.centroids:
                 cv2.drawMarker(
@@ -692,7 +736,9 @@ class CircleFinder:
                     COL_G,
                     cv2.MARKER_TRIANGLE_UP,
                 )
-            cv2.imshow(f"debug/{self.img_name}", imgCopy)
+            cv2.imshow(
+                f"debug/{self.img_name}", cv2.cvtColor(imgCopy, cv2.COLOR_RGB2BGR)
+            )
             cv2.waitKey(0)
         self.processDetections()
         rotationAngle = 0
