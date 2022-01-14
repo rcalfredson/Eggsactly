@@ -170,7 +170,7 @@ class CircleFinder:
         allowSkew: bool = False,
         model=default_model,
         predict_resize_factor: float = ARENA_IMG_RESIZE_FACTOR,
-        img=None
+        img=None,
     ):
         """Create new CircleFinder instance.
 
@@ -260,7 +260,7 @@ class CircleFinder:
         ]
 
     def getLargeChamberBBoxesAndImages(self, centers, pxToMM):
-        if getattr(self, 'img', None) is not None:
+        if getattr(self, "img", None) is not None:
             img = self.img
         else:
             with app.app_context():
@@ -322,17 +322,92 @@ class CircleFinder:
                         bboxes, acrossCircleD, 0
                     )
                 else:
-                    bboxes = CircleFinder.addUpperLeftCornerToBBox(
+                    self.interpolate_well_position(
                         bboxes,
                         center,
-                        deltas[position]["x"],
-                        deltas[position]["y"],
+                        deltas,
+                        acrossCircleD,
+                        halfRealCircleD,
                         rotation_angle,
-                    )
-                    bboxes = CircleFinder.addWidthAndHeightToBBox(
-                        bboxes, acrossCircleD, rotation_angle
+                        position,
+                        i,
                     )
         return bboxes
+
+    def interpolate_well_position(
+        self,
+        bboxes,
+        center,
+        deltas,
+        acrossCircleD,
+        halfRealCircleD,
+        rotation_angle,
+        position,
+        i,
+    ):
+        if len(self.grouped_circles[i]) < 4:
+            bboxes = CircleFinder.addUpperLeftCornerToBBox(
+                bboxes,
+                center,
+                deltas[position]["x"],
+                deltas[position]["y"],
+                rotation_angle,
+            )
+        else:
+            for k in ("left", "up", "down", "right"):
+                if k not in self.grouped_circles[i]:
+                    missing_well = k
+                    break
+            rotation_angle = math.atan(self.well_to_well_slopes[i][0])
+            if missing_well in ("right", "left"):
+                well_pair_keys = ("up", "down")
+            else:
+                well_pair_keys = ("right", "left")
+            well_pair_dist = (
+                4
+                * 0.5
+                * distance(
+                    self.grouped_circles[i][well_pair_keys[0]],
+                    self.grouped_circles[i][well_pair_keys[1]],
+                )
+            )
+            sign = 1 if missing_well in ("right", "down") else -1
+            well_pair_midpoint = [
+                4 * 0.5 * el
+                for el in [
+                    (
+                        self.grouped_circles[i][well_pair_keys[0]][0]
+                        + self.grouped_circles[i][well_pair_keys[1]][0]
+                    ),
+                    (
+                        self.grouped_circles[i][well_pair_keys[0]][1]
+                        + self.grouped_circles[i][well_pair_keys[1]][1]
+                    ),
+                ]
+            ]
+            distance_coefficients = [
+                sign * math.cos(rotation_angle),
+                sign
+                * math.sin(
+                    rotation_angle * (-1 if missing_well in ("left", "right") else 1)
+                ),
+            ]
+            if missing_well in ("up", "down"):
+                distance_coefficients = list(reversed(distance_coefficients))
+            well_center = [
+                well_pair_midpoint[0] + well_pair_dist * distance_coefficients[0],
+                well_pair_midpoint[1] + well_pair_dist * distance_coefficients[1],
+            ]
+            bboxes = CircleFinder.addUpperLeftCornerToBBox(
+                bboxes,
+                well_center,
+                -halfRealCircleD,
+                -halfRealCircleD,
+                0,
+            )
+        bboxes = CircleFinder.addWidthAndHeightToBBox(
+            bboxes, acrossCircleD, rotation_angle
+        )
 
     def getRelativePositionsOfAgaroseWells(self, i, center):
         leftmost, rightmost, uppermost, lowermost = None, None, None, None
@@ -559,8 +634,14 @@ class CircleFinder:
                             np.mean(
                                 [
                                     det_set[
-                                        (histResults[detI].binnumber - 1 >= trueRegion.start)
-                                        & (histResults[detI].binnumber <= trueRegion.stop)
+                                        (
+                                            histResults[detI].binnumber - 1
+                                            >= trueRegion.start
+                                        )
+                                        & (
+                                            histResults[detI].binnumber
+                                            <= trueRegion.stop
+                                        )
                                     ]
                                 ]
                             )
@@ -581,7 +662,6 @@ class CircleFinder:
             self.wellCoords[i] = reject_outliers_by_delta(
                 np.asarray(self.wellCoords[i])
             )
-        print('well coords:', self.wellCoords)
         wells = list(itertools.product(self.wellCoords[0], self.wellCoords[1]))
         self.numRowsCols = [len(self.wellCoords[i]) for i in range(1, -1, -1)]
         self.ct, self.inverted = getChamberTypeByRowsAndCols(self.numRowsCols)
@@ -590,11 +670,8 @@ class CircleFinder:
             closestWell = min(wells, key=lambda xy: distance(xy, centroid))
             if distance(closestWell, centroid) > 0.02 * diagDist:
                 self.centroids.remove(centroid)
-        print("num rows and cols:", self.numRowsCols)
         self.sortedCentroids = []
         for i, well in enumerate(wells):
-            print('well:', well)
-            print('compared with centroids:', self.centroids)
             closestDetection = min(self.centroids, key=lambda xy: distance(xy, well))
             if distance(closestDetection, well) > 0.02 * diagDist:
                 self.sortedCentroids.append((np.nan, np.nan))
@@ -606,14 +683,12 @@ class CircleFinder:
                 + (() if None in self.sortedCentroids else (-1,))
             )
         )
-        print("sc before del:", self.sortedCentroids)
         sc = self.sortedCentroids
         mask = np.isnan(np.squeeze(sc[:, :, 0]))
         sec = np.where(mask.all(0))
         third = np.where(mask.all(1))
         sc = np.delete(np.delete(sc, sec, 1), third, 0)
         self.sortedCentroids = sc
-        print("sorted centroids after delete:", self.sortedCentroids)
         self.rowRegressions = np.zeros(self.sortedCentroids.shape[1]).astype(object)
         self.colRegressions = np.zeros(self.sortedCentroids.shape[0]).astype(object)
         self.interpolateCentroids()
@@ -628,9 +703,6 @@ class CircleFinder:
             distance(true_corners["br"], true_corners["tr"])
             - distance(true_corners["bl"], true_corners["tl"])
         )
-        print('corners: tl tr bl br:')
-        print(true_corners["tl"], true_corners["tr"])
-        print(true_corners["bl"], true_corners["br"])
         if (
             height_skew / self.img_shape_resized[0] > 0.01
             or width_skew / self.img_shape_resized[1] > 0.01
@@ -650,11 +722,8 @@ class CircleFinder:
         """Find any centroids with NaN coordinates and interpolate their positions
         based on neighbors in their row and column.
         """
-        print('in interpolate centroids')
         for i, col in enumerate(self.sortedCentroids):
-            print('i:', i)
             for j, centroid in enumerate(col):
-                print('j:', j)
                 row = self.sortedCentroids[:, j]
                 regResult = calculateRegressions(row, col)
                 if j == 0:
@@ -713,7 +782,7 @@ class CircleFinder:
         self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
         if debug:
             print("what are centroids?", self.centroids)
-            if not hasattr(self, 'imageResized'):
+            if not hasattr(self, "imageResized"):
                 with app.app_context():
                     self.imageResized = byte_to_bgr(
                         EggLayingImage.query.filter_by(
