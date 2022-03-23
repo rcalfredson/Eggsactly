@@ -310,7 +310,7 @@ class CircleFinder:
                 },
             }
             for position in deltas:
-                if position in self.grouped_circles[i]:
+                if i in self.grouped_circles and position in self.grouped_circles[i]:
                     bboxes = CircleFinder.addUpperLeftCornerToBBox(
                         bboxes,
                         np.divide(self.grouped_circles[i][position][:2], 0.25),

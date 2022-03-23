@@ -845,6 +845,9 @@
                 addDropdownElement(maskList, 'Select existing mask', false)
                 msg.names.forEach(name => {
                     addDropdownElement(maskList, name);
+                    if (maskNames.indexOf(name) === -1) {
+                        maskNames.push(name);
+                    }
                 });
                 maskList.value = msg.currentMask;
             }
@@ -2291,9 +2294,9 @@
             }
             let cursorInImgRefPt = evt.point.subtract(new paper.Point(imgStartX, imgStartY))
             if (isH) {
-                tempCursorCoordText.content = `Y: ${cursorInImgRefPt.y}`;
+                tempCursorCoordText.content = `Y: ${Math.round(cursorInImgRefPt.y)}`;
             } else {
-                tempCursorCoordText.content = `X: ${cursorInImgRefPt.x}`;
+                tempCursorCoordText.content = `X: ${Math.round(cursorInImgRefPt.x)}`;
             }
             tempCursorCoordText.position = cursorPosOffset;
             if (!tempCursorCoordText.isInside(backgroundRaster.bounds)) {
