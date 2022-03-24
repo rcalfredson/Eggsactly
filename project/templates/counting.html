@@ -2896,15 +2896,20 @@
             $('#mask-resetter-and-loader').append(dividerString());
         }
 
+        function SelectHasValue(select, value) {
+            obj = document.getElementById(select);
+
+            if (obj !== null) {
+                return (obj.innerHTML.indexOf('value="' + value + '"') > -1);
+            } else {
+                return false;
+            }
+        }
+
         function displayMaskList() {
             let dropdownMaskList;
             if (document.getElementById('mask-selector')) {
                 dropdownMaskList = document.getElementById('mask-list');
-                for (i = 0; i < dropdownMaskList.length; i++) {
-                    if (dropdownMaskList.options[i].value == 'D') {
-                        dropdownMaskList.remove(i);
-                    }
-                }
             } else {
                 let buttonGroup = document.createElement('div');
                 buttonGroup.classList.add('mask-button-set');
@@ -2922,7 +2927,9 @@
                 if (maskNames.length > 0) {
                     dropdownMaskList.removeAttribute('disabled');
                     maskNames.forEach(name => {
-                        addDropdownElement(dropdownMaskList, name);
+                        if (!SelectHasValue('mask-list', name)) {
+                            addDropdownElement(dropdownMaskList, name);
+                        }
                     });
                 }
                 if (maskNames.includes(chamberRealignmentData[currentImgIndex].maskName)) {
