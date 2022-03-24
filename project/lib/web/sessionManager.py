@@ -335,6 +335,8 @@ class SessionManager:
             self.annotations[os.path.normpath(imgPath)] = resultsData
 
     def send_annotations_for_task_group(self, predictions, metadata):
+        if type(predictions) is dict:
+            predictions = [[predictions]]
         for i, prediction_set in enumerate(predictions):
             self.send_annotations_for_task(
                 prediction_set,
