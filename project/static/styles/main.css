@@ -4,7 +4,8 @@ html {
 
 body {
   margin: 8px;
-  color: rgb(5, 4, 28)
+  color: rgb(5, 4, 28);
+  overflow-y: scroll;
 }
 
 .modal {
