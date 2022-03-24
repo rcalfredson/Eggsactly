@@ -4549,7 +4549,7 @@
                         rect.bounds.topLeft,
                         e.point
                     )
-                } else if (cornerVec.x > 0 && cornerVec.y <= 0) { // TR
+                } else if (cornerVec.x > 0 && cornerVec.y < 0) { // TR
                     newBounds = new paper.Rectangle(
                         new paper.Point(rect.bounds.topLeft.x,
                             e.point.y),
@@ -4557,16 +4557,39 @@
                             rect.bounds.bottomRight.y
                         )
                     );
-                } else if (cornerVec.x <= 0 && cornerVec.y <= 0) { // TL
+                } else if (cornerVec.x < 0 && cornerVec.y < 0) { // TL
                     newBounds = new paper.Rectangle(
                         e.point, rect.bounds.bottomRight
                     );
-                } else { // BL
+                } else if (cornerVec.x < 0 && cornerVec.y > 0) { // BL
                     newBounds = new paper.Rectangle(
                         new paper.Point(e.point.x,
                             rect.bounds.topLeft.y),
                         new paper.Point(rect.bounds.bottomRight.x,
                             e.point.y)
+                    );
+                } else { // quadrant cannot be determined for at
+                         // least one side of the rectangle.
+                    let bounds = {x: [], y: []};                    
+                    let xOptions = [
+                        e.point.x,
+                        rect.bounds.topLeft.x,
+                        rect.bounds.topRight.x
+                    ];
+                    bounds.x.push(Math.min(...xOptions))
+                    bounds.x.push(Math.max(...xOptions))
+                    
+                    let yOptions = [
+                        e.point.y,
+                        rect.bounds.topLeft.y,
+                        rect.bounds.bottomLeft.y
+                    ];
+                    bounds.y.push(Math.min(...yOptions));
+                    bounds.y.push(Math.max(...yOptions));
+                    
+                    newBounds = new paper.Rectangle(
+                        new paper.Point(bounds.x[0], bounds.y[0]),
+                        new paper.Point(bounds.x[1], bounds.y[1])
                     );
                 }
                 rect.bounds = newBounds;

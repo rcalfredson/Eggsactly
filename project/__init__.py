@@ -11,9 +11,20 @@ import warnings
 from project.lib.datamanagement.sql_backend_types import SQLBackendTypes
 from project.lib.web.backend_types import BackendTypes
 
+class ReverseProxied(object):
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        scheme = environ.get('HTTP_X_FORWARDED_PROTO')
+        if scheme:
+            environ['wsgi.url_scheme'] = scheme
+        return self.app(environ, start_response)
+
 load_dotenv()
 db = SQLAlchemy()
 app = Flask(__name__)
+app.wsgi_app = ReverseProxied(app.wsgi_app)
 login_manager = LoginManager()
 backend_type = BackendTypes[os.getenv("EGG_COUNTING_BACKEND_TYPE")]
 sql_addr_type = SQLBackendTypes[os.getenv('SQL_ADDR_TYPE')]
