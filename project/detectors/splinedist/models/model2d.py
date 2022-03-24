@@ -515,8 +515,8 @@ class SplineDist2D(nn.Module):
                 s_dst[channel] = slice(None)
                 s_src, s_dst = tuple(s_src), tuple(s_dst)
                 # print(s_src,s_dst)
-                prob[s_dst] = prob_tile[s_src]
-                dist[s_dst] = dist_tile[s_src]
+                prob[s_dst] = prob_tile[s_src].cpu().detach()
+                dist[s_dst] = dist_tile[s_src].cpu().detach()
 
         else:
             prob, dist = predict_direct(x)
@@ -525,8 +525,9 @@ class SplineDist2D(nn.Module):
         prob = resizer.after(prob, axes_net)
         dist = resizer.after(dist, axes_net)
         # total_cuda_time += timeit.default_timer() - start_t
-        prob = prob.cpu().detach().numpy()
-        dist = dist.cpu().detach().numpy()
+        if not any(el > 1 for el in n_tiles):
+            prob = prob.cpu().detach().numpy()
+            dist = dist.cpu().detach().numpy()
 
         prob = np.take(prob, 0, axis=channel)
         dist = np.moveaxis(dist, channel, -1)

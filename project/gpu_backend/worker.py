@@ -247,7 +247,14 @@ def perform_task(attempt_ct=0):
                     report_progress_to_server(
                         task_type.name, task_key, 0, None, task["img_path"]
                     )
-                results = networks[task_type].predict_instances(img)[1]
+                n_tiles = [1, 1, 1]
+                for dim in range(2):
+                    if img.shape[dim] >= 1600:
+                        n_tiles[dim] = 2 + (img.shape[dim] - 1600) // 300
+                results = networks[task_type].predict_instances(
+                    img,
+                    n_tiles=n_tiles
+                )[1]
                 results["count"] = len(results["points"])
                 results["outlines"] = get_interpolated_points(results["coord"])
                 predictions.append(results)
