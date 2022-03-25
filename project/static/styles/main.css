@@ -63,14 +63,17 @@ select:active {
   height: auto;
 }
 
-form label:hover, form button:hover:enabled, #updates button:hover, form input:hover {
+form label:hover,
+form button:hover:enabled,
+#updates button:hover:enabled,
+form input:hover {
   background-color: #2D5BA3;
   color: white;
 }
 
 form label:active,
 form button:active:enabled,
-#updates button:active,
+#updates button:active:enabled,
 #updates button.selected,
 form input:active  {
   background-color: #0D3F8F;
