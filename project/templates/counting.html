@@ -145,6 +145,8 @@
         let tempCursorUnderlay;
         let selectDOM;
         let zoom = 1.0;
+        let zoomFromResize;
+        let centerFromResize;
         let idsWithEdits = new Set();
         let lastScrollTime;
         let lastMouseDownTime;
@@ -152,8 +154,8 @@
         let cursorOnCanvas;
         let canvas;
         let canvasLoaded = false;
-        let canvasWidth = Math.min(1300, window.innerWidth);
-        let canvasHeight = 800;
+        let canvasWidth =  Math.min(1300, 0.92 * window.innerWidth);
+        let canvasHeight = (8/13)* canvasWidth;
         const alignmentHelpDialogElements = [
             'frame', 'text', 'button', 'buttonText',
             'exampleImage', 'exampleText', 'hoverSensor'
@@ -403,6 +405,29 @@
             "image/webp",
             "image/x-icon"
         ];
+
+        function resizeCanvasWithWindow() {
+            if (document.getElementById('detectionResults')) {
+                let newWidthProportion;
+                if (document.getElementById('help-pane') &&
+                    document.getElementById('help-pane').style.display !== 'none'
+                ) {
+                    newWidthProportion = (window.innerWidth - 470) / window.innerWidth;
+                } else {
+                    newWidthProportion = 0.92;
+                }
+                let newWidth = Math.min(1300, newWidthProportion * window.innerWidth);
+                let newHeight = (8/13)*newWidth;
+                paper.view.viewSize = new paper.Size(newWidth, newHeight);
+                zoomFromResize = newWidth / (2 * origCenter.x)
+                centerFromResize = origCenter;
+                reposition(
+                    zoomFromResize,
+                    centerFromResize
+                );
+            }
+        }
+        window.onresize = resizeCanvasWithWindow;
 
         function downloadLogUpdates() {
             var element = document.createElement('a');
@@ -2828,6 +2853,7 @@
             if (!helpPane) {
                 $('#viewer').append('<div id=help-pane></div>');
                 helpPane = document.getElementById('help-pane');
+                resizeCanvasWithWindow();
             }
             if (helpPane.style.display === 'none') {
                 helpPane.style.display = 'inline-block';
@@ -3941,8 +3967,12 @@
                 }
 
                 if (!imageUsesCustomMasks() ||
-                    countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
+                    countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre
+                ) {
                     backgroundRaster.fitBounds(paper.view.viewSize);
+                }
+                if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
+                    document.getElementById('help-pane').style.display = 'none';
                 }
                 calcScalingFactor(0);
                 if (!document.getElementById('paper-finished-loading')) {
@@ -4090,6 +4120,11 @@
                 updateCountEggsButtonStatus();
                 origCenter = paper.view.center;
                 canvasLoaded = true;
+                if (document.getElementById('help-pane') &&
+                    document.getElementById('help-pane').style.display !== 'none'
+                ) {
+                    resizeCanvasWithWindow();
+                }
             }
             document.activeElement.blur();
         }
@@ -4358,7 +4393,9 @@
                     $('#button-row').append(d);
                 })
             });
-            $('#reset-view').click(reposition);
+            $('#reset-view').click(() => {
+                reposition(zoomFromResize, centerFromResize);
+            });
             getContextSpecificButtons().forEach(b => {
                 if (b.selectOptions) {
                     $('#button-row').append(`<select id=${b.id} ${b.hidden ? 'hidden' : ''}` +
@@ -4400,7 +4437,6 @@
                 viewer.id = 'viewer';
                 document.getElementById('updates').appendChild(viewer);
             }
-            viewer.style.height = `${viewer.offsetHeight}px`;
             let canvasEl;
             if (document.getElementById('detectionResults')) {
                 canvasEl = document.getElementById('detectionResults');
@@ -4809,9 +4845,15 @@
             };
         }
 
-        function reposition() {
-            paper.view.zoom = 1;
-            paper.view.center = origCenter;
+        function reposition(zoom, center) {
+            if (!zoom) {
+                zoom = 1;
+            }
+            if (!center) {
+                center = origCenter
+            }
+            paper.view.zoom = zoom;
+            paper.view.center = center;
             dragStart = false;
         }
     </script>

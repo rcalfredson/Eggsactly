@@ -6,6 +6,7 @@ body {
   margin: 8px;
   color: rgb(5, 4, 28);
   overflow-y: scroll;
+  width: auto;
 }
 
 .modal {
@@ -99,7 +100,6 @@ form p {
 
 #viewer {
   display: inline-block;
-  width: 1800px;
 }
 
 #viewer-nav {
@@ -185,6 +185,7 @@ form p {
   vertical-align: top;
   padding: 30px;
   overflow: auto;
+  margin-left: 15px;
 }
 
 #help-pane img {
