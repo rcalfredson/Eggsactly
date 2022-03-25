@@ -3152,6 +3152,12 @@
                         JSON.parse(JSON.stringify(
                             chamberRealignmentData[currentImgIndex].nodesInCanvasFrame));
                 }
+                if (chamberRealignmentData[currentImgIndex].imageTranslation) {
+                    chamberRealignmentData[currentImgIndex].imageTranslation.forEach((el, i) => {
+                        chamberRealignmentData[currentImgIndex].imageTranslation[i] = el *
+                            scalingFactor
+                    });
+                }
                 redrawCanvas({ startAtBeginning: false });
             }
         }
@@ -4508,7 +4514,9 @@
                 return;
             }
             lastScrollTime = Date.now();
-            if (maskLocked()) {
+            if (maskLocked() &&
+                countingState[orderedImgNames[currentImgIndex]] === countingStates.pre
+            ) {
                 transformImageOnly(e)
                 return;
             }
@@ -4816,7 +4824,9 @@
                 addGridlineNotation(evt);
             }
             toolPan.onMouseDrag = function (evt) {
-                if (maskLocked()) {
+                if (maskLocked() &&
+                    countingState[orderedImgNames[currentImgIndex]] === countingStates.pre
+                ) {
                     transformImageOnly(evt);
                     return;
                 }
