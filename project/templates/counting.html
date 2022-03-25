@@ -3971,7 +3971,9 @@
                 ) {
                     backgroundRaster.fitBounds(paper.view.viewSize);
                 }
-                if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre) {
+                if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre
+                    && document.getElementById('help-pane')
+                ) {
                     document.getElementById('help-pane').style.display = 'none';
                 }
                 calcScalingFactor(0);
