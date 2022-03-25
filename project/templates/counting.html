@@ -3048,6 +3048,7 @@
                         delete chamberRealignmentData[currentImgIndex].nodes;
                         delete eggLayingRegions[currentImgIndex];
                         document.getElementById('help-pane').remove();
+                        resizeCanvasWithWindow();
                     } else {
                         editMode = 'node';
                         if (maskCopyUpdater) maskCopyUpdater.runUpdate();
@@ -3451,7 +3452,9 @@
             } else if (opts.noChamberTypeSelected && !opts.chamberTypeDetected) {
                 helpText = 'Please select a chamber type from the menu at left.';
             } else if (opts.chamberTypeDetected && opts.noChamberTypeSelected) {
-                helpText = 'If the identified chamber type is incorrect, please select another from the menu at left.';
+                document.getElementById('help-pane').style.display = 'none';
+                resizeCanvasWithWindow();
+                return;
             }
             document.getElementById('help-pane').innerText = helpText;
         }
@@ -3988,8 +3991,7 @@
                 }
                 calcPadding(0);
                 if ('error' in annotations[orderedImgNames[currentImgIndex]] ||
-                    chamberRealignmentData[currentImgIndex].ignored ||
-                    chamberTypeManuallyUpdated()
+                    chamberRealignmentData[currentImgIndex].ignored
                 ) {
                     let errorText = chamberRealignmentData[currentImgIndex].ignored ?
                         'ImageIgnoredException' : annotations[orderedImgNames[currentImgIndex]].error;
@@ -4003,12 +4005,12 @@
 
                     let pointText = drawErrorText(errorText);
 
-
                     eggLayingRegions[currentImgIndex] = { bad: true, text: pointText };
-                    if (!chamberRealignmentData[currentImgIndex].ignored &&
-                        !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type)) {
-                        drawChamberAlignmentMarkers();
-                    }
+                } else if (chamberTypeManuallyUpdated() &&
+                    !chamberRealignmentData[currentImgIndex].ignored &&
+                    !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type)
+                ) {
+                    drawChamberAlignmentMarkers();
                 } else {
                     if (!eggLayingRegions[currentImgIndex]) {
                         eggLayingRegions[currentImgIndex] = {};
