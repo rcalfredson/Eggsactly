@@ -104,6 +104,7 @@
         let hasModifiedTypes;
         let numModifications = 0;
         let chamberRealignmentData = {};
+        let gridlineDragMarkers = [];
         const COUNTING_DATA_KEYS_TO_KEEP = [
             'ignored',
             'bboxes',
@@ -123,7 +124,7 @@
         let overlappingExistingGridline;
         let gridXYMarkers;
         const lockGridlinesText = 'Lock gridlines and select regions';
-        const lockMaskText = 'Lock mask and reposition image';
+        const lockMaskText = 'Drag mask to fit image';
         const freehandMaskEditInstructions = 'Drag to draw bounding boxes around egg-laying regions (hold shift to pan)';
         const gridMaskEditInstructions = 'Click to add gridlines; shift + click to delete. Lock gridlines to select egg-laying regions.';
         const maskEditInstructions = {
@@ -132,6 +133,10 @@
         };
         const imageTransformInstructions = 'Transforming image: drag to pan; shift + drag to rotate; scroll to zoom';
         let currentMaskBBox;
+        let maskBBoxAnchorLine = {
+            x: null,
+            y: null
+        }
         let maskNames;
         let lastEditedMaskIndex;
         let maskCopyUpdater;
@@ -139,6 +144,8 @@
         let gridlineOrientationButtonGroup;
         const orientations = ['horiz', 'vert'];
         let imageCenterMarker;
+        let imageCenterArc;
+        let imageCenterTriangles;
         let tempCursor;
         let tempRasterRect;
         let tempCursorCoordText;
@@ -154,8 +161,12 @@
         let cursorOnCanvas;
         let canvas;
         let canvasLoaded = false;
-        let canvasWidth =  Math.min(1300, 0.92 * window.innerWidth);
-        let canvasHeight = (8/13)* canvasWidth;
+        let canvasWidth = Math.min(1300, 0.92 * window.innerWidth);
+        let canvasHeight = (8 / 13) * canvasWidth;
+        let origCanvasDims = {
+            width: canvasWidth,
+            height: canvasHeight
+        };
         const alignmentHelpDialogElements = [
             'frame', 'text', 'button', 'buttonText',
             'exampleImage', 'exampleText', 'hoverSensor'
@@ -251,8 +262,8 @@
             defaultEventResponse() { }
             setEventHandler(name, handler) {
                 if (handler instanceof Function) {
-                    this[name] = () => {
-                        return handler(this);
+                    this[name] = (evt) => {
+                        return handler(this, evt);
                     };
                 } else {
                     this[name] = this.defaultEventResponse;
@@ -263,7 +274,7 @@
             }
             addMouseEventHandlers() {
                 this.paperCirc.onMouseDrag = (evt) => {
-                    if (this.doOnDrag() === false) {
+                    if (this.doOnDrag(evt) === false) {
                         return;
                     }
                     shapeBeingDragged = true;
@@ -417,7 +428,7 @@
                     newWidthProportion = 0.92;
                 }
                 let newWidth = Math.min(1300, newWidthProportion * window.innerWidth);
-                let newHeight = (8/13)*newWidth;
+                let newHeight = (8 / 13) * newWidth;
                 paper.view.viewSize = new paper.Size(newWidth, newHeight);
                 zoomFromResize = newWidth / (2 * origCenter.x)
                 centerFromResize = origCenter;
@@ -963,6 +974,7 @@
                     setGridNotationCursorVisibility();
                     bringGridlineToleranceBandsToFrontOrBack('front');
                     updateGridlineForDeletion();
+                    toggleBackgroundImageMarker();
                 } else if (countingState[orderedImgNames[currentImgIndex]]
                     === countingStates.post &&
                     evt.key === 'Control') {
@@ -976,6 +988,7 @@
                     updateBBoxOutlineForDeletion();
                     setGridNotationCursorVisibility();
                     updateGridlineForDeletion();
+                    toggleBackgroundImageMarker();
                 } else if (countingState[orderedImgNames[currentImgIndex]]
                     === countingStates.post &&
                     evt.key === 'Control') {
@@ -1863,6 +1876,7 @@
                 });
             });
 
+            calculateGridLineDistanceRatios();
             // add grid boxes
             Object.keys(maskData.gridlineBBoxes).forEach(k => {
                 let boxArgs = [maskData.gridlineBBoxes[k].startPoint,
@@ -2022,12 +2036,8 @@
         }
 
         function transformImageOnly(evt) {
-            if (evt.deltaY !== undefined) {
-                zoomImageOnly(evt);
-            } else if (shiftKeyDown) {
+            if (shiftKeyDown) {
                 rotateImageOnly(evt);
-            } else {
-                panImageOnly(evt);
             }
         }
 
@@ -2117,12 +2127,56 @@
         }
 
         function toggleBackgroundImageMarker() {
-            if (maskLocked()) {
+            if (
+                countingState[orderedImgNames[currentImgIndex]] !==
+                countingStates.pre
+            ) {
+                return;
+            }
+            if (maskLocked() && shiftKeyDown) {
                 imageCenterMarker = new paper.Path.Circle(backgroundRaster.position, 5);
                 imageCenterMarker.fillColor = 'red';
-            } else if (imageCenterMarker) {
+                let arcAngles = [30, 150];
+                let triRotAngles = [-32, 32];
+                let arcPoints = arcAngles.map(angle => {
+                    return [
+                        backgroundRaster.position.x + 30 * Math.cos(angle * Math.PI / 180),
+                        backgroundRaster.position.y + 30 * Math.sin(angle * Math.PI / 180)
+                    ]
+                });
+                imageCenterArc = new paper.Path.Arc(
+                    new paper.Point(
+                        ...arcPoints[0]
+                    ),
+                    new paper.Point(
+                        backgroundRaster.position.x,
+                        backgroundRaster.position.y - 30
+                    ),
+                    new paper.Point(
+                        ...arcPoints[1]
+                    ),
+                )
+                imageCenterArc.strokeColor = 'red';
+                imageCenterTriangles = [];
+                arcPoints.forEach((arcPt, i) => {
+                    imageCenterTriangles.push(
+                        new paper.Path.RegularPolygon(
+                            arcPt,
+                            3,
+                            15
+                        )
+                    )
+                    imageCenterTriangles[i].fillColor = 'red';
+                    imageCenterTriangles[i].rotate(triRotAngles[i])
+                })
+            } else if (imageCenterMarker && !shiftKeyDown) {
                 imageCenterMarker.remove();
+                imageCenterArc.remove();
                 imageCenterMarker = null;
+                imageCenterTriangles.forEach(triangle => {
+                    triangle.remove();
+                });
+                imageCenterTriangles = []
             }
         }
 
@@ -2134,7 +2188,17 @@
             toggleDisabledAttrOfMaskEditingButtons(enteringLock);
             document.getElementById('mask-edit-instructions').innerHTML = enteringLock ? imageTransformInstructions : unlockedText;
             setGridNotationCursorVisibility();
-            toggleBackgroundImageMarker();
+            toggleMaskDragPoints();
+        }
+
+        function unlockMaskIfNeeded() {
+            let lockMaskButton = document.createElement('button');
+            if (!lockMaskButton) {
+                return;
+            }
+            if (lockMaskButton.innerHTML === lockMaskText) {
+                lockMaskButton.click();
+            }
         }
 
         function addLockMaskButton() {
@@ -2176,6 +2240,272 @@
             maskCopyUpdater.registerUpdate();
         }
 
+        function calculateGridLineDistanceRatios() {
+            let gridlineData = gatherGridlinePositionsAndExtremes();
+            ['vert', 'horiz'].forEach((dim, i) => {
+                Object.keys(chamberRealignmentData[
+                    currentImgIndex].maskGridlines[dim]
+                ).forEach((k, j) => {
+                    let gridline = chamberRealignmentData[
+                        currentImgIndex].maskGridlines[dim][k];
+                    let altAttr = ['x', 'y'][i]
+                    gridline.distRatio = Math.abs(gridlineData[dim][j] -
+                        gridlineData.extremes[altAttr][0]) /
+                        Math.abs(
+                            gridlineData.extremes[altAttr][1] -
+                            gridlineData.extremes[altAttr][0])
+                });
+            });
+        }
+
+        function gatherFreehandExtremes() {
+            let extremes = {};
+            ['x', 'y'].forEach(dim => {
+                let distances = []
+                Object.keys(chamberRealignmentData[currentImgIndex].maskBBoxes).forEach(k => {
+                    let tl = chamberRealignmentData[currentImgIndex].maskBBoxes[k].bounds[dim];
+                    distances.push(tl);
+                    distances.push(
+                        tl +
+                        chamberRealignmentData[currentImgIndex].maskBBoxes[k].bounds[dim === 'x' ? 'width' : 'height']
+                    );
+                });
+                extremes[dim] = [
+                    Math.min(...distances),
+                    Math.max(...distances)
+                ]
+            });
+            return extremes;
+        }
+
+        function gatherGridlinePositionsAndExtremes() {
+            let horizPosits = Object.keys(
+                chamberRealignmentData[currentImgIndex].maskGridlines.horiz
+            ).map(k => {
+                return chamberRealignmentData[currentImgIndex].maskGridlines.horiz[k].startPoint[1];
+            });
+            let vertPosits = Object.keys(
+                chamberRealignmentData[currentImgIndex].maskGridlines.vert
+            ).map(k => {
+                return chamberRealignmentData[currentImgIndex].maskGridlines.vert[k].startPoint[0];
+            });
+            let extremes = {
+                x: [Math.min(...vertPosits), Math.max(...vertPosits)],
+                y: [Math.min(...horizPosits), Math.max(...horizPosits)]
+            };
+            return {
+                horiz: horizPosits,
+                vert: vertPosits,
+                extremes: extremes
+            };
+        }
+
+        function rescaleBBoxes(evt, draggedBBox) {
+            ['x', 'y'].forEach((dim, i) => {
+                let sizeAttr = dim === 'x' ? 'width' : 'height';
+                let deltaSign = Math.sign(evt.delta[dim])
+                let smallBoxes = Object.keys(chamberRealignmentData[currentImgIndex].maskBBoxes).some(k => {
+                    let box = chamberRealignmentData[currentImgIndex].maskBBoxes[k];
+                    return box.bounds[sizeAttr] <= 20;
+                });
+                let extremes = gatherFreehandExtremes();
+                let maskCenter = 0.5 * (extremes[dim][0] + extremes[dim][1]);
+                if (!maskBBoxAnchorLine[dim]) {
+                    if (evt.point[dim] <
+                        maskCenter) {
+                        maskBBoxAnchorLine[dim] = extremes[dim][1]
+                    } else {
+                        maskBBoxAnchorLine[dim] = extremes[dim][0]
+                    }
+                }
+
+                let cursorMovingTowardAnchor = Math.sign(evt.delta[dim]) ===
+                    Math.sign(maskBBoxAnchorLine[dim] - maskCenter);
+                if (smallBoxes && cursorMovingTowardAnchor) {
+                    return;
+                }
+                let distToAnchorDragged = Math.abs(maskBBoxAnchorLine[dim] - evt.point[dim]);
+                Object.keys(chamberRealignmentData[currentImgIndex].maskBBoxes).forEach(k => {
+                    let box = chamberRealignmentData[currentImgIndex].maskBBoxes[k];
+                    let sides = dim === 'x' ? ['left', 'right'] :
+                        ['top', 'bottom'];
+                    sides.forEach(side => {
+                        let distSideToAnchorPoint = Math.abs(
+                            maskBBoxAnchorLine[dim] - box.bounds[side]
+                        );
+                        let boxDelta = Math.abs(evt.delta[dim] * (
+                            distSideToAnchorPoint /
+                            distToAnchorDragged
+                        ));
+
+                        box.bounds[sizeAttr] += boxDelta * (cursorMovingTowardAnchor ? -1 : 1);
+                        let newLeft = side === 'left' ? box.bounds.left + boxDelta * deltaSign :
+                            box.bounds.left;
+                        let newTop = side === 'top' ? box.bounds.top + boxDelta * deltaSign :
+                            box.bounds.top;
+                        box.bounds.topLeft = new paper.Point(
+                            newLeft, newTop
+                        );
+                    });
+                    moveBBoxCircles(box);
+                });
+            });
+        }
+
+        function toggleMaskGridlineDragPts() {
+            let minDistTweenGridlines = 20;
+            gridlineDragMarkers.forEach(marker => {
+                marker.paperCirc.remove();
+            });
+            gridlineDragMarkers = [];
+            if (!maskLocked()) {
+                return;
+            }
+            let gridlineData = gatherGridlinePositionsAndExtremes()
+            let horizPosits = gridlineData.horiz;
+            let vertPosits = gridlineData.vert;
+            let extremes = gridlineData.extremes;
+            horizPosits.forEach(horizPos => {
+                vertPosits.forEach(vertPos => {
+                    let onDragHandler = (circle, evt) => {
+                        if (shiftKeyDown) {
+                            return false;
+                        }
+                        let gridlineData = gatherGridlinePositionsAndExtremes()
+                        let horizPosits = gridlineData.horiz;
+                        let vertPosits = gridlineData.vert;
+                        let extremes = gridlineData.extremes;
+                        let maskCenter = [
+                            0.5 * (extremes.x[0] + extremes.x[1]),
+                            0.5 * (extremes.y[0] + extremes.y[1])
+                        ];
+                        let reverseDistRatios = [false, false];
+                        let anchorCorner = [];
+                        if (circle.paperCirc.position.x <
+                            maskCenter[0]) {
+                            anchorCorner.push(extremes.x[1])
+                            reverseDistRatios[0] = true;
+                        } else {
+                            anchorCorner.push(extremes.x[0])
+                        }
+                        if (circle.paperCirc.position.y <
+                            maskCenter[1]) {
+                            anchorCorner.push(extremes.y[1])
+                            reverseDistRatios[1] = true;
+                        } else {
+                            anchorCorner.push(extremes.y[0])
+                        }
+                        if (Math.sign(evt.delta.y) ===
+                            Math.sign(anchorCorner[1] - maskCenter[1])) {
+                            horizPosits.forEach((pos, i) => {
+                                if (i === horizPosits.length - 1) {
+                                    return;
+                                }
+                                if (Math.abs(horizPosits[i + 1] - pos) <=
+                                    minDistTweenGridlines) {
+                                    evt.delta.y = 0;
+                                }
+                            })
+                        }
+
+                        if (Math.sign(evt.delta.x) ===
+                            Math.sign(anchorCorner[0] - maskCenter[0])) {
+                            vertPosits.forEach((pos, i) => {
+                                if (i === vertPosits.length - 1) {
+                                    return;
+                                }
+                                if (Math.abs(vertPosits[i + 1] - pos) <=
+                                    minDistTweenGridlines) {
+                                    evt.delta.x = 0;
+                                }
+                            });
+                        }
+                        gridlineDragMarkers.forEach(marker => {
+                            marker.paperCirc.remove();
+                        });
+                        gridlineDragMarkers = [];
+                        ['vert', 'horiz'].forEach((dim, i) => {
+                            let altAttr = ['x', 'y'][i]
+                            let anchorToDragDist = Math.abs(
+                                circle.paperCirc.position[altAttr] - anchorCorner[i]
+                            );
+                            let totalSpanChangeRatio;
+                            if (anchorToDragDist >= 1) {
+                                totalSpanChangeRatio = (extremes[altAttr][1] - extremes[altAttr][0]) /
+                                    anchorToDragDist;
+                            } else {
+                                totalSpanChangeRatio = 1;
+                            }
+                            Object.keys(chamberRealignmentData[currentImgIndex].maskGridlines[dim]).forEach(
+                                (key, j) => {
+                                    let gridline = chamberRealignmentData[currentImgIndex].maskGridlines[dim][key];
+                                    let boxesInContact = getBoxesTouchingGridline(gridline.linePath)
+                                    let pos = gridline.startPoint[i];
+                                    gridline.linePath.remove();
+                                    gridline.cursorToleranceBand.remove();
+
+                                    let distRatio = reverseDistRatios[i] ? (1 - gridline.distRatio) : gridline.distRatio
+
+
+                                    if (dim === 'horiz') {
+                                        gridline.startPoint = [
+                                            gridline.startPoint[0],
+                                            gridline.startPoint[1] + evt.delta.y * distRatio * totalSpanChangeRatio
+                                        ];
+                                        gridline.endPoint = [
+                                            gridline.endPoint[0],
+                                            gridline.endPoint[1] + evt.delta.y * distRatio * totalSpanChangeRatio
+                                        ];
+                                    } else {
+                                        gridline.startPoint = [
+                                            gridline.startPoint[0] + evt.delta.x * distRatio * totalSpanChangeRatio,
+                                            gridline.startPoint[1]
+                                        ];
+                                        gridline.endPoint = [
+                                            gridline.endPoint[0] + evt.delta.x * distRatio * totalSpanChangeRatio,
+                                            gridline.endPoint[1]
+                                        ];
+                                    }
+                                    boxesInContact.forEach(boxInfo => {
+                                        let box = chamberRealignmentData[currentImgIndex].gridlineBBoxes[boxInfo.key];
+
+                                        if (boxInfo.bound === 'lower') {
+                                            box.startPoint[i] = gridline.startPoint[i] + 1;
+                                        } else {
+                                            box.endPoint[i] = gridline.endPoint[i] - 1;
+                                        }
+                                    });
+
+                                    gridline.restoreLinePath();
+                                    toggleMaskDragPoints();
+                                });
+                            Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach(k => {
+                                let box = chamberRealignmentData[currentImgIndex].gridlineBBoxes[k];
+                                box.rectPath.remove();
+                                box.restoreRectPath();
+                            });
+                        });
+
+                    };
+                    gridlineDragMarkers.push(new DraggableCircle(
+                        [vertPos, horizPos],
+                        'black',
+                        3,
+                        {
+                            onDrag: onDragHandler
+                        },
+                        `vertex_${vertPos}_${horizPos}`
+                    ));
+                });
+            });
+        }
+
+        function toggleMaskDragPoints() {
+            if (maskNotationButtonGroup.selected === 'grid-edit-button') {
+                toggleMaskGridlineDragPts();
+            }
+        }
+
         function addGridlineNotation(evt) {
             if (countingState[orderedImgNames[currentImgIndex]]
                 !== countingStates.pre ||
@@ -2199,6 +2529,7 @@
             maskCopyUpdater.registerUpdate();
             chamberRealignmentData[currentImgIndex].maskGridlines[orientation][newGridLine.linePath.id] = newGridLine;
             bisectBoxesByAddedGridline(newGridLine.linePath);
+            calculateGridLineDistanceRatios();
             tempCursor.side1.remove();
             tempCursor.side2.remove();
             tempCursor = null;
@@ -2212,8 +2543,14 @@
         }
 
         function bringGridlineToleranceBandsToFrontOrBack(mode) {
-            if (!(chamberRealignmentData[currentImgIndex] &&
-                chamberRealignmentData[currentImgIndex].maskGridlines)) {
+            if (
+                countingState[orderedImgNames[currentImgIndex]]
+                    !== countingStates.pre
+                ||
+                !(chamberRealignmentData[currentImgIndex] &&
+                chamberRealignmentData[currentImgIndex].maskGridlines) ||
+                maskLocked()
+            ) {
                 return;
             }
             let methodToCall = mode === 'front' ? 'bringToFront' : 'sendToBack';
@@ -2671,6 +3008,32 @@
             });
         }
 
+        function getBoxesTouchingGridline(gridline) {
+            let keysOfTouchingBoxes = [];
+            Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach(key => {
+                let box = chamberRealignmentData[currentImgIndex].gridlineBBoxes[key];
+                let intersects = false;
+                if (gridline.owner.orientation === 'vert') {
+                    coord = 'x';
+                    offset = 'width';
+                } else {
+                    coord = 'y';
+                    offset = 'height';
+                }
+
+                let lBoundDelta = Math.abs(gridline.position[coord] - box.rectPath.bounds[coord] + 1);
+                let lBoundIntersection = lBoundDelta < 1;
+                let uBoundDelta = Math.abs(gridline.position[coord] - box.rectPath.bounds[coord]
+                    - box.rectPath.bounds[offset] - 1);
+                let uBoundIntersection = uBoundDelta < 1;
+
+                if (lBoundIntersection || uBoundIntersection) {
+                    keysOfTouchingBoxes.push({ key: key, bound: lBoundIntersection ? 'lower' : 'upper' });
+                }
+            });
+            return keysOfTouchingBoxes;
+        }
+
         function deleteBoxesTouchingRemovedGridline(gridline) {
             let boxes = chamberRealignmentData[currentImgIndex].gridlineBBoxes
             Object.keys(chamberRealignmentData[currentImgIndex].gridlineBBoxes).forEach(key => {
@@ -2857,6 +3220,7 @@
             }
             if (helpPane.style.display === 'none') {
                 helpPane.style.display = 'inline-block';
+                resizeCanvasWithWindow();
             }
             $('#help-pane').empty();
 
@@ -3348,6 +3712,7 @@
                     shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
+                    resizeCanvasWithWindow();
                     redrawCanvas({ startAtBeginning: false });
                     resetInputAmender();
                     setIgnoreSelector();
@@ -3357,6 +3722,7 @@
                         document.getElementById('prev-img').removeAttribute('disabled');
                     }
                     document.getElementById('next-img').removeAttribute('disabled');
+                    unlockMaskIfNeeded();
                 }
             }
             document.getElementById('next-img').onclick = (evt) => {
@@ -3365,6 +3731,7 @@
                     shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
                     currentImgIndex = newImgIdx;
+                    resizeCanvasWithWindow();
                     redrawCanvas({ startAtBeginning: false });
                     resetInputAmender()
                     setIgnoreSelector();
@@ -3379,6 +3746,7 @@
                     document.getElementById('next-img').setAttribute('disabled', true);
                     document.getElementById('prev-img').removeAttribute('disabled');
                 }
+                unlockMaskIfNeeded();
             }
         }
 
@@ -3964,7 +4332,7 @@
 
                 if (imageUsesCustomMasks() &&
                     countingState[orderedImgNames[currentImgIndex]] === countingStates.pre) {
-                    backgroundRaster.fitBounds(paper.view.viewSize);
+                    fitBackgroundImageBounds();
                     backgroundRaster.position.x += chamberRealignmentData[
                         currentImgIndex].imageTranslation[0];
                     backgroundRaster.position.y += chamberRealignmentData[
@@ -3978,7 +4346,7 @@
                 if (!imageUsesCustomMasks() ||
                     countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre
                 ) {
-                    backgroundRaster.fitBounds(paper.view.viewSize);
+                    fitBackgroundImageBounds();
                 }
                 if (countingState[orderedImgNames[currentImgIndex]] !== countingStates.pre
                     && document.getElementById('help-pane')
@@ -4137,6 +4505,25 @@
                 }
             }
             document.activeElement.blur();
+        }
+
+        function fitBackgroundImageBounds() {
+            let imageScalingFactor = Math.min(
+                origCanvasDims.width / backgroundRaster.size.width,
+                origCanvasDims.height / backgroundRaster.size.height
+            );
+            backgroundRaster.bounds.width = backgroundRaster.size.width *
+                imageScalingFactor;
+            backgroundRaster.bounds.height = backgroundRaster.size.height *
+                imageScalingFactor;
+
+            if (!origCenter) {
+                backgroundRaster.position.x = paper.view.center.x;
+                backgroundRaster.position.y = paper.view.center.y;
+            } else {
+                backgroundRaster.position.x = origCenter.x;
+                backgroundRaster.position.y = origCenter.y;
+            }
         }
 
         var drawTextForUneditedCount = (reg) => {
@@ -4624,8 +5011,8 @@
                             e.point.y)
                     );
                 } else { // quadrant cannot be determined for at
-                         // least one side of the rectangle.
-                    let bounds = {x: [], y: []};                    
+                    // least one side of the rectangle.
+                    let bounds = { x: [], y: [] };
                     let xOptions = [
                         e.point.x,
                         rect.bounds.topLeft.x,
@@ -4633,7 +5020,6 @@
                     ];
                     bounds.x.push(Math.min(...xOptions))
                     bounds.x.push(Math.max(...xOptions))
-                    
                     let yOptions = [
                         e.point.y,
                         rect.bounds.topLeft.y,
@@ -4641,7 +5027,6 @@
                     ];
                     bounds.y.push(Math.min(...yOptions));
                     bounds.y.push(Math.max(...yOptions));
-                    
                     newBounds = new paper.Rectangle(
                         new paper.Point(bounds.x[0], bounds.y[0]),
                         new paper.Point(bounds.x[1], bounds.y[1])
@@ -4656,6 +5041,12 @@
         }
 
         function updateGridlineForDeletion() {
+            if (
+                countingState[orderedImgNames[currentImgIndex]] !==
+                countingStates.pre
+            ) {
+                return;
+            }
             if (overlappingExistingGridline && overlappingExistingGridline.id &&
                 chamberRealignmentData[currentImgIndex].maskGridlines[
                 overlappingExistingGridline.orientation
@@ -4671,6 +5062,12 @@
         }
 
         function updateBBoxOutlineForDeletion() {
+            if (
+                countingState[orderedImgNames[currentImgIndex]] !==
+                countingStates.pre
+            ) {
+                return;
+            }
             if (!currentMaskBBox) return;
             let myBox = chamberRealignmentData[
                 currentImgIndex
@@ -4807,10 +5204,20 @@
 
         function createOrAdjustMaskBBox(evt) {
             if (currentMaskBBox) {
-                adjustBBox(evt, chamberRealignmentData[
-                    currentImgIndex].maskBBoxes[currentMaskBBox]);
+                if (maskLocked()) {
+                    rescaleBBoxes(
+                        evt,
+                        chamberRealignmentData[
+                            currentImgIndex].maskBBoxes[currentMaskBBox]
+                    );
+                } else {
+                    adjustBBox(evt, chamberRealignmentData[
+                        currentImgIndex].maskBBoxes[currentMaskBBox]);
+                }
                 return;
             }
+            if (maskLocked()) return;
+
             createMaskBBox([[evt.downPoint.x - 2, evt.downPoint.y - 2],
             [evt.point.x, evt.point.y]
             ]);
@@ -4826,18 +5233,19 @@
                 addGridlineNotation(evt);
             }
             toolPan.onMouseDrag = function (evt) {
-                if (maskLocked() &&
+                if (
                     countingState[orderedImgNames[currentImgIndex]] === countingStates.pre
-                ) {
-                    transformImageOnly(evt);
-                    return;
-                }
-                if (countingState[orderedImgNames[currentImgIndex]] === countingStates.pre
                     && editMode === 'mask' &&
                     maskNotationButtonGroup.selected === 'freehand-edit-button'
                     && !shiftKeyDown) {
                     createOrAdjustMaskBBox(evt);
                     maskCopyUpdater.registerUpdate();
+                    return;
+                }
+                if (maskLocked() &&
+                    countingState[orderedImgNames[currentImgIndex]] === countingStates.pre
+                ) {
+                    transformImageOnly(evt);
                     return;
                 }
 
@@ -4857,6 +5265,13 @@
                     timeDownUp = null;
                 }
             };
+            toolPan.onMouseUp = function (evt) {
+                currentMaskBBox = null;
+                maskBBoxAnchorLine = {
+                    x: null,
+                    y: null
+                };
+            }
         }
 
         function reposition(zoom, center) {
