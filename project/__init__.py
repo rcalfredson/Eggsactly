@@ -28,7 +28,7 @@ app.wsgi_app = ReverseProxied(app.wsgi_app)
 login_manager = LoginManager()
 backend_type = BackendTypes[os.getenv("EGG_COUNTING_BACKEND_TYPE")]
 sql_addr_type = SQLBackendTypes[os.getenv('SQL_ADDR_TYPE')]
-if backend_type == BackendTypes.gcp:
+if backend_type == BackendTypes.sql:
     if sql_addr_type == SQLBackendTypes.shortname:
         sql_addr = (
             f"mysql://root:{os.environ['GOOGLE_SQL_DB_PASSWORD']}@"
@@ -42,8 +42,7 @@ if backend_type == BackendTypes.gcp:
     elif sql_addr_type == SQLBackendTypes.sqlite:
         sql_addr = "sqlite:///db.sqlite"
     flask_session_type = "sqlalchemy"
-elif backend_type == BackendTypes.local:
-    sql_addr = "sqlite:///db.sqlite"
+elif backend_type == BackendTypes.filesystem:
     flask_session_type = "filesystem"
 app.config["BACKEND_TYPE"] = backend_type
 app.config["SQLALCHEMY_DATABASE_URI"] = sql_addr

@@ -151,7 +151,7 @@ class DownloadManager:
             else:
                 img = self.prepareAnnotatedImage(sm, id, path, path_base)
 
-            if backend_type == BackendTypes.gcp:
+            if backend_type == BackendTypes.sql:
 
                 img_entity = EggLayingImage.query.filter_by(
                     session_id=sm.room, basename=path_base
@@ -161,5 +161,5 @@ class DownloadManager:
                     cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 )[1].tobytes()
                 db.session.commit()
-            elif backend_type == BackendTypes.local:
+            elif backend_type == BackendTypes.filesystem:
                 cv2.imwrite(os.path.join(self.sessions[id]["folder"], path_base), img)

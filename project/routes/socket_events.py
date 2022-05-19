@@ -48,7 +48,7 @@ def setup_event_handlers():
     def save_custom_mask(data):
         if data["no_auth"]:
             app.socketIO.emit("mask-list-update", {"fail": "no_auth"})
-        if backend_type == BackendTypes.gcp:
+        if backend_type == BackendTypes.sql:
             mask = EggRegionTemplate.query.filter_by(
                 name=data["maskName"], user=current_user
             ).first()
@@ -59,7 +59,7 @@ def setup_event_handlers():
             else:
                 mask.data = data["maskData"]
             db.session.commit()
-        elif backend_type == BackendTypes.local:
+        elif backend_type == BackendTypes.filesystem:
             mask_dir = os.path.join("project", "configs", "masks", str(current_user.id))
             if not os.path.exists(mask_dir):
                 Path(mask_dir).mkdir(parents=True)
@@ -79,12 +79,12 @@ def setup_event_handlers():
 
     @app.socketIO.on("load-custom-mask")
     def load_custom_mask(data):
-        if backend_type == BackendTypes.gcp:
+        if backend_type == BackendTypes.sql:
             queried_mask = EggRegionTemplate.query.filter_by(
                 user=current_user, name=data["maskName"]
             ).first()
             mask_data = {"maskData": queried_mask.data, "maskName": data["maskName"]}
-        elif backend_type == BackendTypes.local:
+        elif backend_type == BackendTypes.filesystem:
             with open(
                 os.path.join(
                     "project",
@@ -135,7 +135,7 @@ def setup_event_handlers():
     def get_mask_list(emit=True):
         names = []
         if current_user.is_authenticated:
-            if backend_type == BackendTypes.gcp:
+            if backend_type == BackendTypes.sql:
                 names = [
                     el[0]
                     for el in (
@@ -144,7 +144,7 @@ def setup_event_handlers():
                         .all()
                     )
                 ]
-            elif backend_type == BackendTypes.local:
+            elif backend_type == BackendTypes.filesystem:
                 names = [
                     os.path.basename(mask.split(".json")[0])
                     for mask in glob(

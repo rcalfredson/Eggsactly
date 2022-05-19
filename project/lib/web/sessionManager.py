@@ -200,7 +200,7 @@ class SessionManager:
 
     @staticmethod
     def open_image(img_path, dtype=np.float32):
-        if backend_type == BackendTypes.gcp:
+        if backend_type == BackendTypes.sql:
             path_split = img_path.split(os.path.sep)
             img = BytesIO(
                 EggLayingImage.query.filter_by(
@@ -209,7 +209,7 @@ class SessionManager:
                 .first()
                 .image
             )
-        elif backend_type == BackendTypes.local:
+        elif backend_type == BackendTypes.filesystem:
             img = img_path
         return np.array(Image.open(img), dtype=dtype)
 
@@ -405,7 +405,7 @@ class SessionManager:
                         ),
                         outline_img_section,
                     )
-                if backend_type == BackendTypes.gcp:
+                if backend_type == BackendTypes.sql:
                     img_section, outline_img_section = [
                         cv2.imencode(".png", im)[1]
                         for im in (img_section, outline_img_section)

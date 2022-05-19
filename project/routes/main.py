@@ -78,7 +78,7 @@ def index():
 
 @main.route("/uploads/<sid>/<filename>")
 def uploaded_file(sid, filename):
-    if backend_type == BackendTypes.gcp:
+    if backend_type == BackendTypes.sql:
         query = EggLayingImage.query.filter_by(
             session_id=sid, basename=filename
         ).first_or_404()
@@ -87,7 +87,7 @@ def uploaded_file(sid, filename):
             mimetype=f"image/{os.path.splitext(filename)[0]}",
             as_attachment=False,
         )
-    elif backend_type == BackendTypes.local:
+    elif backend_type == BackendTypes.filesystem:
         return send_from_directory(
             os.path.join("../", app.config["UPLOAD_FOLDER"], sid), filename
         )
@@ -116,13 +116,13 @@ def img_as_bytes(session_id, basename):
 @main.route("/annot-img/<ts>", methods=["GET"])
 def return_zipfile(ts):
     zipfile_name = app.downloadManager.sessions[ts]["zipfile"]
-    if backend_type == BackendTypes.gcp:
+    if backend_type == BackendTypes.sql:
         response = Response(zip_generator(ts), mimetype="application/zip")
         response.headers["Content-Disposition"] = "attachment; filename={}".format(
             zipfile_name
         )
         return response
-    elif backend_type == BackendTypes.local:
+    elif backend_type == BackendTypes.filesystem:
         shutil.rmtree(app.downloadManager.sessions[ts]["folder"])
         del app.downloadManager.sessions[ts]
         return send_file(os.path.join("../", zipfile_name), as_attachment=True)
@@ -132,9 +132,9 @@ def return_zipfile(ts):
 def handle_upload():
     pauser.set_resume_timer()
     sid = request.form["sid"]
-    if backend_type == BackendTypes.gcp:
+    if backend_type == BackendTypes.sql:
         remove_old_sql_rows()
-    elif backend_type == BackendTypes.local:
+    elif backend_type == BackendTypes.filesystem:
         for dir_name in ("uploads", "downloads"):
             remove_old_files(dir_name)
     check_chamber_type_of_imgs(sid)
@@ -170,9 +170,9 @@ def save_img_as_sql_blob(sid, file, file_path):
 
 
 def save_uploaded_img(sid, file, file_path):
-    if backend_type == BackendTypes.gcp:
+    if backend_type == BackendTypes.sql:
         save_img_as_sql_blob(sid, file, file_path)
-    elif backend_type == BackendTypes.local:
+    elif backend_type == BackendTypes.filesystem:
         save_img_as_file(file, file_path)
 
 
