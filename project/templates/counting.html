@@ -61,6 +61,20 @@
     {% endif %}
     <script type="text/javascript">
         const socket = io();
+        function uuid() {
+            function randomDigit() {
+                if (crypto && crypto.getRandomValues) {
+                    var rands = new Uint8Array(1);
+                    crypto.getRandomValues(rands);
+                    return (rands[0] % 16).toString(16);
+                } else {
+                    return ((Math.random() * 16) | 0).toString(16);
+                }
+            }
+
+            var crypto = window.crypto || window.msCrypto;
+            return 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, randomDigit);
+        }
         function rgb(r, g, b) {
             return "rgb(" + r + "," + g + "," + b + ")";
         }
@@ -629,7 +643,7 @@
                 ellipses: true
             }
             opts = { ...defaultOpts, ...opts };
-            let messageId = crypto.randomUUID();
+            let messageId = uuid();
             if (logUpdates.length === 100) {
                 document.getElementById(`log-update-${logUpdates.shift()}`).remove();
             }
@@ -2545,10 +2559,10 @@
         function bringGridlineToleranceBandsToFrontOrBack(mode) {
             if (
                 countingState[orderedImgNames[currentImgIndex]]
-                    !== countingStates.pre
+                !== countingStates.pre
                 ||
                 !(chamberRealignmentData[currentImgIndex] &&
-                chamberRealignmentData[currentImgIndex].maskGridlines) ||
+                    chamberRealignmentData[currentImgIndex].maskGridlines) ||
                 maskLocked()
             ) {
                 return;
@@ -3708,6 +3722,21 @@
             }
             document.getElementById('prev-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex - 1;
+                if (numErrors > 0) {
+                    while (!hasErrors[newImgIdx] && newImgIdx >= 0) {
+                        newImgIdx -= 1;
+                    }
+                    let moreErrorImages = false;
+                    for (let index = newImgIdx - 1; index > -1; index--) {
+                        if (hasErrors[index]) {
+                            moreErrorImages = true;
+                        }
+                    }
+                    if (!moreErrorImages) {
+                        evt.target.setAttribute('disabled', true);
+                        document.getElementById('next-img').removeAttribute('disabled');
+                    }
+                }
                 if (newImgIdx >= 0) {
                     shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
@@ -3716,6 +3745,9 @@
                     redrawCanvas({ startAtBeginning: false });
                     resetInputAmender();
                     setIgnoreSelector();
+                    if (numErrors > 0) {
+                        return;
+                    }
                     if (newImgIdx == 0) {
                         document.getElementById('prev-img').setAttribute('disabled', true);
                     } else {
@@ -3727,6 +3759,21 @@
             }
             document.getElementById('next-img').onclick = (evt) => {
                 let newImgIdx = currentImgIndex + 1;
+                if (numErrors > 0) {
+                    while (!hasErrors[newImgIdx] && newImgIdx <= orderedImgNames.length - 2) {
+                        newImgIdx += 1;
+                    }
+                    let moreErrorImages = false;
+                    for (let index = newImgIdx + 1; index < orderedImgNames.length; index++) {
+                        if (hasErrors[index]) {
+                            moreErrorImages = true;
+                        }
+                    }
+                    if (!moreErrorImages) {
+                        evt.target.setAttribute('disabled', true);
+                        document.getElementById('prev-img').removeAttribute('disabled');
+                    }
+                }
                 if (newImgIdx <= orderedImgNames.length) {
                     shiftKeyDown = false;
                     previousImgIndex = currentImgIndex;
@@ -3735,6 +3782,9 @@
                     redrawCanvas({ startAtBeginning: false });
                     resetInputAmender()
                     setIgnoreSelector();
+                    if (numErrors > 0) {
+                        return;
+                    }
                     if (document.getElementById('next-img').disabled) {
                         document.getElementById('next-img').removeAttribute('disabled');
                     }

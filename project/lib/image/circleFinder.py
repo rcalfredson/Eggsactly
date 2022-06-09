@@ -286,6 +286,11 @@ class CircleFinder:
             )
 
         center_to_agarose_dist = np.mean(list(self.shortest_distances.values())) / 0.25
+        if len(self.skew_slopes) > 0:
+            skew_slope = np.mean(self.skew_slopes)
+            rotation_angle = math.atan(skew_slope)
+        else:
+            rotation_angle = 0
         skew_slope = np.mean(self.skew_slopes)
         rotation_angle = math.atan(skew_slope)
         for i, center in enumerate(centers):
