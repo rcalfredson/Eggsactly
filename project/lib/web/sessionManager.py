@@ -370,7 +370,7 @@ class SessionManager:
                     annot["bbox"][1] : annot["bbox"][1] + annot["bbox"][3],
                     annot["bbox"][0] : annot["bbox"][0] + annot["bbox"][2],
                 ]
-                if backend_type == BackendTypes.local:
+                if backend_type == BackendTypes.filesystem:
                     cv2.imwrite(
                         os.path.join(
                             "error_cases", f"{error_report_image_basename}.png"
@@ -397,7 +397,7 @@ class SessionManager:
                     fill=drawing.orangeRed,
                 )
                 outline_img_section = np.array(outline_img_section)
-                if backend_type == BackendTypes.local:
+                if backend_type == BackendTypes.filesystem:
                     cv2.imwrite(
                         os.path.join(
                             "error_cases",

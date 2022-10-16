@@ -27,7 +27,7 @@ class DownloadManager:
             % ts,
             "edited_counts": edited_counts,
         }
-        if backend_type == BackendTypes.local:
+        if backend_type == BackendTypes.filesystem:
             Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
 
     def prepareAnnotatedImage(self, sm, id, path, path_base):

@@ -124,7 +124,7 @@ def setup_event_handlers():
         )
         app.downloadManager.createImagesForDownload(req_id)
         zipfName = "%s.zip" % (app.downloadManager.sessions[req_id]["folder"])
-        if backend_type == BackendTypes.local:
+        if backend_type == BackendTypes.filesystem:
             zipf = zipfile.ZipFile(zipfName, "w", zipfile.ZIP_DEFLATED)
             zipdir(app.downloadManager.sessions[req_id]["folder"], zipf)
             zipf.close()
