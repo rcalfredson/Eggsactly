@@ -10,7 +10,6 @@ Yang Lab code related to egg counting
     - `db.create_all(app=create_app())`
 ```bash
 export FLASK_APP=project/server.py
-export FLASK_ENV=development
 flask run
 # in a separate tab
 python -m project.gpu_backend.worker

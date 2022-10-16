@@ -51,7 +51,8 @@ db.init_app(app)
 app.config["SESSION_TYPE"] = flask_session_type
 session = Session(app)
 if flask_session_type == "sqlalchemy":
-    session.app.session_interface.db.create_all()
+    with app.app_context():
+        session.app.session_interface.db.create_all()
 socketIO = SocketIO(app, manage_session=False)
 
 sessions = {}

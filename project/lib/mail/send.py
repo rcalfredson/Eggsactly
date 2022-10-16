@@ -5,9 +5,9 @@ import json
 import os
 import smtplib
 
-if os.getenv("FLASK_ENV") == "development":
+if os.getenv("FLASK_DEBUG") == "1":
     email_list_suffix = "_dev"
-elif os.getenv("FLASK_ENV") == "production":
+else:
     email_list_suffix = ""
 with open(f"notification_emails{email_list_suffix}.json") as f:
     default_recipients = json.load(f)
