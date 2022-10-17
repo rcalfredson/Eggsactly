@@ -821,8 +821,8 @@
             });
         });
         socket.on('counting-csv', (msg) => {
-            document.getElementById('download-csv').removeAttribute('disabled');
-            clearInterval(document.getElementById('download-csv').loadingInterval);
+            document.getElementById('download-counts').removeAttribute('disabled');
+            clearInterval(document.getElementById('download-counts').loadingInterval);
             var element = document.createElement('a');
             element.setAttribute('download', msg.basename);
             element.setAttribute('href',
@@ -957,16 +957,22 @@
             }, 2500)
             clearInterval(el.loadingInterval);
         });
-        socket.on('zip-annots-ready', (msg) => {
-            $('#updates').append(`<form hidden id=annot-retrieve action=/annot-img/${msg.id}><input id=annot-retrieve-input hidden id= value='Download results' type=submit>` +
-                '</input></form>');
-            document.getElementById('annot-retrieve').submit();
-            document.getElementById('annot-retrieve').remove();
-            window.addEventListener('beforeunload',
-                beforeUnloadHandler);
+
+        socket.on('egg-position-zip-ready', (msg) => {
+            sendRequestViaForm('egg-positions', msg);
+            window.addEventListener('beforeunload', beforeUnloadHandler);
+            document.getElementById('download-positions').innerText = 'Download egg positions';
+            document.getElementById('download-positions').removeAttribute('disabled');
+            clearInterval(document.getElementById('download-positions').loadingInterval);
+        });
+
+        
+        socket.on('annot-imgs-zip-ready', (msg) => {
+            sendRequestViaForm('annot-img', msg);
+            window.addEventListener('beforeunload', beforeUnloadHandler);
             document.getElementById('download-imgs').innerText = 'Download annotated images';
             document.getElementById('download-imgs').removeAttribute('disabled');
-            clearInterval(document.getElementById('download-imgs').loadingInterval)
+            clearInterval(document.getElementById('download-imgs').loadingInterval);
         });
         socket.on('sid-from-server', (msg) => {
             if (!sid) {
@@ -1317,6 +1323,19 @@
                     }
                 }
             };
+        }
+
+        function sendRequestViaForm(dataType, msg) {
+            let time = new Date().toLocaleString();
+            $('#updates').append(
+                '<form hidden method=post ' +
+                `id=${dataType}-retrieve action=/zip/${dataType}/${msg.id}>` +
+                `<input name="time" type="text" value="${time}">` +
+                `<input id=${dataType}-retrieve-input hidden value='' type=submit>` +
+                '</form>'
+            );
+            document.getElementById(`${dataType}-retrieve`).submit();
+            document.getElementById(`${dataType}-retrieve`).remove();
         }
 
 
@@ -3523,8 +3542,11 @@
             document.getElementById('reanalyze-img-button').onclick = () => {
                 countingState[orderedImgNames[currentImgIndex]] = countingStates.pre;
                 if (!countingStarted() ||
-                    (orderedImgNames.length === 1 && document.getElementById('download-csv'))) {
-                    document.getElementById('download-csv').remove();
+                    (orderedImgNames.length === 1 &&
+                        document.getElementById('csv-download-buttons')))
+                {
+                    document.getElementById('csv-download-buttons').remove();
+                    
                 }
                 if (chamberRealignmentData[currentImgIndex].nodesInCanvasFrame) {
                     chamberRealignmentData[currentImgIndex].nodes =
@@ -3664,17 +3686,30 @@
 
         }
 
-        function setupCsvDownloadButton() {
-            document.getElementById('download-csv').onclick = (evt) => {
+        function setupCountsDownloadButton() {
+            document.getElementById('download-counts').onclick = (evt) => {
                 evt.target.setAttribute('disabled', 'true');
                 displayLoadingMessage(evt.target);
                 let rowsColsCounts = collectRowColCountLayout();
-                socket.emit('prepare-csv', {
+                socket.emit('prepare-counts-csv', {
                     time: new Date().toLocaleString(),
                     sid: sid,
                     editedCounts: collectEditedCounts(),
                     rowColLayout: rowsColsCounts.rowsCols,
                     orderedCounts: rowsColsCounts.orderedCounts
+                });
+            }
+        }
+
+        function setupPositionsDownloadButton() {
+            document.getElementById('download-positions').onclick = (evt) => {
+                evt.target.setAttribute('disabled', 'true');
+                window.removeEventListener('beforeunload',
+                    beforeUnloadHandler);
+                displayLoadingMessage(evt.target);
+                socket.emit('prepare-egg-position-zip', {
+                    time: new Date().toLocaleString(),
+                    sid: sid
                 });
             }
         }
@@ -3708,7 +3743,8 @@
 
         var setButtonHandlers = function () {
             if (countingStarted()) {
-                setupCsvDownloadButton();
+                setupCountsDownloadButton();
+                setupPositionsDownloadButton();
                 setupImgDownloadButton();
                 setupErrorReportButton();
             }
@@ -4331,8 +4367,18 @@
                 resetNavButtons();
             }
             if (countingStarted()) {
-                if (document.getElementById('download-csv')) document.getElementById('download-csv').remove();
-                $('#updates').prepend('<div><button type=button id=download-csv>Download results</button></div>');
+                $('#updates').prepend('<div id=csv-download-buttons></div>');
+                ['counts', 'positions'].forEach(dataType => {
+                    if (document.getElementById(`download-${dataType}`)) {
+                        document.getElementById(`download-${dataType}`).remove();
+                    }
+
+                    $('#csv-download-buttons').append(
+                        `<button type=button id=download-${dataType}>Download egg` +
+                        ` ${dataType}</button>`
+                    )
+                    $('#csv-download-buttons').append('<div class="divider"></div>');
+                });
             }
             setButtonHandlers();
             setCurrentImgName()

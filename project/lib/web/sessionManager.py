@@ -57,6 +57,7 @@ class SessionManager:
         self.paths_to_indices = {}
         self.models_used_by_image = {}
         self.annotations = {}
+        self.egg_positions_full_scale = {}
         self.bboxes = {}
         self.alignment_data = {}
         self.socketIO = socketIO
@@ -71,6 +72,7 @@ class SessionManager:
         self.cfs = {}
         self.predictions = {}
         self.annotations = {}
+        self.egg_positions_full_scale = {}
         self.bboxes = {}
         self.alignment_data = {}
         self.basenames = {}

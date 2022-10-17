@@ -26,6 +26,7 @@ from project.lib.datamanagement.models import (
 )
 from project.lib.image.exif import correct_via_exif
 from project.lib.os.pauser import PythonPauser
+from project.lib.util import dashed_datetime
 from project.lib.web.backend_types import BackendTypes
 from project.lib.web.exceptions import CUDAMemoryException, ImageAnalysisException
 
@@ -93,13 +94,28 @@ def uploaded_file(sid, filename):
         )
 
 
-def zip_generator(ts):
-    z = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
-    sm = app.downloadManager.sessions[ts]["session_manager"]
+def zip_img_data(sm, zipstr):
     for path in sm.basenames.values():
         img = img_as_bytes(sm.room, path)
         if img.getbuffer().nbytes > 0:
-            z.write_iter(path, img)
+            zipstr.write_iter(path, img)
+
+
+def zip_egg_position_data(sm, zipstr):
+    for path in sm.annotations:
+        data_out = [b"x,y"]
+        for pt in sm.egg_positions_full_scale[path]:
+            data_out.append(str.encode(f"\n{pt[0]},{pt[1]}"))
+        zipstr.write_iter(f"{sm.basenames[path]}_eggs.csv", data_out)
+
+
+def zip_generator(id, zip_data_generator):
+    z = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
+    if id in app.downloadManager.sessions:
+        sm = app.downloadManager.sessions[id]["session_manager"]
+    elif id in app.sessions:
+        sm = app.sessions[id]
+    zip_data_generator(sm, z)
     for chunk in z:
         yield chunk
 
@@ -113,19 +129,23 @@ def img_as_bytes(session_id, basename):
         )
 
 
-@main.route("/annot-img/<ts>", methods=["GET"])
-def return_zipfile(ts):
-    zipfile_name = app.downloadManager.sessions[ts]["zipfile"]
+@main.route("/zip/<type>/<id>", methods=["POST"])
+def return_zipfile(type, id):
     if backend_type == BackendTypes.sql:
-        response = Response(zip_generator(ts), mimetype="application/zip")
+        if type == "annot-img":
+            zipfile_name = app.downloadManager.sessions[id]["img_zipfile"]
+            generator = zip_img_data
+        elif type == "egg-positions":
+            zipfile_name = "egg_positions_ALPHA_%s" % dashed_datetime(
+                request.form["time"]
+            )
+            generator = zip_egg_position_data
+        response = Response(zip_generator(id, generator), mimetype="application/zip")
         response.headers["Content-Disposition"] = "attachment; filename={}".format(
             zipfile_name
         )
         return response
-    elif backend_type == BackendTypes.filesystem:
-        shutil.rmtree(app.downloadManager.sessions[ts]["folder"])
-        del app.downloadManager.sessions[ts]
-        return send_file(os.path.join("../", zipfile_name), as_attachment=True)
+    del app.downloadManager.sessions[id]
 
 
 @main.route("/upload", methods=["POST"])

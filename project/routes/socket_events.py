@@ -98,8 +98,8 @@ def setup_event_handlers():
 
         app.socketIO.emit("loaded-custom-mask", mask_data, room=data["sid"])
 
-    @app.socketIO.on("prepare-csv")
-    def prepare_csv(data):
+    @app.socketIO.on("prepare-counts-csv")
+    def prepare_counts_csv(data):
         app.sessions[data["sid"]].sendCSV(
             data["editedCounts"],
             data["rowColLayout"],
@@ -115,6 +115,14 @@ def setup_event_handlers():
             return
         app.sessions[data["sid"]].createErrorReport(data["editedCounts"], current_user)
 
+    @app.socketIO.on("prepare-egg-position-zip")
+    def setup_egg_position_download(data):
+        ts = dashed_datetime(data["time"])
+        req_id = str(uuid1())
+        app.downloadManager.addNewSession(app.sessions[data["sid"]], ts, req_id)
+        app.downloadManager.calculateFullScaleEggPositions(req_id)
+        app.socketIO.emit("egg-position-zip-ready", {"id": req_id}, room=data["sid"])
+
     @app.socketIO.on("prepare-annot-imgs-zip")
     def setup_imgs_download(data):
         ts = dashed_datetime(data["time"])
@@ -122,14 +130,15 @@ def setup_event_handlers():
         app.downloadManager.addNewSession(
             app.sessions[data["sid"]], ts, req_id, data["editedCounts"]
         )
+        print("preparing imgs for download?")
         app.downloadManager.createImagesForDownload(req_id)
         zipfName = "%s.zip" % (app.downloadManager.sessions[req_id]["folder"])
         if backend_type == BackendTypes.filesystem:
             zipf = zipfile.ZipFile(zipfName, "w", zipfile.ZIP_DEFLATED)
             zipdir(app.downloadManager.sessions[req_id]["folder"], zipf)
             zipf.close()
-        app.downloadManager.sessions[req_id]["zipfile"] = zipfName
-        app.socketIO.emit("zip-annots-ready", {"id": req_id}, room=data["sid"])
+        app.downloadManager.sessions[req_id]["img_zipfile"] = zipfName
+        app.socketIO.emit("annot-imgs-zip-ready", {"id": req_id}, room=data["sid"])
 
     @app.socketIO.on("mask-list")
     def get_mask_list(emit=True):

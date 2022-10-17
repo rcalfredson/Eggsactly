@@ -5,12 +5,15 @@ Yang Lab code related to egg counting
 - Install dependencies: `pip install -r requirements.txt`
   - Alternatively, use your preferred package-management tool, e.g., `virtualenv`
 - Initialize a local instance of the SQLite server
-  - From the Python command line, run the following commands:
-    - `from project import db, create_app`
-    - `db.create_all(app=create_app())`
+- From the Python command line 
+```py
+from project import db, create_app
+with create_app().app_context():
+  db.create_all()
+```
+- Start the server
 ```bash
-export FLASK_APP=project/server.py
-flask run
+python -m project.server # --host 0.0.0.0 --port 5000
 # in a separate tab
 python -m project.gpu_backend.worker
 ```

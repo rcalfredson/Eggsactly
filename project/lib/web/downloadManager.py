@@ -4,7 +4,6 @@ import numpy as np
 import os
 from pathlib import Path
 from PIL import Image, ImageDraw
-import time
 
 from project import backend_type, db
 from project.lib.datamanagement.models import EggLayingImage
@@ -20,16 +19,32 @@ class DownloadManager:
     def __init__(self):
         self.sessions = {}
 
-    def addNewSession(self, session_manager, ts, id, edited_counts):
+    def addNewSession(self, session_manager, ts, id, edited_counts=None):
         self.sessions[id] = {
             "session_manager": session_manager,
-            "folder": "annotated_images_ALPHA_%s"
-            % ts,
+            "folder": "annotated_images_ALPHA_%s" % ts,
             "edited_counts": edited_counts,
+            "ts": ts,
         }
         if backend_type == BackendTypes.filesystem:
             Path(self.sessions[ts]["folder"]).mkdir(parents=True, exist_ok=True)
 
+    def calculateEggPositionsForImage(self, sm, path):
+        img = sm.open_image(path, dtype=np.uint8)
+        zoom = sm.alignment_data[path].get("scaling", 1)
+        ht, wd = img.shape[:2]
+        center = (wd / 2, ht / 2)
+        rot = sm.alignment_data[path]["rotationAngle"]
+        sm.egg_positions_full_scale[path] = []
+        for i, annotation in enumerate(sm.annotations[path]):
+            for pt in sm.predictions[path][i]["points"]:
+                pt = [
+                    (1 / zoom) * (pt[1] + annotation["bbox"][0]),
+                    (1 / zoom) * (pt[0] + annotation["bbox"][1]),
+                ]
+                pt = rotate_around_point_highperf(pt, -rot, center)
+                sm.egg_positions_full_scale[path].append(pt)
+    
     def prepareAnnotatedImage(self, sm, id, path, path_base):
         self.font = drawing.loadFont(80)
         img = sm.open_image(path, dtype=np.uint8)
@@ -140,6 +155,15 @@ class DownloadManager:
         )
         return np.array(img)
 
+    def calculateFullScaleEggPositions(self, id):
+        sm = self.sessions[id]["session_manager"]
+        for path in sm.predictions:
+            if inspect.isclass(sm.predictions[path][0]) and issubclass(
+                sm.predictions[path][0], Exception
+            ):
+                continue
+            self.calculateEggPositionsForImage(sm, path)
+
     def createImagesForDownload(self, id):
         sm = self.sessions[id]["session_manager"]
         for path in sm.predictions:
@@ -158,7 +182,7 @@ class DownloadManager:
                 ).first()
                 img_entity.annotated_img = cv2.imencode(
                     f".{os.path.splitext(path_base)[1]}",
-                    cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                    cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
                 )[1].tobytes()
                 db.session.commit()
             elif backend_type == BackendTypes.filesystem:
