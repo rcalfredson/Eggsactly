@@ -72,11 +72,11 @@ class B2(SplineGenerator):
     def value(self, x):
         val = 0.0
         if -1.5 <= x and x <= -0.5:
-            val = 0.5 * (x ** 2) + 1.5 * x + 1.125
+            val = 0.5 * (x**2) + 1.5 * x + 1.125
         elif -0.5 < x and x <= 0.5:
             val = -x * x + 0.75
         elif 0.5 < x and x <= 1.5:
-            val = 0.5 * (x ** 2) - 1.5 * x + 1.125
+            val = 0.5 * (x**2) - 1.5 * x + 1.125
         return val
 
     def firstDerivativeValue(self, x):

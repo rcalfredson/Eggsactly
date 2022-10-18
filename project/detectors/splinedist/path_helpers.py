@@ -5,6 +5,7 @@ import platform
 onload_ts = datetime.now()
 dirname = os.path.dirname(__file__)
 
+
 def data_dir(must_exist=True, as_abs_path=False):
     prospective_dir = os.path.join(
         "data_by_host", f"{platform.node()}_{onload_ts}".replace(":", "-")

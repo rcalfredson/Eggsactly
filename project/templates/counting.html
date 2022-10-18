@@ -966,7 +966,6 @@
             clearInterval(document.getElementById('download-positions').loadingInterval);
         });
 
-        
         socket.on('annot-imgs-zip-ready', (msg) => {
             sendRequestViaForm('annot-img', msg);
             window.addEventListener('beforeunload', beforeUnloadHandler);
@@ -3543,10 +3542,9 @@
                 countingState[orderedImgNames[currentImgIndex]] = countingStates.pre;
                 if (!countingStarted() ||
                     (orderedImgNames.length === 1 &&
-                        document.getElementById('csv-download-buttons')))
-                {
+                        document.getElementById('csv-download-buttons'))) {
                     document.getElementById('csv-download-buttons').remove();
-                    
+
                 }
                 if (chamberRealignmentData[currentImgIndex].nodesInCanvasFrame) {
                     chamberRealignmentData[currentImgIndex].nodes =

@@ -19,7 +19,7 @@ def prune_old_sessions():
             del app.sessions[sid]
 
 
-flask_debug = os.environ.get('FLASK_DEBUG', '0')
+flask_debug = os.environ.get("FLASK_DEBUG", "0")
 app = create_app()
 app.sessions = {}
 app.downloadManager = DownloadManager()

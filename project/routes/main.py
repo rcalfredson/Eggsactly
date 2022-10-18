@@ -146,6 +146,9 @@ def return_zipfile(type, id):
         )
         return response
     del app.downloadManager.sessions[id]
+    print('download manager sessions at end of download:',
+        app.downloadManager.sessions
+    )
 
 
 @main.route("/upload", methods=["POST"])

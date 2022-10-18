@@ -4,7 +4,7 @@ from warnings import warn
 from ..utils import normalize_grid
 
 
-def random_label_cmap(n=2 ** 16, h=(0, 1), l=(0.4, 1), s=(0.2, 0.8)):
+def random_label_cmap(n=2**16, h=(0, 1), l=(0.4, 1), s=(0.2, 0.8)):
     import matplotlib
     import colorsys
 

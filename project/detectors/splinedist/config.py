@@ -10,7 +10,7 @@ DEFAULT_CONFIG = os.path.join(dirname, "../../configs/unet_defaults.json")
 
 class Config:
     def __init__(self, config_file, n_channel_in=3, contoursize_max=None):
-        with open(os.path.join(dirname, '../../..', config_file), "r") as my_f:
+        with open(os.path.join(dirname, "../../..", config_file), "r") as my_f:
             self.conf_from_file = json.load(my_f)
         with open(os.path.abspath(DEFAULT_CONFIG), "r") as my_f:
             self.default_conf = json.load(my_f)

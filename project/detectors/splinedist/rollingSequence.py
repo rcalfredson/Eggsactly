@@ -18,7 +18,7 @@ class RollingSequence:
         self.data_size = int(data_size)
         self.batch_size = int(batch_size)
         self.length = (
-            2 ** 63 - 1 if length is None else int(length)
+            2**63 - 1 if length is None else int(length)
         )  # 2**63-1 is max possible value
         self.shuffle = bool(shuffle)
         self.index_gen = rng.permutation if self.shuffle else np.arange

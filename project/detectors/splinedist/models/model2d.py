@@ -389,7 +389,7 @@ class SplineDist2D(nn.Module):
             zip(
                 self.config.axes.replace("C", ""),
                 tuple(
-                    p ** self.config.n_depth * g
+                    p**self.config.n_depth * g
                     for p, g in zip(self.config.pool, self.config.grid)
                 ),
             )

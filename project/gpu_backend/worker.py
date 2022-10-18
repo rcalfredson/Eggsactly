@@ -251,10 +251,7 @@ def perform_task(attempt_ct=0):
                 for dim in range(2):
                     if img.shape[dim] >= 1600:
                         n_tiles[dim] = 2 + (img.shape[dim] - 1600) // 300
-                results = networks[task_type].predict_instances(
-                    img,
-                    n_tiles=n_tiles
-                )[1]
+                results = networks[task_type].predict_instances(img, n_tiles=n_tiles)[1]
                 results["count"] = len(results["points"])
                 results["outlines"] = get_interpolated_points(results["coord"])
                 predictions.append(results)

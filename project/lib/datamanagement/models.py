@@ -8,7 +8,7 @@ from werkzeug.security import generate_password_hash
 
 from ... import app, db
 
-LONGBLOG_LEN = (2 ** 32) - 1
+LONGBLOG_LEN = (2**32) - 1
 
 
 def delete_expired_rows(cls):
