@@ -14,7 +14,7 @@ from project.lib.web.gpu_task_types import GPUTaskTypes
 
 
 load_dotenv()
-SAFE_TIMEOUT = int(os.environ["GPU_WORKER_TIMEOUT"]) - 1
+SAFE_TIMEOUT = int(os.environ["GPU_WORKER_TIMEOUT"])
 tasks = Blueprint("tasks", __name__)
 num_workers = int(os.environ["NUM_GPU_WORKERS"])
 auth_decoder = AuthDecoder(

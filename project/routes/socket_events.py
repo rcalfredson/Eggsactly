@@ -130,7 +130,6 @@ def setup_event_handlers():
         app.downloadManager.addNewSession(
             app.sessions[data["sid"]], ts, req_id, data["editedCounts"]
         )
-        print("preparing imgs for download?")
         app.downloadManager.createImagesForDownload(req_id)
         zipfName = "%s.zip" % (app.downloadManager.sessions[req_id]["folder"])
         if backend_type == BackendTypes.filesystem:
