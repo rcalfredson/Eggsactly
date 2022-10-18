@@ -7,19 +7,19 @@ The server relies on a separate process, the GPU worker, which handles GPU-depen
   - Alternatively, use your preferred package-management tool, e.g., `virtualenv`
 - Set up environment variables in `.env` file
   - For server and GPU worker instances
-    - `EGG_COUNTING_BACKEND_TYPE`
+    - `EGG_COUNTING_BACKEND_TYPE`- how to store data used by the egg-counting server
       - `sql`- the only option currently supported.
       - `filesystem`- incompletely implemented; intended to rely solely on files stored on the server.
-    - `SQL_ADDR_TYPE`
-      - `sqlite`- DB stored on the server as a self-contained file (recommended for quick setup).
-      - `shortname`- the portion of the `unix_socket` query parameter that follows `/cloudsql/` in a Google Cloud MySQL instance, e.g., `/cloudsql/${a_shortname}`.
-      - `ip_addr`- refers to a private IP address associated with a Google Cloud MySQL instance (an alternative to `shortname`, but used to create the same connection).
+    - `SQL_ADDR_TYPE`- if using the SQL backend type, which format to use for the connection.
+      - `sqlite`- use a DB stored on the server as a self-contained file (recommended for quick setup).
+      - `shortname`- use a Unix socket to connect to a Google Cloud MySQL instance. `unix_socket` query parameter that follows `/cloudsql/` in a Google Cloud MySQL instance, e.g., `/cloudsql/${a_shortname}`.
+      - `ip_addr`- use a private IP address to connect to a Google Cloud MySQL instance (an alternative to using a Unix socket). refers to a private IP address associated with a Google Cloud MySQL instance (an alternative to `shortname`, but used to create the same connection).
     - `SECRET_KEY`- required by Flask for session management; namely, it's used when encrypting cookies.
     - `NUM_GPU_WORKERS`- the number of GPU workers supporting the egg-counting server, which is used to determine how many public keys should attempt to be loaded (see description of `PRIVATE_KEY_PATH` in the following section).
     - `GPU_WORKER_TIMEOUT`- maximum duration in seconds that the egg-counting server waits before responding to a request from a GPU worker. The server responds immediately if a task becomes available before this timeout.
-    - `GOOGLE_SQL_CONN_NAME`- required if using `shortname` for `SQL_ADDR_TYPE`; this is the `a_shortname` value referenced above.
-    - `GOOGLE_SQL_DB_DVT_IP`- required if using `ip_addr` for `SQL_ADDR_TYPE`; this is the IP address of the instance.
-    - `GOOGLE_SQL_DB_PASSWORD`- required if using a Google Cloud MySQL instance (applies to both `shortname` or `ip_addr` address types).
+    - `GOOGLE_SQL_CONN_NAME`- the portion of the `unix_socket` query parameter that follows `/cloudsql/`, e.g., `/cloudsql/${GOOGLE_SQL_CONN_NAME}`; this is required if using `shortname` for `SQL_ADDR_TYPE`.
+    - `GOOGLE_SQL_DB_DVT_IP`- the IP address of the Google Cloud MySQL instance; this is required if using `ip_addr` for `SQL_ADDR_TYPE`.
+    - `GOOGLE_SQL_DB_PASSWORD`- required if using a Google Cloud MySQL instance (applies to both Unix socket or IP address-based connections).
     - `GOOGLE_CLIENT_ID`- client ID for a Google API application corresponding to your egg-counting server. Required only if you would like to offer Google-based OAuth 2 authentication as a method to define user accounts.
     - `GOOGLE_CLIENT_SECRET`- client secret for the above-mentioned Google Cloud application. Must be given together with `GOOGLE_CLIENT_ID`.
   - For GPU worker instances only
