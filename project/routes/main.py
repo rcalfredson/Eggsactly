@@ -111,13 +111,11 @@ def zip_egg_position_data(sm, zipstr):
 
 def zip_generator(id, zip_data_generator):
     z = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
-    if id in app.downloadManager.sessions:
-        sm = app.downloadManager.sessions[id]["session_manager"]
-    elif id in app.sessions:
-        sm = app.sessions[id]
+    sm = app.downloadManager.sessions[id]["session_manager"]
     zip_data_generator(sm, z)
     for chunk in z:
         yield chunk
+    del app.downloadManager.sessions[id]
 
 
 def img_as_bytes(session_id, basename):
@@ -131,24 +129,17 @@ def img_as_bytes(session_id, basename):
 
 @main.route("/zip/<type>/<id>", methods=["POST"])
 def return_zipfile(type, id):
-    if backend_type == BackendTypes.sql:
-        if type == "annot-img":
-            zipfile_name = app.downloadManager.sessions[id]["img_zipfile"]
-            generator = zip_img_data
-        elif type == "egg-positions":
-            zipfile_name = "egg_positions_ALPHA_%s" % dashed_datetime(
-                request.form["time"]
-            )
-            generator = zip_egg_position_data
-        response = Response(zip_generator(id, generator), mimetype="application/zip")
-        response.headers["Content-Disposition"] = "attachment; filename={}".format(
-            zipfile_name
-        )
-        return response
-    del app.downloadManager.sessions[id]
-    print('download manager sessions at end of download:',
-        app.downloadManager.sessions
+    if type == "annot-img":
+        zipfile_name = app.downloadManager.sessions[id]["img_zipfile"]
+        generator = zip_img_data
+    elif type == "egg-positions":
+        zipfile_name = "egg_positions_ALPHA_%s" % dashed_datetime(request.form["time"])
+        generator = zip_egg_position_data
+    response = Response(zip_generator(id, generator), mimetype="application/zip")
+    response.headers["Content-Disposition"] = "attachment; filename={}".format(
+        zipfile_name
     )
+    return response
 
 
 @main.route("/upload", methods=["POST"])
