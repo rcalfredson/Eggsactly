@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives import serialization
 
 # Load the key we created
 with open(
-    "/home/tracking/counting-3/project/auth_secrets/gpu_worker_1_id_rsa.pem", "rb"
+    "/home/tracking/code/YL/counting-3/project/auth/secrets/gpu_worker_2_id_rsa.pem", "rb"
 ) as key_file:
     private_key = serialization.load_pem_private_key(
         key_file.read(), password=None, backend=default_backend()
@@ -23,7 +23,7 @@ print(f"jwt_token {jwt_token}")
 
 # Load the public key to run another test...
 with open(
-    "/home/tracking/counting-3/project/configs/gpu_worker_1_id_rsa.pub", "rb"
+    "/home/tracking/code/YL/counting-3/project/auth/gpu_worker_2_id_rsa.pub", "rb"
 ) as key_file:
     public_key = serialization.load_pem_public_key(
         key_file.read(), backend=default_backend()

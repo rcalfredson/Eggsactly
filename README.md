@@ -39,4 +39,10 @@ python -m project.server # optional: --host 0.0.0.0 --port 5000
 python -m project.gpu_backend.worker
 ```
 
-
+## Generating new public/private key pairs for the GPU worker-server connection
+  - Run the Python script `project/scripts/rsa_keypair_gen.py`.
+  - Copy the output starting with `-----BEGIN PRIVATE KEY-----` and ending with `-----END PRIVATE KEY-----` into a file using the naming convention described in `PRIVATE_KEY_PATH` (see above).
+  - `chmod +x ${your_private_key_file}`
+  - `openssl rsa -in ${your_private_key_file} -pubout -out ${your_public_key_file}`
+    - Note: the public key file should have the same name as the private key, but uses the extension `.pub` instead of `.pem`.
+  - Move private key files to `project/auth/secrets` and public key files to `project/auth`.
