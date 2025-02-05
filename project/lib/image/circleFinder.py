@@ -50,6 +50,32 @@ def centroidnp(arr):
     return sum_x / length, sum_y / length
 
 
+def fit_circle_kasa(points):
+    """
+    Perform a simple algebraic circle fit (Kåsa's method).
+
+    points: (N,2) array of (x, y) coordinates along the circle's outline
+    Returns (cx, cy, r)
+    """
+    x = points[:, 0]
+    y = points[:, 1]
+    # Build the linear system: M * [A, B, C]^T = Y
+    # where the circle eqn is x^2 + y^2 + A x + B y + C = 0
+    M = np.column_stack((x, y, np.ones_like(x)))
+    w = x**2 + y**2
+    Y = -w
+
+    # Solve for A, B, C in least squares sense
+    A, B, C = np.linalg.lstsq(M, Y, rcond=None)[0]
+
+    # Convert back to center-radius form
+    cx = -A / 2
+    cy = -B / 2
+    r = np.sqrt(cx**2 + cy**2 - C)
+
+    return cx, cy, r
+
+
 # corner-finding (source: https://stackoverflow.com/a/20354078/13312013)
 def fake_image_corners(xy_sequence):
     """Get an approximation of image corners based on available data."""
@@ -621,7 +647,7 @@ class CircleFinder:
         ]
         binHtsOrig = [res.statistic for res in histResults]
         binClusters = [trueRegions(ht_set > 0) for ht_set in binHtsOrig]
-        use_bin_ht_test = any([len(cl) > 3 for cl in binClusters])
+        use_bin_ht_test = any(len(cl) > 3 for cl in binClusters)
 
         for detI, det_set in enumerate(self.detections):
             hts = histResults[detI].statistic
@@ -661,32 +687,38 @@ class CircleFinder:
                     )
                     if closest_dist_to_edge >= 10:
                         new_coord_set.append(c)
-                self.wellCoords[i] = new_coord_set
+                self.wellCoords[i] = (
+                    new_coord_set  # First pass: apply boundary filtering
+                )
+
+        # Second pass: apply sorting and outlier rejection separately
         for i in range(len(self.wellCoords)):
             self.wellCoords[i] = sorted(self.wellCoords[i])
             self.wellCoords[i] = reject_outliers_by_delta(
                 np.asarray(self.wellCoords[i])
             )
+
         wells = list(itertools.product(self.wellCoords[0], self.wellCoords[1]))
         self.numRowsCols = [len(self.wellCoords[i]) for i in range(1, -1, -1)]
         self.ct, self.inverted = getChamberTypeByRowsAndCols(self.numRowsCols)
         diagDist = distance((0, 0), self.img_shape_resized[:2])
+
         for centroid in list(self.centroids):
             closestWell = min(wells, key=lambda xy: distance(xy, centroid))
             if distance(closestWell, centroid) > 0.02 * diagDist:
                 self.centroids.remove(centroid)
+
         self.sortedCentroids = []
-        for i, well in enumerate(wells):
+        for well in wells:
             closestDetection = min(self.centroids, key=lambda xy: distance(xy, well))
             if distance(closestDetection, well) > 0.02 * diagDist:
                 self.sortedCentroids.append((np.nan, np.nan))
             else:
                 self.sortedCentroids.append(closestDetection)
+
         self.sortedCentroids = np.array(self.sortedCentroids).reshape(
-            (
-                tuple(reversed(self.numRowsCols))
-                + (() if None in self.sortedCentroids else (-1,))
-            )
+            tuple(reversed(self.numRowsCols))
+            + (() if None in self.sortedCentroids else (-1,))
         )
         sc = self.sortedCentroids
         mask = np.isnan(np.squeeze(sc[:, :, 0]))
@@ -694,8 +726,9 @@ class CircleFinder:
         third = np.where(mask.all(1))
         sc = np.delete(np.delete(sc, sec, 1), third, 0)
         self.sortedCentroids = sc
-        self.rowRegressions = np.zeros(self.sortedCentroids.shape[1]).astype(object)
-        self.colRegressions = np.zeros(self.sortedCentroids.shape[0]).astype(object)
+
+        self.rowRegressions = np.zeros(self.sortedCentroids.shape[1], dtype=object)
+        self.colRegressions = np.zeros(self.sortedCentroids.shape[0], dtype=object)
         self.interpolateCentroids()
 
         prelim_corners = fake_image_corners(self.sortedCentroids)
@@ -708,17 +741,15 @@ class CircleFinder:
             distance(true_corners["br"], true_corners["tr"])
             - distance(true_corners["bl"], true_corners["tl"])
         )
-        if (
+        self.skewed = (
             height_skew / self.img_shape_resized[0] > 0.01
             or width_skew / self.img_shape_resized[1] > 0.01
-        ):
-            self.skewed = True
-        else:
-            self.skewed = False
+        )
+
         if self.skewed and not self.allowSkew:
             print(
-                "Warning: skew detected in image %s. To analyze " % self.img_name
-                + "this image, use flag --allowSkew."
+                f"Warning: skew detected in image {self.img_name}. To analyze "
+                "this image, use flag --allowSkew."
             )
             currentThread = threading.currentThread()
             setattr(currentThread, "hadError", True)
@@ -730,7 +761,7 @@ class CircleFinder:
         for i, col in enumerate(self.sortedCentroids):
             for j, centroid in enumerate(col):
                 row = self.sortedCentroids[:, j]
-                regResult = calculateRegressions(row, col)
+                regResult = calculateRegressions(row, col)[0]
                 if j == 0:
                     self.colRegressions[i] = regResult["col"]
                 if i == 0:
@@ -779,12 +810,21 @@ class CircleFinder:
         """
         self.resize_image_shape()
         if include_img:
-            # raise NotImplementedError()
             self.resize_image()
+
+        # If no predictions given, run the model
         if predictions is None:
             _, predictions = self.model.predict_instances(self.imageResized)
-        self.centroids = predictions["points"]
-        self.centroids = [tuple(reversed(centroid)) for centroid in self.centroids]
+
+        # ================================
+        #  Fit circles from outlines
+        # ================================
+        self.centroids = []
+        if "outlines" in predictions:
+            for outline in predictions["outlines"]:
+                outline_arr = np.array(outline)
+                cx, cy, r = fit_circle_kasa(outline_arr)
+                self.centroids.append((cy, cx))
         if debug:
             print("what are centroids?", self.centroids)
             if not hasattr(self, "imageResized"):
@@ -898,13 +938,26 @@ def calculateRegressions(row, col):
     Arguments:
       - row: list of points (XY tuples) in a row of interest
       - col: list of points (XY tuples) in a column of interest
+
+    Returns:
+      - regressions: dictionary containing regression slopes and intercepts
+      - row_residuals: list of absolute differences between the actual and predicted Y values
+      - col_residuals: list of absolute differences between the actual and predicted X values
     """
     colModel = LinearRegression()
     colInd = np.array([el[1] for el in col if not np.isnan(el).any()]).reshape(-1, 1)
-    colModel.fit(colInd, [el[0] for el in col if not np.isnan(el).any()])
+    colActual = np.array([el[0] for el in col if not np.isnan(el).any()])
+    colModel.fit(colInd, colActual)
+    colPredicted = colModel.predict(colInd)
+    colResiduals = np.abs(colActual - colPredicted)
+
     rowModel = LinearRegression()
     rowInd = np.array([el[0] for el in row if not np.isnan(el).any()]).reshape(-1, 1)
-    rowModel.fit(rowInd, [el[1] for el in row if not np.isnan(el).any()])
+    rowActual = np.array([el[1] for el in row if not np.isnan(el).any()])
+    rowModel.fit(rowInd, rowActual)
+    rowPredicted = rowModel.predict(rowInd)
+    rowResiduals = np.abs(rowActual - rowPredicted)
+
     if colModel.coef_[0] == 0:
         colSlope = 1e-6
     else:
@@ -914,7 +967,11 @@ def calculateRegressions(row, col):
     b = rowModel.coef_[0]
     d = rowModel.intercept_
 
-    return dict(row=dict(slope=b, intercept=d), col=dict(slope=a, intercept=c))
+    return (
+        dict(row=dict(slope=b, intercept=d), col=dict(slope=a, intercept=c)),
+        rowResiduals,
+        colResiduals,
+    )
 
 
 def linearIntersection(regressions):
