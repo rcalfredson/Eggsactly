@@ -166,7 +166,7 @@ Generate a new key pair to secure communication between the server and the GPU w
    ```bash
    openssl rsa -in project/auth/gpu_worker_1_id_rsa.pem -pubout -out project/auth/gpu_worker_1_id_rsa.pub
    ```
-   Ensure that the public key is stored in the project/auth directory using the naming convention gpu_worker_{int}_id_rsa.pub (where {int} ranges from 1 to NUM_GPU_WORKERS).
+   Ensure that the public key is stored in the `project/auth` directory using the naming convention `gpu_worker_{int}_id_rsa.pub` (where `{int}` ranges from 1 to `NUM_GPU_WORKERS`).
 
 ### Step 6: Start the Server and GPU Worker
 Open two terminal windows (or tabs) and run the following:
