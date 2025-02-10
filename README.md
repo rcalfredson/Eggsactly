@@ -6,9 +6,9 @@
 This software project provides a web-based application to facilitate the automated counting of eggs laid by *Drosophila melanogaster* during egg-laying assays. In these experiments, specialized chambers are used to house individual female flies while allowing researchers to study egg deposition patterns under different conditions.
 
 **Chamber Configurations:**
-- **Standard Chambers:**  
+- **Standard two-choice Chambers:**  
   These feature a grid of plastic enclosures where each enclosure contains a female fly. Each enclosure is flanked by two agarose areas—one on each of two opposite sides—with distinct chemical compositions. Multiple grid configurations are supported (e.g., 6x4 grid, 3x5 grid, etc.).
-- **Alternative Chambers:**  
+- **Large four-choice Chambers:**  
   Some assays use a larger chamber with a square footprint that contains four small circular agarose areas arranged in a diamond formation.
 
 **How the Tool Works:**
