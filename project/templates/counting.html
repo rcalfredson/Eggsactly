@@ -4452,7 +4452,12 @@
                     $('#updates').append('<div id=paper-finished-loading hidden></div>')
                 }
                 calcPadding(0);
-                if ('error' in annotations[orderedImgNames[currentImgIndex]] ||
+                if (chamberTypeManuallyUpdated() &&
+                    !chamberRealignmentData[currentImgIndex].ignored &&
+                    !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type)
+                ) {
+                    drawChamberAlignmentMarkers();
+                } else if ('error' in annotations[orderedImgNames[currentImgIndex]] ||
                     chamberRealignmentData[currentImgIndex].ignored
                 ) {
                     let errorText = chamberRealignmentData[currentImgIndex].ignored ?
@@ -4468,11 +4473,6 @@
                     let pointText = drawErrorText(errorText);
 
                     eggLayingRegions[currentImgIndex] = { bad: true, text: pointText };
-                } else if (chamberTypeManuallyUpdated() &&
-                    !chamberRealignmentData[currentImgIndex].ignored &&
-                    !['', 'null'].includes(chamberRealignmentData[currentImgIndex].type)
-                ) {
-                    drawChamberAlignmentMarkers();
                 } else {
                     if (!eggLayingRegions[currentImgIndex]) {
                         eggLayingRegions[currentImgIndex] = {};
