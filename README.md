@@ -1,4 +1,4 @@
-# counting-3
+# Eggsactly
 #### Egg Counting Tool for *Drosophila melanogaster* Egg-Laying Assays
 
 ## Introduction
@@ -88,8 +88,8 @@ Follow these steps to install and run the egg-counting tool on your local machin
 ### Step 1: Clone the repository
 Clone the respository and navigate to its directory:
 ```bash
-git clone https://github.com/rcalfredson/counting-3.git
-cd counting-3
+git clone https://github.com/rcalfredson/Eggsactly.git
+cd Eggsactly
 ```
 ### Step 2: Set Up the Environment
 You can choose one of two methods:
@@ -338,6 +338,6 @@ After segmentation and egg detection:
   - Use **Freehand Mode** when the layout of regions is irregular or does not conform to a grid pattern.
 
 - **Getting Help:**  
-  If you encounter issues or have questions, please create an issue on our [GitHub repository](https://github.com/rcalfredson/counting-3/issues) for support.
+  If you encounter issues or have questions, please create an issue on our [GitHub repository](https://github.com/rcalfredson/Eggsactly/issues) for support.
 
 
