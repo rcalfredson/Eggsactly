@@ -270,6 +270,33 @@ If you process images as a single batch, the resulting CSV file will aggregate c
 ### Expected Runtime
 On a standard desktop computer, processing an image (i.e., the automatic segmentation and egg detection) typically takes about 7-8 seconds. This does not include any additional time required for user inspection or manual adjustments.
 
+### 🧪 Model Performance
+
+To validate the egg-detection performance, the trained neural network was benchmarked against manually annotated ground-truth images for each supported chamber type.  
+Each chamber type was evaluated separately, and both per-chamber and overall accuracy metrics are reported below.
+
+#### Per-Chamber Performance
+
+| Chamber Type | True Positives | False Positives | False Negatives | Precision | Recall | F1 Score |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **HTL (two-choice)** | 292 | 8 | 3 | **97.3 %** | **98.9 %** | **98.2 %** |
+| **Large (four-choice)** | 219 | 8 | 12 | **96.5 %** | **94.8 %** | **95.6 %** |
+| **Optogenetic (opto)** | 668 | 11 | 0 | **98.4 %** | **100 %** | **99.2 %** |
+
+#### Overall (Micro-Averaged) Performance
+
+| Metric | Value |
+|:--|:--:|
+| **True Positives (TP)** | 1,179 |
+| **False Positives (FP)** | 27 |
+| **False Negatives (FN)** | 15 |
+| **Precision** | **97.8 %** |
+| **Recall** | **98.7 %** |
+| **F1 Score** | **98.3 %** |
+
+> **Interpretation:**  
+> Across all three chamber types, the detector achieves high precision and recall, with total error rates below 2%. Most discrepancies involve single-egg differences in crowded or dim regions, not systematic biases.
+
 
 ## Usage Instructions
 
