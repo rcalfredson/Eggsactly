@@ -23,6 +23,8 @@ This software project provides a web-based application to facilitate the automat
 
 This README details the installation, configuration, and usage of the tool, as well as instructions for reproducing a demo assay.
 
+Note: the revision of this code as used in the article ["Natural non-coding _pumilio_ variants retune value-coding interneurons to bias _Drosophila_ oviposition choices"](https://www.biorxiv.org/content/10.1101/2025.03.07.641729v2) is available as a [Figshare archive](https://figshare.com/articles/software/Eggsactly/30581984).
+
 ## System Requirements
 
 ### Software Dependencies
