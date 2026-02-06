@@ -148,7 +148,12 @@ def getChamberTypeByRowsAndCols(numRowsCols):
             numRowsCols[0] == ct.value().numCols
             and numRowsCols[1] == ct.value().numRows
         ):
-            return ct.name, numRowsCols[0] == ct.value().numCols
+            return (
+                ct.name,
+                numRowsCols[0] == ct.value().numCols
+                and numRowsCols[1] == ct.value().numRows
+                and numRowsCols[0] != numRowsCols[1],
+            )
     return None, False
 
 
