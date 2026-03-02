@@ -23,8 +23,6 @@ This software project provides a web-based application to facilitate the automat
 
 This README details the installation, configuration, and usage of the tool, as well as instructions for reproducing a demo assay.
 
-Note: the revision of this code as used in the article ["Natural non-coding _pumilio_ variants retune value-coding interneurons to bias _Drosophila_ oviposition choices"](https://www.biorxiv.org/content/10.1101/2025.03.07.641729v2) is available as a [Figshare archive](https://figshare.com/articles/software/Eggsactly/30581984).
-
 ## System Requirements
 
 ### Software Dependencies
@@ -159,14 +157,14 @@ Generate a new key pair to secure communication between the server and the GPU w
    python project/scripts/rsa_keypair_gen.py
    ```
    The script will output a private key (starting with `-----BEGIN PRIVATE KEY-----` and ending with `-----END PRIVATE KEY-----`).
-2. Copy this output into a file named according to your `PRIVATE_KEY_PATH` (for example, `project/auth/gpu_worker_1_id_rsa.pem`).
+2. Copy this output into a file named according to your `PRIVATE_KEY_PATH` (for example, `project/auth/secrets/gpu_worker_1_id_rsa.pem`).
 3. Set the appropriate file permissions:
    ```bash
-   chmod +x project/auth/gpu_worker_1_id_rsa.pem
+   chmod +x project/auth/secrets/gpu_worker_1_id_rsa.pem
    ```
 4. Generate the corresponding public key:
    ```bash
-   openssl rsa -in project/auth/gpu_worker_1_id_rsa.pem -pubout -out project/auth/gpu_worker_1_id_rsa.pub
+   openssl rsa -in project/auth/secrets/gpu_worker_1_id_rsa.pem -pubout -out project/auth/gpu_worker_1_id_rsa.pub
    ```
    Ensure that the public key is stored in the `project/auth` directory using the naming convention `gpu_worker_{int}_id_rsa.pub` (where `{int}` ranges from 1 to `NUM_GPU_WORKERS`).
 
@@ -186,14 +184,13 @@ The full installation process should take approximately 15–30 minutes on a sta
 
 ## Data and Model Acquisition
 
-To facilitate testing and demonstration of the egg-counting tool, we provide two key resources hosted on Figshare:
+To facilitate testing and demonstration of the egg-counting tool, we provide two key resources hosted on Zenodo:
 
 ### Egg Detection Model
 
 A pre-trained SplineDist UNet model optimized for detecting *Drosophila melanogaster* eggs is available:
 
-- **Title:** SplineDist UNet Weights for Drosophila melanogaster Egg Detection  
-- **Figshare Link:** [SplineDist UNet Weights for Drosophila melanogaster Egg Detection](https://figshare.com/articles/software/SplineDist_UNet_Weights_for_i_Drosophila_melanogaster_i_Egg_Detection/28382495?file=52244816)  
+- **Link:** SplineDist UNet Weights for Drosophila melanogaster Egg Detection [SplineDist UNet Weights for Drosophila melanogaster Egg Detection](https://doi.org/10.5281/zenodo.18836444)
 - **Description:**  
   This file contains the pre-trained weights for the UNet backbone of a SplineDist-based object detection model (a variant of StarDist). The model is optimized for detecting Drosophila melanogaster eggs in backlit images of transparent gel substrates and was trained for 400 epochs.
 - **Instructions:**  
@@ -203,8 +200,7 @@ A pre-trained SplineDist UNet model optimized for detecting *Drosophila melanoga
 
 A small, self-contained demo dataset is provided to help you test and visualize the tool’s capabilities:
 
-- **Title:** Egg Counting Tool Demo Dataset  
-- **Figshare Link:** [Egg Counting Tool Demo Dataset](https://figshare.com/articles/dataset/Egg_Counting_Tool_Demo_Dataset/28382828)  
+- **Link:** [Egg-Counting Model Performance Validation Dataset, Eggsactly](https://doi.org/10.5281/zenodo.18836372)
 - **Description:**  
   The dataset is organized into two directories:
   - **Inputs:**  
