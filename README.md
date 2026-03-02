@@ -268,7 +268,7 @@ On a standard desktop computer, processing an image (i.e., the automatic segment
 
 ### 🧪 Model Performance
 
-To validate the egg-detection performance, the trained neural network was benchmarked against manually annotated ground-truth images for each supported chamber type.  
+To validate the egg-detection performance, the trained neural network was benchmarked against the  annotated ground-truth images from the demo dataset, one image for each supported chamber type.  
 Each chamber type was evaluated separately, and both per-chamber and overall accuracy metrics are reported below.
 
 #### Per-Chamber Performance
