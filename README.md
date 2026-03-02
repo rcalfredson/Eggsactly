@@ -28,24 +28,28 @@ This README details the installation, configuration, and usage of the tool, as w
 ### Software Dependencies
 
 - **Python:**  
-  - Version **3.9** (this is the only version that has been tested)
+  - **3.9** (recommended, matches pinned Conda environments)
+  - **3.13** (supported via pip requirements; see "Setup Options" below)
 
 - **Key Python Packages:**  
   The core functionality of the app depends on several key packages, including:
   - **Flask** (v2.2.2) – for the web server
-  - **PyTorch** (v1.12.0) – for the object-detection models (requires CUDA)
-  - **Additional Essentials:**  
-    - csbdeep==0.7.2
-    - Flask-Dance==6.2.0
-    - Flask-Login==0.6.2
-    - Flask-Session==0.4.0
-    - Flask-SocketIO==5.3.1
-    - Flask-SQLAlchemy==3.0.2
-    - numpy==1.23.3
-    - opencv-python==4.10.0
-    - Pillow==9.2.0
+  - **PyTorch** – required for the object-detection models (**GPU/CUDA required**).
+    **Install PyTorch separately** using the official PyTorch instructions for your CUDA version, then install the remaining Python dependencies from the matching `requirements.3.9.txt` or `requirements.3.13.txt`.
+  - **Additional Essentials** (example packages; exact versions differ by Python version. See `requirements.*.txt`):
+    - csbdeep
+    - Flask-Dance
+    - Flask-Login
+    - Flask-Session
+    - Flask-SocketIO
+    - Flask-SQLAlchemy
+    - numpy
+    - opencv-python
+    - Pillow
 
-  For a complete list of the top-level dependencies (with version numbers), please refer to the provided [`requirements.txt`](./requirements.txt).
+  For a complete list of pinned Python dependencies, refer to:
+    - [`requirements.3.9.txt`](./requirements.3.9.txt)
+    - [`requirements.3.13.txt`](./requirements.3.13.txt)
 
 - **Environment Reproducibility:**  
   To replicate the full environment—including non-Python dependencies and the correct CUDA toolkit version—we provide **two** Conda environment files:
@@ -56,14 +60,21 @@ This README details the installation, configuration, and usage of the tool, as w
   - **For NVIDIA GPUs with CUDA 11.0:**  
     Use [`environment.cuda11.0.yml`](./environment.cuda11.0.yml)
 
+### Setup Options
+
+| Setup path | Python | What it pins | Recommended for |
+|---|---:|---|---|
+| **Conda (preferred)** | 3.9 | Python + CUDA toolkit + key non-Python deps | Highest reproducibility (recommended) |
+| **pip + venv (legacy)** | 3.9 | Python packages only | Quick local setup if you already have CUDA/PyTorch aligned |
+| **pip + venv (modern)** | 3.13 | Python packages only | Modern Python dev environments; CUDA/PyTorch must be installed separately |
+
+**Note:** The Conda environments are the most reproducible option because they pin the CUDA toolkit and other non-Python dependencies. The `pip` paths rely on your system’s CUDA setup and the PyTorch build you install.
+
 ### Operating Systems
 
-- **Linux:**  
-  - The application has been tested on **Ubuntu 20.04** and **22.04**.
-- **Windows:**  
-  - Supported in theory, though not formally tested.
-- **macOS:**  
-  - **Not supported** for GPU-dependent functionality because the app relies on CUDA, and macOS does not support CUDA. *(Note: A CPU-only mode is not available.)*
+- **Linux:** The application has been tested on **Ubuntu 20.04** and **22.04**.
+- **Windows:** Supported in theory, though not formally tested.
+- **macOS:** Not supported (GPU inference requires CUDA; CPU-only mode is not currently available).
 
 ### Hardware Requirements
 
@@ -93,6 +104,7 @@ cd Eggsactly
 ```
 ### Step 2: Set Up the Environment
 You can choose one of two methods:
+
 **Option A: Using Conda (Recommended for GPU/CUDA support)**
 Use one of the provided environment files based on your GPU's CUDA version:
   - **For NVIDIA GPUs with CUDA 11.6:**
@@ -108,12 +120,27 @@ Activate the environment:
 conda activate eggcounting
 ```
 
-**Option B: Using a Python Virtual Environment**
-Alternatively, set up a Python virtual environment:
+The Conda environments include a CUDA-compatible PyTorch build, so no separate PyTorch installation is required.
+
+**Option B: Using a Python Virtual Environment (pip)**
+Use this option if you prefer `venv`/`pip` over Conda. This path does **not** pin CUDA or PyTorch, so you must install a CUDA-compatible PyTorch build first.
+
 ```bash
 python -m venv my_env
 source my_env/bin/activate   # On Windows: my_env\Scripts\activate
-pip install -r requirements.txt
+```
+
+**Install PyTorch (GPU build required)**
+Follow the official PyTorch installation instructions for your CUDA version (see pytorch.org).
+
+**Install Eggsactly Python dependencies**
+Choose the requirements file that matches your Python version:
+```bash
+# Python 3.9
+pip install -r requirements.3.9.txt
+
+# Python 3.13
+pip install -r requirements.3.13.txt
 ```
 
 ### Step 3: Configure Environment Variables
