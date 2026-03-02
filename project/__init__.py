@@ -12,6 +12,8 @@ from project.lib.datamanagement.sql_backend_types import SQLBackendTypes
 from project.lib.web.backend_types import BackendTypes
 
 
+SOCKETIO_POLLING_ONLY = os.getenv("SOCKETIO_POLLING_ONLY", "1") == "1"
+
 class ReverseProxied(object):
     def __init__(self, app):
         self.app = app
@@ -55,7 +57,10 @@ session = Session(app)
 if flask_session_type == "sqlalchemy":
     with app.app_context():
         session.app.session_interface.db.create_all()
-socketIO = SocketIO(app, manage_session=False)
+socketio_kwargs = dict(manage_session=False)
+if SOCKETIO_POLLING_ONLY:
+    socketio_kwargs.update(transports=['polling'], allow_upgrades=False)
+socketIO = SocketIO(app, **socketio_kwargs)
 
 sessions = {}
 UPLOAD_FOLDER = "./uploads"
