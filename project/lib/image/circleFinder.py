@@ -14,6 +14,7 @@ from project import app
 from project.lib.datamanagement.models import EggLayingImage
 from project.lib.image.chamber import CT
 from project.lib.image.converter import byte_to_bgr
+from project.lib.torch_utils import load_state_dict_compat
 from project.lib.util import distance, trueRegions, COL_G
 
 dirname = os.path.dirname(__file__)
@@ -33,7 +34,7 @@ if torch_found and torch.cuda.is_available():
     default_model = SplineDist2D(unet_config)
     default_model.cuda()
     default_model.train(False)
-    default_model.load_state_dict(torch.load(UNET_SETTINGS["weights_path"]))
+    default_model.load_state_dict(load_state_dict_compat(UNET_SETTINGS["weights_path"]))
 else:
     default_model = None
 

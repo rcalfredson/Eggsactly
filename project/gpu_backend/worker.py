@@ -22,6 +22,7 @@ from project.lib.image.converter import byte_to_bgr
 from project.lib.image.drawing import get_interpolated_points
 from project.lib.image.sub_image_helper import SubImageHelper
 from project.lib.os.pauser import PythonPauser
+from project.lib.torch_utils import load_state_dict_compat
 from project.lib.web.exceptions import CUDAMemoryException
 from project.lib.web.gpu_task_types import GPUTaskTypes
 from project.lib.web.sessionManager import SessionManager
@@ -296,7 +297,7 @@ def init_splinedist_network(type):
     )
     networks[type].cuda()
     networks[type].train(False)
-    networks[type].load_state_dict(torch.load(NETWORK_CONSTS[type]["wts"]))
+    networks[type].load_state_dict(load_state_dict_compat(NETWORK_CONSTS[type]["wts"]))
 
 
 init_networks()
