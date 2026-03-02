@@ -149,6 +149,7 @@ flask_session
 privileged_ips.json
 
 # backend authentication
+project/auth/*.pub
 project/auth/secrets/*
 !project/auth/secrets/.gitkeep
 
