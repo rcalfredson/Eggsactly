@@ -190,7 +190,7 @@ To facilitate testing and demonstration of the egg-counting tool, we provide two
 
 A pre-trained SplineDist UNet model optimized for detecting *Drosophila melanogaster* eggs is available:
 
-- **Link:** SplineDist UNet Weights for Drosophila melanogaster Egg Detection [SplineDist UNet Weights for Drosophila melanogaster Egg Detection](https://doi.org/10.5281/zenodo.18836444)
+- **Link:** [SplineDist UNet Weights for Drosophila melanogaster Egg Detection](https://doi.org/10.5281/zenodo.18836444)
 - **Description:**  
   This file contains the pre-trained weights for the UNet backbone of a SplineDist-based object detection model (a variant of StarDist). The model is optimized for detecting Drosophila melanogaster eggs in backlit images of transparent gel substrates and was trained for 400 epochs.
 - **Instructions:**  
