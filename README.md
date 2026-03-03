@@ -302,9 +302,9 @@ Each chamber type was evaluated separately, and both per-chamber and overall acc
 
 | Chamber Type | True Positives | False Positives | False Negatives | Precision | Recall | F1 Score |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **HTL (two-choice)** | 292 | 8 | 3 | **97.3%** | **98.9%** | **98.2%** |
+| **6x4 (two-choice)** | 292 | 8 | 3 | **97.3%** | **98.9%** | **98.2%** |
+| **Optogenetic (two-choice)** | 668 | 11 | 0 | **98.4%** | **100%** | **99.2%** |
 | **Large (four-choice)** | 219 | 8 | 12 | **96.5%** | **94.8%** | **95.6%** |
-| **Optogenetic (opto)** | 668 | 11 | 0 | **98.4%** | **100%** | **99.2%** |
 
 #### Overall (Micro-Averaged) Performance
 
